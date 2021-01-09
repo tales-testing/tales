@@ -1,0 +1,41 @@
+version = 1
+
+keyword "authenticate" {
+    arg "email" {
+        default = ""
+    }
+
+    arg "password" {
+        default = ""
+    }
+
+    case "http" "auth_user" {
+        request {
+            url = "${config.baseUrl}/auth"
+            method = "POST"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+            }
+
+            body = jsonencode({
+                email = arg.email,
+                password = arg.password
+            })
+        }
+
+        response {
+            status_code = 200
+
+            headers = {
+                Content-Type = "application/json",
+            }
+        }
+    }
+
+    output "user" {
+        value = http.auth_user.body
+    }
+}
+

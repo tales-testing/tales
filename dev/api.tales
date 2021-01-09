@@ -1,0 +1,254 @@
+version = 1
+
+scenario {
+    name = "Register a user"
+
+    case "http" "post_user" {
+        request {
+            url = "${config.baseUrl}/register"
+            method = "POST"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+            }
+
+            body = "${jsonencode({
+                email = "axel@etcheverry.biz",
+                password = "Passw0rd!"
+            })}"
+        }
+
+        response {
+            status_code = 201
+
+            headers = {
+                Content-Type = "application/json",
+            }
+
+            body = "${jsonencode({
+                email = "axel@etcheverry.biz",
+                password = "Passw0rd!"
+            })}"
+        }
+    }
+}
+
+
+scenario {
+    name = "Register a user with bad value"
+
+    case "http" "post_user" {
+        request {
+            url = "${config.baseUrl}/register-bad"
+            method = "POST"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+            }
+
+            body = "${json({
+                email = "axel@etcheverry.biz",
+                password = "Passw0rd!"
+            })}"
+        }
+
+        response {
+            status_code = 201
+
+            headers = {
+                Content-Type = "application/json",
+            }
+
+            body = "${json({
+                email = "axel@etcheverry.biz",
+                password = "Passw0rd!"
+            })}"
+        }
+    }
+}
+
+
+
+
+scenario {
+    name = "Create a blog post"
+
+    // 1. create user
+    // 2. auth user
+    // 3. create blog post
+    // 4. get blog post
+    // 5. delete blog post
+    // 6. delete user
+
+    case "http" "create_user" {
+        request {
+            url = "${config.baseUrl}/users"
+            method = "POST"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+            }
+
+            body = jsonencode({
+                email = "axel@etcheverry.biz",
+                password = "Passw0rd!"
+            })
+        }
+
+        response {
+            status_code = 201
+
+            headers = {
+                Content-Type = "application/json",
+            }
+
+            body = jsonencode({
+                email = "axel@etcheverry.biz",
+                password = "Passw0rd!"
+            })
+        }
+    }
+
+    case "keyword" "authenticate" {
+        arg "email" {
+            value = http.create_user.body.email
+        }
+
+        arg "password" {
+            value = http.create_user.body.password
+        }
+
+/*
+        args = {
+            email = http.create_user.body.email,
+            password = http.create_user.body.password
+        }
+        */
+    }
+/*
+    case "http" "auth_user" {
+        request {
+            url = "${config.baseUrl}/auth"
+            method = "POST"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+            }
+
+            body = jsonencode({
+                email = http.create_user.body.email,
+                password = http.create_user.body.password
+            })
+        }
+
+        response {
+            status_code = 200
+
+            headers = {
+                Content-Type = "application/json",
+            }
+        }
+    }
+*/
+    case "http" "create_blog_post" {
+        request {
+            url = "${config.baseUrl}/blog/posts"
+            method = "POST"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+                Authorization = "Bearer ${keyword.authenticate.user.access_token}"
+            }
+
+            body = jsonencode({
+                title = "my first blog post",
+                content = "Hello World",
+                tags = ["foo"],
+            })
+        }
+
+        response {
+            status_code = 201
+
+            headers = {
+                Content-Type = "application/json",
+            }
+        }
+    }
+
+    case "http" "get_blog_post" {
+        request {
+            url = "${config.baseUrl}/blog/posts/${http.create_blog_post.body.id}"
+            method = "GET"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+                Authorization = "Bearer ${http.auth_user.body.access_token}"
+            }
+        }
+
+        response {
+            status_code = 200
+
+            headers = {
+                Content-Type = "application/json",
+            }
+
+            body = jsonencode({
+                id = http.create_blog_post.body.id,
+                title = "my first blog post",
+                content = "Hello World",
+                tags = ["foo"],
+            })
+        }
+    }
+
+    case "http" "delete_blog_post" {
+        request {
+            url = "${config.baseUrl}/blog/posts/${http.create_blog_post.body.id}"
+            method = "DELETE"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+                Authorization = "Bearer ${http.auth_user.body.access_token}"
+            }
+        }
+
+        response {
+            status_code = 200
+
+            headers = {
+                Content-Type = "application/json",
+            }
+        }
+    }
+
+
+    case "http" "delete_user" {
+        request {
+            url = "${config.baseUrl}/users/${http.create_user.body.id}"
+            method = "DELETE"
+
+            headers = {
+                Accept = "application/json",
+                Content-Type = "application/json"
+                Authorization = "Bearer ${http.auth_user.body.access_token}"
+            }
+        }
+
+        response {
+            status_code = 200
+
+            headers = {
+                Content-Type = "application/json",
+            }
+        }
+    }
+}
