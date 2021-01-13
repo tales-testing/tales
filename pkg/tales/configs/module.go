@@ -3,6 +3,8 @@ package configs
 import (
 	"fmt"
 
+	"github.com/hyperxlab/tales/pkg/tales/reporter"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -10,6 +12,7 @@ import (
 // Module is a container for a set of configuration constructs that are
 // evaluated within a common namespace.
 type Module struct {
+	Reporter reporter.Reporter
 	// SourceDir is the filesystem directory that the module was loaded from.
 	//
 	// This is populated automatically only for configurations loaded with

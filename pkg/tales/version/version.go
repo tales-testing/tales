@@ -31,18 +31,24 @@ type Info struct {
 	Platform     string
 }
 
+var instance *Info
+
 // Get returns the version and buildtime information about the binary
 func Get() *Info {
-	// These variables typically come from -ldflags settings to `go build`
-	return &Info{
-		Version:      version,
-		GitCommit:    gitCommit,
-		GitTreeState: gitTreeState,
-		BuildDate:    buildDate,
-		GoVersion:    runtime.Version(),
-		Compiler:     runtime.Compiler,
-		Platform:     platform,
+	if instance == nil {
+		// These variables typically come from -ldflags settings to `go build`
+		instance = &Info{
+			Version:      version,
+			GitCommit:    gitCommit,
+			GitTreeState: gitTreeState,
+			BuildDate:    buildDate,
+			GoVersion:    runtime.Version(),
+			Compiler:     runtime.Compiler,
+			Platform:     platform,
+		}
 	}
+
+	return instance
 }
 
 // Parse version string to semver.Version

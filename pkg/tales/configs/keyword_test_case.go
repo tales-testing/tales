@@ -3,6 +3,7 @@ package configs
 import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
+	"github.com/hyperxlab/tales/pkg/tales/reporter"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -36,18 +37,18 @@ func (r *KeywordCase) Parse(c *Case, ctx *hcl.EvalContext) hcl.Diagnostics {
 }
 
 // Result implements TestCase
-func (r *KeywordCase) Result() Result {
+func (r *KeywordCase) Result() *reporter.Case {
 	return r.Keyword.Case.Result()
 }
 
 // Execute implements TestCase
-func (r *KeywordCase) Execute(ctx *hcl.EvalContext) (result Result) {
+func (r *KeywordCase) Execute(ctx *hcl.EvalContext) (result *reporter.Case) {
 	result = r.Keyword.Case.Execute(ctx)
 
 	outputs := &KeywordOutput{}
 
 	if diag := gohcl.DecodeBody(r.Keyword.HCL, ctx, outputs); diag.HasErrors() {
-		result.FromErr(diag)
+		result.FromError(diag)
 
 		return result
 	}

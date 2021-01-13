@@ -82,7 +82,7 @@ ${BUILD_DIR}/tales: $(GO_FILES) go.mod go.sum
 	@go build -ldflags $(GO_LDFLAGS) -o $@ ./cmd/$(subst ${BUILD_DIR}/,,$@)/
 
 
-${BUILD_DIR}/tales-v1: $(GO_FILES) go.mod go.sum
+${BUILD_DIR}/tales-v2: $(GO_FILES) go.mod go.sum
 	@echo "Building $@..."
 	@go generate ./cmd/$(subst ${BUILD_DIR}/,,$@)/
 	@go build -ldflags $(GO_LDFLAGS) -o $@ ./cmd/$(subst ${BUILD_DIR}/,,$@)/
@@ -101,10 +101,10 @@ run-tales: ${BUILD_DIR}/tales
 run: run-tales
 
 .PHONY: build
-build: ${BUILD_DIR}/acme-api-server ${BUILD_DIR}/tales ${BUILD_DIR}/tales-v1
+build: ${BUILD_DIR}/acme-api-server ${BUILD_DIR}/tales ${BUILD_DIR}/tales-v2
+
+run-dev-v2: ${BUILD_DIR}/tales-v2
+	@./$< dev/api.tales
 
 run-dev: ${BUILD_DIR}/tales
-	@./$< dev/api-v2.tales
-
-run-dev-v1: ${BUILD_DIR}/tales-v1
 	@cd dev; ../$<

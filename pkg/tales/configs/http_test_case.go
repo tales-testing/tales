@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hyperxlab/tales/pkg/tales/reporter"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/zclconf/go-cty/cty"
@@ -34,7 +36,7 @@ type HTTPCase struct {
 	Name     string
 	Request  HTTPRequest  `hcl:"request,block"`
 	Response HTTPResponse `hcl:"response,block"`
-	result   Result
+	result   *reporter.Case
 }
 
 // Parse implements TestCase
@@ -45,18 +47,21 @@ func (r *HTTPCase) Parse(c *Case, ctx *hcl.EvalContext) hcl.Diagnostics {
 }
 
 // Result implements TestCase
-func (r *HTTPCase) Result() Result {
+func (r *HTTPCase) Result() *reporter.Case {
 	if r.result.Name == "" {
 		r.result.Name = r.Name
-		r.result.Status = StatusNotExecuted
+		r.result.Status = reporter.StatusNotExecuted
 	}
 
 	return r.result
 }
 
 // Execute implements TestCase
-func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result Result) {
-	result.Name = r.Name
+func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result *reporter.Case) {
+	result = &reporter.Case{
+		Name: r.Name,
+	}
+
 	now := time.Now()
 
 	defer func() {
@@ -73,7 +78,7 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result Result) {
 
 	req, err := http.NewRequest(r.Request.Method, r.Request.URL, body)
 	if err != nil {
-		result.FromErr(err)
+		result.FromError(err)
 
 		return
 	}
@@ -84,14 +89,14 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result Result) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		result.FromErr(err)
+		result.FromError(err)
 
 		return
 	}
 
 	if r.Response.StatusCode != 0 {
 		if resp.StatusCode != r.Response.StatusCode {
-			result.FromErr(fmt.Errorf("status code %d is not equal to %d", resp.StatusCode, r.Response.StatusCode))
+			result.FromError(fmt.Errorf("status code %d is not equal to %d", resp.StatusCode, r.Response.StatusCode))
 
 			return
 		}
@@ -101,7 +106,7 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result Result) {
 		for key, val := range r.Response.Headers {
 			v := resp.Header.Get(key)
 			if v != val {
-				result.FromErr(fmt.Errorf("response header %s is not equal to %s", key, val))
+				result.FromError(fmt.Errorf("response header %s is not equal to %s", key, val))
 
 				return
 			}
@@ -110,7 +115,7 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result Result) {
 
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		result.FromErr(fmt.Errorf("read response body failed: %w", err))
+		result.FromError(fmt.Errorf("read response body failed: %w", err))
 
 		return
 	}
@@ -118,19 +123,19 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result Result) {
 
 	inputType, err := ctyjson.ImpliedType(respBody)
 	if err != nil {
-		result.FromErr(fmt.Errorf("detect type of response body failed: %w", err))
+		result.FromError(fmt.Errorf("detect type of response body failed: %w", err))
 
 		return
 	}
 
 	bodyValue, err := ctyjson.Unmarshal(respBody, inputType)
 	if err != nil {
-		result.FromErr(fmt.Errorf("convert response body failed: %w", err))
+		result.FromError(fmt.Errorf("convert response body failed: %w", err))
 
 		return
 	}
 
-	result.Status = StatusPassed
+	result.Status = reporter.StatusPassed
 
 	httpVars := ctx.Variables["http"].AsValueMap()
 	if httpVars == nil {

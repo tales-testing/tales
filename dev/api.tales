@@ -74,6 +74,7 @@ scenario {
 
 scenario {
     name = "Create a blog post"
+    tags = ["demo"]
 
     // 1. create user
     // 2. auth user
@@ -128,32 +129,7 @@ scenario {
         }
         */
     }
-/*
-    case "http" "auth_user" {
-        request {
-            url = "${config.baseUrl}/auth"
-            method = "POST"
 
-            headers = {
-                Accept = "application/json",
-                Content-Type = "application/json"
-            }
-
-            body = jsonencode({
-                email = http.create_user.body.email,
-                password = http.create_user.body.password
-            })
-        }
-
-        response {
-            status_code = 200
-
-            headers = {
-                Content-Type = "application/json",
-            }
-        }
-    }
-*/
     case "http" "create_blog_post" {
         request {
             url = "${config.baseUrl}/blog/posts"
