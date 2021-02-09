@@ -7,6 +7,7 @@ import (
 	"github.com/hyperxlab/tales/pkg/tales/reporter"
 
 	"github.com/hyperxlab/tales/pkg/tales/configs"
+	_ "github.com/hyperxlab/tales/pkg/tales/generators"
 	"github.com/urfave/cli/v2"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -41,6 +42,14 @@ func rootCmd(c *cli.Context) error {
 	module.Reporter = reporter
 
 	tags := c.StringSlice("tags")
+
+	for _, g := range module.Generators {
+		ctx := parser.Context().NewChild()
+
+		if diags := g.Execute(module, ctx); diags.HasErrors() {
+			return fmt.Errorf("error in load config dir: %w", diags)
+		}
+	}
 
 	for _, s := range module.Scenarios {
 		if !s.HasTags(tags) {

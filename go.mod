@@ -7,6 +7,7 @@ require (
 	github.com/coreos/go-semver v0.2.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/euskadi31/go-einfo v1.0.1
+	github.com/euskadi31/go-faker v0.0.0-20210209222227-e2d500ace1ac
 	github.com/go-test/deep v1.0.3
 	github.com/google/go-cmp v0.3.1
 	github.com/google/uuid v1.1.1
@@ -25,7 +26,7 @@ require (
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/afero v1.2.2
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	github.com/urfave/cli/v2 v2.3.0
 	github.com/zclconf/go-cty v1.5.1
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9

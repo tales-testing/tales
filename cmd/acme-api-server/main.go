@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -47,9 +46,9 @@ func main() {
 	r.HandleFunc("/register-bad", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		var buf bytes.Buffer
-		r.Write(&buf)
-		w.Write(buf.Bytes())
+		b, _ := ioutil.ReadAll(r.Body)
+
+		w.Write(b)
 	}).Methods(http.MethodPost)
 
 	r.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {

@@ -1,12 +1,15 @@
 package reporter
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/euskadi31/go-einfo/colors"
 	"github.com/euskadi31/go-einfo/terminal"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 var colorsMap = map[StatusType]string{
@@ -57,6 +60,60 @@ func (r *ConsoleReporter) ReportScenario(s *Scenario) error {
 	return nil
 }
 
+func (r *ConsoleReporter) prefixString(prefix string, content string) string {
+	lines := strings.Split(content, "\n")
+
+	for i := 0; i < len(lines); i++ {
+		lines[i] = prefix + lines[i]
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (r *ConsoleReporter) printCaseData(c *Case) {
+	if !c.Input.IsNull() {
+		b, err := ctyjson.Marshal(c.Input, c.Input.Type())
+		if err != nil {
+			fmt.Fprint(r.out, err)
+		}
+
+		var data interface{}
+
+		if err := json.Unmarshal(b, &data); err != nil {
+			fmt.Fprint(r.out, err)
+		}
+
+		b, err = json.MarshalIndent(data, "", "    ")
+		if err != nil {
+			fmt.Fprint(r.out, err)
+		}
+
+		fmt.Fprint(r.out, "\t\tRequest body:\n")
+		fmt.Fprint(r.out, r.prefixString("\t\t", string(b))+"\n")
+	}
+
+	if !c.Output.IsNull() {
+		b, err := ctyjson.Marshal(c.Output, c.Output.Type())
+		if err != nil {
+			fmt.Fprint(r.out, err)
+		}
+
+		var data interface{}
+
+		if err := json.Unmarshal(b, &data); err != nil {
+			fmt.Fprint(r.out, err)
+		}
+
+		b, err = json.MarshalIndent(data, "", "    ")
+		if err != nil {
+			fmt.Fprint(r.out, err)
+		}
+
+		fmt.Fprint(r.out, "\t\tResponse body:\n")
+		fmt.Fprint(r.out, r.prefixString("\t\t", string(b))+"\n")
+	}
+}
+
 // ReportCase implements Reporter
 func (r *ConsoleReporter) ReportCase(c *Case) error {
 	r.last.Cases = append(r.last.Cases, c)
@@ -76,6 +133,8 @@ func (r *ConsoleReporter) ReportCase(c *Case) error {
 		if _, err := fmt.Fprintf(r.out, "\t\tError: %s\n", c.Raison); err != nil {
 			return err
 		}
+
+		r.printCaseData(c)
 	}
 
 	return nil

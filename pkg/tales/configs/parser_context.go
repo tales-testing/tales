@@ -1,7 +1,10 @@
 package configs
 
 import (
+	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hyperxlab/tales/pkg/tales/funcs"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/function/stdlib"
@@ -58,6 +61,32 @@ func createEvalContext() *hcl.EvalContext {
 		"trimsuffix":   stdlib.TrimSuffixFunc,
 		"upper":        stdlib.UpperFunc,
 		"values":       stdlib.ValuesFunc,
+		"timestamp":    funcs.TimestampFunc,
+		"generate": function.New(&function.Spec{
+			// Params represents required positional arguments, of which random
+			// has none.
+			Params: []function.Parameter{},
+			// VarParam allows a "VarArgs" type input, in this case, of
+			// strings.
+			VarParam: &function.Parameter{Type: cty.DynamicPseudoType},
+			// Type is used to determine the output type from the inputs. In
+			// the case of Random it only accepts strings and only returns
+			// strings.
+			Type: function.StaticReturnType(cty.DynamicPseudoType),
+			// Impl is the actual function. A "VarArgs" number of cty.String
+			// will be passed in and a random one returned, also as a
+			// cty.String.
+			Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+				gname := args[0].AsString()
+
+				generator, ok := generatorsInstance[gname]
+				if !ok {
+					return cty.Value{}, fmt.Errorf("generator %q is not defined", gname)
+				}
+
+				return generator.Generate()
+			},
+		}),
 		"json": function.New(&function.Spec{
 			// Params represents required positional arguments, of which random
 			// has none.

@@ -1,0 +1,9 @@
+version = 1
+
+generator "email" "user_email" {
+    prefix = "test-"
+}
+
+generator "mac_address" "bike_mac" {
+    prefix = "FF:FF"
+}

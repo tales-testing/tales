@@ -50,7 +50,8 @@ scenario {
 
             body = "${json({
                 email = "axel@etcheverry.biz",
-                password = "Passw0rd!"
+                password = "Passw0rd!",
+                mac = generate("bike_mac")
             })}"
         }
 
@@ -94,7 +95,7 @@ scenario {
             }
 
             body = jsonencode({
-                email = "axel@etcheverry.biz",
+                email = generate("user_email"),
                 password = "Passw0rd!"
             })
         }

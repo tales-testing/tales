@@ -2,6 +2,8 @@ package reporter
 
 import (
 	"time"
+
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Report struct
@@ -23,6 +25,8 @@ type Case struct {
 	Name     string        `json:"name"`
 	Status   StatusType    `json:"status"`
 	Raison   string        `json:"raison,omitempty"`
+	Input    cty.Value     `json:"input,omitempty"`
+	Output   cty.Value     `json:"output,omitempty"`
 	Duration time.Duration `json:"duration"`
 }
 

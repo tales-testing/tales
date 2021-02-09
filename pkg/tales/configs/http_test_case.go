@@ -74,6 +74,23 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result *reporter.Case) {
 
 	if r.Request.Body != "" {
 		body = strings.NewReader(r.Request.Body)
+
+		if v, ok := r.Request.Headers["Content-Type"]; ok && v == "application/json" {
+			b := []byte(r.Request.Body)
+
+			inputType, err := ctyjson.ImpliedType(b)
+			if err != nil {
+				result.FromError(err)
+
+				return
+			}
+
+			v, err := ctyjson.Unmarshal(b, inputType)
+
+			result.Input = v
+		} else {
+			result.Input = cty.StringVal(r.Request.Body)
+		}
 	}
 
 	req, err := http.NewRequest(r.Request.Method, r.Request.URL, body)
@@ -92,25 +109,6 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result *reporter.Case) {
 		result.FromError(err)
 
 		return
-	}
-
-	if r.Response.StatusCode != 0 {
-		if resp.StatusCode != r.Response.StatusCode {
-			result.FromError(fmt.Errorf("status code %d is not equal to %d", resp.StatusCode, r.Response.StatusCode))
-
-			return
-		}
-	}
-
-	if len(r.Response.Headers) > 0 {
-		for key, val := range r.Response.Headers {
-			v := resp.Header.Get(key)
-			if v != val {
-				result.FromError(fmt.Errorf("response header %s is not equal to %s", key, val))
-
-				return
-			}
-		}
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -133,6 +131,27 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result *reporter.Case) {
 		result.FromError(fmt.Errorf("convert response body failed: %w", err))
 
 		return
+	}
+
+	result.Output = bodyValue
+
+	if r.Response.StatusCode != 0 {
+		if resp.StatusCode != r.Response.StatusCode {
+			result.FromError(fmt.Errorf("status code %d is not equal to %d", resp.StatusCode, r.Response.StatusCode))
+
+			return
+		}
+	}
+
+	if len(r.Response.Headers) > 0 {
+		for key, val := range r.Response.Headers {
+			v := resp.Header.Get(key)
+			if v != val {
+				result.FromError(fmt.Errorf("response header %s is not equal to %s", key, val))
+
+				return
+			}
+		}
 	}
 
 	result.Status = reporter.StatusPassed

@@ -25,6 +25,22 @@ func (r *KeywordCase) Parse(c *Case, ctx *hcl.EvalContext) hcl.Diagnostics {
 
 	args := map[string]cty.Value{}
 
+	// set all default value
+	for _, arg := range r.Keyword.Args {
+		// defer parsing of default attr after parsing generator block
+		var argDefault ArgDefault
+		if diag := gohcl.DecodeBody(arg.HCL, ctx, &argDefault); diag.HasErrors() {
+			return diag
+		}
+
+		arg.Default = argDefault.Default
+
+		if !arg.Default.IsNull() {
+			args[arg.Name] = arg.Default
+		}
+	}
+
+	// override with set args
 	for _, arg := range r.Args {
 		args[arg.Name] = arg.Value
 	}

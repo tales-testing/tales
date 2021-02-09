@@ -84,17 +84,36 @@ func (p *Parser) loadFiles(paths []string, override bool) ([]*File, hcl.Diagnost
 }
 
 func (p *Parser) dirFiles(dir string) (primary, override []string, diags hcl.Diagnostics) {
-	infos, err := p.fs.ReadDir(dir)
-	if err != nil {
+	infos := map[string]os.FileInfo{}
+
+	if err := p.fs.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		infos[path] = info
+
+		//infos = append(infos, info)
+
+		return nil
+	}); err != nil {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  "Failed to read module directory",
 			Detail:   fmt.Sprintf("Module directory %s does not exist or cannot be read.", dir),
 		})
+
 		return
 	}
+	/*
+		infos, err := p.fs.ReadDir(dir)
+		if err != nil {
+			diags = append(diags, &hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "Failed to read module directory",
+				Detail:   fmt.Sprintf("Module directory %s does not exist or cannot be read.", dir),
+			})
+			return
+		}
+	*/
 
-	for _, info := range infos {
+	for filename, info := range infos {
 		if info.IsDir() {
 			// We only care about files
 			continue
@@ -102,6 +121,7 @@ func (p *Parser) dirFiles(dir string) (primary, override []string, diags hcl.Dia
 
 		name := info.Name()
 		ext := fileExt(name)
+		path := filepath.Dir(filename)
 		if ext == "" || IsIgnoredFile(name) {
 			continue
 		}
@@ -109,7 +129,7 @@ func (p *Parser) dirFiles(dir string) (primary, override []string, diags hcl.Dia
 		baseName := name[:len(name)-len(ext)] // strip extension
 		isOverride := baseName == "override" || strings.HasSuffix(baseName, "_override")
 
-		fullPath := filepath.Join(dir, name)
+		fullPath := filepath.Join(path, name)
 		if isOverride {
 			override = append(override, fullPath)
 		} else {

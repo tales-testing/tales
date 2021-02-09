@@ -30,6 +30,8 @@ type Module struct {
 	Scenarios map[string]*Scenario
 
 	Keywords map[string]*Keyword
+
+	Generators map[string]*Generator
 }
 
 // NewModule takes a list of primary files and a list of override files and
@@ -43,9 +45,10 @@ type Module struct {
 func NewModule(primaryFiles, overrideFiles []*File) (*Module, hcl.Diagnostics) {
 	var diags hcl.Diagnostics
 	mod := &Module{
-		Configs:   map[string]cty.Value{},
-		Scenarios: map[string]*Scenario{},
-		Keywords:  map[string]*Keyword{},
+		Configs:    map[string]cty.Value{},
+		Scenarios:  map[string]*Scenario{},
+		Keywords:   map[string]*Keyword{},
+		Generators: map[string]*Generator{},
 	}
 
 	for _, file := range primaryFiles {
@@ -109,6 +112,22 @@ func (m *Module) appendFile(file *File) hcl.Diagnostics {
 		}
 
 		m.Keywords[key] = r
+	}
+
+	for _, g := range file.Generators {
+		key := g.Name
+
+		if existing, exists := m.Generators[key]; exists {
+			diags = append(diags, &hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  fmt.Sprintf("Duplicate generator %q configuration", existing.Name),
+				Detail:   fmt.Sprintf("A generator named %q was already declared. Generator names must be unique per type in each module.", existing.Name),
+				//Subject:  &r.DeclRange,
+			})
+			continue
+		}
+
+		m.Generators[key] = g
 	}
 
 	return diags

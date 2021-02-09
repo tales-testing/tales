@@ -22,9 +22,15 @@ type Keyword struct {
 
 // Arg struct
 type Arg struct {
-	Name    string    `hcl:"name,label"`
-	Default cty.Value `hcl:"default,optional"`
+	Name    string `hcl:"name,label"`
+	Default cty.Value
 	Value   cty.Value `hcl:"value,optional"`
+	HCL     hcl.Body  `hcl:",remain"`
+}
+
+// ArgDefault struct
+type ArgDefault struct {
+	Default cty.Value `hcl:"default,optional"`
 }
 
 // Output struct
