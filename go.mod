@@ -15,6 +15,7 @@ require (
 	github.com/gosimple/slug v1.9.0
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/hashicorp/errwrap v1.0.0
+	github.com/hashicorp/go-cty-funcs v0.0.0-20200930094925-2721b1e36840
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/hashicorp/go-plugin v1.3.0
 	github.com/hashicorp/go-uuid v1.0.1
@@ -28,8 +29,8 @@ require (
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.7.0
 	github.com/urfave/cli/v2 v2.3.0
-	github.com/zclconf/go-cty v1.5.1
+	github.com/zclconf/go-cty v1.8.0
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
-	golang.org/x/text v0.3.2
+	golang.org/x/text v0.3.5
 	k8s.io/client-go v11.0.0+incompatible // indirect
 )

@@ -1,8 +1,10 @@
 package configs
 
 import (
+	"encoding/base64"
 	"fmt"
 
+	"github.com/hashicorp/go-cty-funcs/encoding"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hyperxlab/tales/pkg/tales/funcs"
 	"github.com/zclconf/go-cty/cty"
@@ -19,6 +21,8 @@ func createEvalContext() *hcl.EvalContext {
 	}
 
 	functions := map[string]function.Function{
+		//"base64encode": encoding.Base64EncodeFunc,
+		"base64decode": encoding.Base64DecodeFunc,
 		"abs":          stdlib.AbsoluteFunc,
 		"ceil":         stdlib.CeilFunc,
 		"chomp":        stdlib.ChompFunc,
@@ -62,6 +66,21 @@ func createEvalContext() *hcl.EvalContext {
 		"upper":        stdlib.UpperFunc,
 		"values":       stdlib.ValuesFunc,
 		"timestamp":    funcs.TimestampFunc,
+		"base64encode": function.New(&function.Spec{
+			Params: []function.Parameter{
+				{
+					Name:             "str",
+					Type:             stdlib.Bytes,
+					AllowDynamicType: true,
+				},
+			},
+			Type: function.StaticReturnType(cty.String),
+			Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+				bufPtr := args[0].EncapsulatedValue().(*[]byte)
+
+				return cty.StringVal(base64.StdEncoding.EncodeToString(*bufPtr)), nil
+			},
+		}),
 		"generate": function.New(&function.Spec{
 			// Params represents required positional arguments, of which random
 			// has none.
