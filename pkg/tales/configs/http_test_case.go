@@ -135,6 +135,18 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result *reporter.Case) {
 
 	result.Output = bodyValue
 
+	httpVars := ctx.Variables["http"].AsValueMap()
+	if httpVars == nil {
+		httpVars = map[string]cty.Value{}
+	}
+
+	httpVars[r.Name] = cty.ObjectVal(map[string]cty.Value{
+		"status_code": cty.NumberIntVal(int64(r.Response.StatusCode)),
+		"body":        bodyValue,
+	})
+
+	ctx.Variables["http"] = cty.ObjectVal(httpVars)
+
 	if r.Response.StatusCode != 0 {
 		if resp.StatusCode != r.Response.StatusCode {
 			result.FromError(fmt.Errorf("status code %d is not equal to %d", resp.StatusCode, r.Response.StatusCode))
@@ -155,18 +167,6 @@ func (r *HTTPCase) Execute(ctx *hcl.EvalContext) (result *reporter.Case) {
 	}
 
 	result.Status = reporter.StatusPassed
-
-	httpVars := ctx.Variables["http"].AsValueMap()
-	if httpVars == nil {
-		httpVars = map[string]cty.Value{}
-	}
-
-	httpVars[r.Name] = cty.ObjectVal(map[string]cty.Value{
-		"status_code": cty.NumberIntVal(int64(r.Response.StatusCode)),
-		"body":        bodyValue,
-	})
-
-	ctx.Variables["http"] = cty.ObjectVal(httpVars)
 
 	return
 }
