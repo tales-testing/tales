@@ -1,0 +1,75 @@
+SHELL := /usr/bin/env bash
+
+BUILD_DIR ?= build
+TALES_BIN := $(BUILD_DIR)/tales
+MOCK_BIN := $(BUILD_DIR)/mockserver
+BUILD_READY := .build-ready
+
+UNIT_PKGS := ./internal/... ./cmd/tales
+
+.PHONY: build tales-bin mock-bin
+build: tales-bin mock-bin
+
+$(BUILD_READY):
+	@mkdir -p $(BUILD_DIR)
+	@touch $(BUILD_READY)
+
+tales-bin: | $(BUILD_READY)
+	@go build -o $(TALES_BIN) ./cmd/tales
+
+mock-bin: | $(BUILD_READY)
+	@go build -o $(MOCK_BIN) ./e2e/mockserver
+
+.PHONY: test
+test:
+	@go test -race -count=1 $(UNIT_PKGS)
+
+.PHONY: lint
+lint:
+	@golangci-lint run ./cmd/tales ./internal/... ./e2e/mockserver
+
+.PHONY: e2e
+e2e: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 4 --report-junit $(BUILD_DIR)/reports/e2e.junit.xml --report-jsonl $(BUILD_DIR)/reports/e2e.jsonl ./e2e/pass
+
+.PHONY: e2e-failure
+e2e-failure: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	set +e; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 1 --report-jsonl $(BUILD_DIR)/reports/e2e-failure.jsonl ./e2e/fail; \
+	exit_code=$$?; \
+	set -e; \
+	test $$exit_code -eq 1

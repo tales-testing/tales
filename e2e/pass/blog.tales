@@ -1,0 +1,183 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+generator "email" "user_email" {
+  prefix = "test-"
+  domain = "example.com"
+}
+
+scenario "Create a blog post" {
+  tags = ["demo"]
+
+  step "http" "create_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = generate("user_email")
+        password = "Passw0rd!"
+      }
+    }
+
+    expect {
+      status = 201
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        id    = is_string()
+        email = request.json.email
+      }
+    }
+
+    capture {
+      id       = response.json.id
+      email    = response.json.email
+      password = request.json.password
+    }
+  }
+
+  step "http" "auth_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/auth"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = result.create_user.email
+        password = result.create_user.password
+      }
+    }
+
+    expect {
+      status = 200
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        access_token = is_string()
+      }
+    }
+
+    capture {
+      token = response.json.access_token
+    }
+  }
+
+  step "http" "create_blog_post" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/blog/posts"
+
+      headers = {
+        Accept        = "application/json"
+        Content-Type  = "application/json"
+        Authorization = "Bearer ${result.auth_user.token}"
+      }
+
+      json = {
+        title   = "my first blog post"
+        content = "Hello World"
+        tags    = ["foo"]
+      }
+    }
+
+    expect {
+      status = 201
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        id      = is_string()
+        title   = request.json.title
+        content = request.json.content
+      }
+    }
+
+    capture {
+      id = response.json.id
+    }
+  }
+
+  step "http" "get_blog_post" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/blog/posts/${result.create_blog_post.id}"
+
+      headers = {
+        Accept        = "application/json"
+        Authorization = "Bearer ${result.auth_user.token}"
+      }
+    }
+
+    expect {
+      status = 200
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        id      = result.create_blog_post.id
+        title   = "my first blog post"
+        content = "Hello World"
+        tags    = ["foo"]
+      }
+    }
+  }
+
+  teardown {
+    step "http" "delete_blog_post" {
+      when = can(result.create_blog_post.id)
+
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/blog/posts/${result.create_blog_post.id}"
+
+        headers = {
+          Authorization = "Bearer ${result.auth_user.token}"
+        }
+      }
+
+      expect {
+        status = one_of([200, 204, 404])
+      }
+    }
+
+    step "http" "delete_user" {
+      when = can(result.create_user.id)
+
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/users/${result.create_user.id}"
+
+        headers = {
+          Authorization = "Bearer ${result.auth_user.token}"
+        }
+      }
+
+      expect {
+        status = one_of([200, 204, 404])
+      }
+    }
+  }
+}
