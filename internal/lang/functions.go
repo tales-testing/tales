@@ -17,6 +17,7 @@ func matcherObject(name string, values map[string]cty.Value) cty.Value {
 	for k, v := range values {
 		payload[k] = v
 	}
+
 	return cty.ObjectVal(payload)
 }
 
@@ -33,9 +34,11 @@ func envFunc() function.Function {
 			if value, ok := os.LookupEnv(name); ok {
 				return cty.StringVal(value), nil
 			}
+
 			if len(args) > 1 {
 				return cty.StringVal(args[1].AsString()), nil
 			}
+
 			return cty.StringVal(""), nil
 		},
 	})
@@ -70,6 +73,7 @@ func matchesFunc() function.Function {
 			if _, err := regexp.Compile(pattern); err != nil {
 				return cty.NilVal, fmt.Errorf("invalid regex %q: %w", pattern, err)
 			}
+
 			return matcherObject("matches", map[string]cty.Value{"value": args[0]}), nil
 		},
 	})

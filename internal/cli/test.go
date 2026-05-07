@@ -43,6 +43,7 @@ func runTest(c *cli.Context) error {
 	suite, diags := parser.LoadPath(path)
 	if diags.HasErrors() {
 		_, _ = fmt.Fprintf(os.Stderr, "%s\n", diags.Error())
+
 		return cli.Exit("parse failed", 2)
 	}
 
@@ -64,6 +65,7 @@ func runTest(c *cli.Context) error {
 	})
 	if err != nil && result == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "runtime failed: %v\n", err)
+
 		return cli.Exit("runtime failed", 3)
 	}
 
@@ -76,6 +78,7 @@ func runTest(c *cli.Context) error {
 			return cli.Exit(fmt.Sprintf("write junit failed: %v", writeErr), 3)
 		}
 	}
+
 	if jsonlPath := c.String("report-jsonl"); jsonlPath != "" {
 		if writeErr := report.WriteJSONL(jsonlPath, result); writeErr != nil {
 			return cli.Exit(fmt.Sprintf("write jsonl failed: %v", writeErr), 3)
@@ -85,5 +88,6 @@ func runTest(c *cli.Context) error {
 	if result.Failed() {
 		return cli.Exit("at least one scenario failed", 1)
 	}
+
 	return nil
 }

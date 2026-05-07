@@ -11,9 +11,11 @@ func Equal(path string, expected, actual cty.Value) error {
 	if name, args, ok := isMatcher(expected); ok {
 		return applyMatcher(name, args, actual, path)
 	}
+
 	if expected.RawEquals(actual) {
 		return nil
 	}
+
 	return &Mismatch{Kind: "assertion", Path: path, Want: expected.GoString(), Got: actual.GoString()}
 }
 
@@ -22,60 +24,25 @@ func MatchJSON(expected, actual cty.Value, strict bool, path string) error {
 	if name, args, ok := isMatcher(expected); ok {
 		return applyMatcher(name, args, actual, path)
 	}
+
 	if expected.IsNull() {
 		if actual.IsNull() {
 			return nil
 		}
+
 		return &Mismatch{Kind: "assertion", Path: path, Message: "expected null"}
 	}
+
 	if actual.IsNull() {
 		return &Mismatch{Kind: "assertion", Path: path, Message: "actual value is null"}
 	}
 
 	if expected.Type().IsObjectType() {
-		if !actual.Type().IsObjectType() && !actual.Type().IsMapType() {
-			return &Mismatch{Kind: "assertion", Path: path, Message: "expected object"}
-		}
-		expectedMap := expected.AsValueMap()
-		actualMap := actual.AsValueMap()
-		for key, expVal := range expectedMap {
-			actVal, ok := actualMap[key]
-			if !ok {
-				if name, _, is := isMatcher(expVal); is && name == "not_exists" {
-					continue
-				}
-				if name, _, is := isMatcher(expVal); is && name == "exists" {
-					return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "value does not exist"}
-				}
-				return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "missing field"}
-			}
-			if err := MatchJSON(expVal, actVal, strict, path+"."+key); err != nil {
-				return err
-			}
-		}
-		if strict && len(actualMap) != len(expectedMap) {
-			return &Mismatch{Kind: "assertion", Path: path, Message: "object has extra fields"}
-		}
-		return nil
+		return matchJSONObject(expected, actual, strict, path)
 	}
 
 	if expected.Type().IsTupleType() || expected.Type().IsListType() {
-		if !actual.Type().IsTupleType() && !actual.Type().IsListType() {
-			return &Mismatch{Kind: "assertion", Path: path, Message: "expected array"}
-		}
-		expLen := expected.LengthInt()
-		actLen := actual.LengthInt()
-		if expLen != actLen {
-			return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("array length mismatch want=%d got=%d", expLen, actLen)}
-		}
-		for i := 0; i < expLen; i++ {
-			expItem := expected.Index(cty.NumberIntVal(int64(i)))
-			actItem := actual.Index(cty.NumberIntVal(int64(i)))
-			if err := MatchJSON(expItem, actItem, strict, fmt.Sprintf("%s[%d]", path, i)); err != nil {
-				return err
-			}
-		}
-		return nil
+		return matchJSONArray(expected, actual, strict, path)
 	}
 
 	if expected.RawEquals(actual) {
@@ -83,4 +50,62 @@ func MatchJSON(expected, actual cty.Value, strict bool, path string) error {
 	}
 
 	return &Mismatch{Kind: "assertion", Path: path, Want: expected.GoString(), Got: actual.GoString()}
+}
+
+func matchJSONObject(expected, actual cty.Value, strict bool, path string) error {
+	if !actual.Type().IsObjectType() && !actual.Type().IsMapType() {
+		return &Mismatch{Kind: "assertion", Path: path, Message: "expected object"}
+	}
+
+	expectedMap := expected.AsValueMap()
+
+	actualMap := actual.AsValueMap()
+	for key, expVal := range expectedMap {
+		actVal, ok := actualMap[key]
+		if !ok {
+			if name, _, is := isMatcher(expVal); is && name == matcherNotExists {
+				continue
+			}
+
+			if name, _, is := isMatcher(expVal); is && name == matcherExists {
+				return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "value does not exist"}
+			}
+
+			return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "missing field"}
+		}
+
+		if err := MatchJSON(expVal, actVal, strict, path+"."+key); err != nil {
+			return err
+		}
+	}
+
+	if strict && len(actualMap) != len(expectedMap) {
+		return &Mismatch{Kind: "assertion", Path: path, Message: "object has extra fields"}
+	}
+
+	return nil
+}
+
+func matchJSONArray(expected, actual cty.Value, strict bool, path string) error {
+	if !actual.Type().IsTupleType() && !actual.Type().IsListType() {
+		return &Mismatch{Kind: "assertion", Path: path, Message: "expected array"}
+	}
+
+	expLen := expected.LengthInt()
+
+	actLen := actual.LengthInt()
+	if expLen != actLen {
+		return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("array length mismatch want=%d got=%d", expLen, actLen)}
+	}
+
+	for i := 0; i < expLen; i++ {
+		expItem := expected.Index(cty.NumberIntVal(int64(i)))
+
+		actItem := actual.Index(cty.NumberIntVal(int64(i)))
+		if err := MatchJSON(expItem, actItem, strict, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -65,5 +65,6 @@ func (r *SuiteResult) Failed() bool {
 			return true
 		}
 	}
+
 	return false
 }

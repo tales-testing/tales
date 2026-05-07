@@ -32,34 +32,37 @@ type failureXML struct {
 func WriteJUnit(path string, result *SuiteResult) error {
 	x := testsuiteXML{Name: "tales", Tests: len(result.Scenarios), Time: seconds(result.Duration)}
 	for _, scenario := range result.Scenarios {
-		tc := testcaseXML{
-			Name:      scenario.Name,
-			ClassName: scenario.File,
-			Time:      seconds(scenario.Duration),
-		}
+		tc := testcaseXML{Name: scenario.Name, ClassName: scenario.File, Time: seconds(scenario.Duration)}
 		if scenario.Status == StatusFail {
 			x.Failures++
 			message := "scenario failed"
 			body := ""
+
 			if scenario.Failure != nil {
 				message = scenario.Failure.Message
 				body = fmt.Sprintf("kind=%s path=%s", scenario.Failure.Kind, scenario.Failure.Path)
 			}
+
 			tc.Failure = &failureXML{Message: message, Body: body}
 		}
+
 		x.TestCases = append(x.TestCases, tc)
 	}
 
 	file, err := os.Create(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("create junit file %q: %w", path, err)
 	}
+
 	defer func() { _ = file.Close() }()
+
 	enc := xml.NewEncoder(file)
 	enc.Indent("", "  ")
+
 	if err := enc.Encode(x); err != nil {
-		return err
+		return fmt.Errorf("encode junit xml: %w", err)
 	}
+
 	return nil
 }
 

@@ -15,5 +15,6 @@ func (m *Mismatch) Error() string {
 	if m.Message != "" {
 		return fmt.Sprintf("%s at %s: %s", m.Kind, m.Path, m.Message)
 	}
+
 	return fmt.Sprintf("%s at %s: want=%v got=%v", m.Kind, m.Path, m.Want, m.Got)
 }

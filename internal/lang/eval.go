@@ -60,6 +60,7 @@ func (e *Evaluator) Eval(expression model.Expression, scope ScopeData, meta Gene
 	for name, fn := range e.baseFunctions {
 		ctx.Functions[name] = fn
 	}
+
 	ctx.Functions["generate"] = function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "name", Type: cty.String}},
 		Type:   function.StaticReturnType(cty.DynamicPseudoType),
@@ -67,6 +68,7 @@ func (e *Evaluator) Eval(expression model.Expression, scope ScopeData, meta Gene
 			if e.generate == nil {
 				return cty.NilVal, fmt.Errorf("generate() is unavailable")
 			}
+
 			return e.generate(args[0].AsString(), meta)
 		},
 	})

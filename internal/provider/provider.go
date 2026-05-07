@@ -42,11 +42,13 @@ func NewRegistry(providers ...Provider) *Registry {
 	for _, p := range providers {
 		items[p.Type()] = p
 	}
+
 	return &Registry{items: items}
 }
 
 // Get provider by type.
 func (r *Registry) Get(providerType string) (Provider, bool) {
 	p, ok := r.items[providerType]
+
 	return p, ok
 }

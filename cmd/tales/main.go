@@ -21,9 +21,7 @@ func main() {
 			cli.NewTestCommand(),
 			cli.NewValidateCommand(),
 		},
-		Action: func(c *urfavecli.Context) error {
-			return urfavecli.ShowAppHelp(c)
-		},
+		Action: urfavecli.ShowAppHelp,
 	}
 	urfavecli.VersionPrinter = func(c *urfavecli.Context) {
 		_, _ = fmt.Fprintf(c.App.Writer, "%v version: %v (build: %v)\n", c.App.Name, c.App.Version, version.Get().BuildDate)

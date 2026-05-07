@@ -9,22 +9,23 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 )
 
 type user struct {
-	ID       string `json:"id"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	id     string
+	email  string
+	secret string
 }
 
 type post struct {
-	ID      string   `json:"id"`
-	UserID  string   `json:"user_id"`
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Tags    []string `json:"tags"`
+	id      string
+	userID  string
+	title   string
+	content string
+	tags    []string
 }
 
 type serverState struct {
@@ -68,31 +69,40 @@ func main() {
 	r.HandleFunc("/users.v1.UserService/CreateUser", state.connectCreateUser).Methods(http.MethodPost)
 
 	addr := ":" + port
-	log.Printf("mockserver listening on %s", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
+
+	log.Print("mockserver listening")
+
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 }
 
 func (s *serverState) createUser(w http.ResponseWriter, req *http.Request) {
-	var payload struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+	payload, err := decodeCredentialPayload(req)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
 		return
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	id := strconv.Itoa(s.nextUserID)
 	s.nextUserID++
-	user := user{ID: id, Email: payload.Email, Password: payload.Password}
-	s.users[id] = user
+	usr := user{id: id, email: payload.email, secret: payload.secret}
+	s.users[id] = usr
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":         id,
-		"email":      user.Email,
+		"email":      usr.email,
 		"created_at": "2026-01-01T00:00:00Z",
 	})
 }
@@ -100,39 +110,46 @@ func (s *serverState) createUser(w http.ResponseWriter, req *http.Request) {
 func (s *serverState) deleteUser(w http.ResponseWriter, req *http.Request) {
 	if _, ok := s.authenticate(req); !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid token"})
+
 		return
 	}
+
 	id := mux.Vars(req)["id"]
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if _, exists := s.users[id]; !exists {
 		writeJSON(w, http.StatusNotFound, map[string]interface{}{"error": "not found"})
+
 		return
 	}
+
 	delete(s.users, id)
 	writeJSON(w, http.StatusNoContent, map[string]interface{}{"deleted": true})
 }
 
 func (s *serverState) auth(w http.ResponseWriter, req *http.Request) {
-	var payload struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+	payload, err := decodeCredentialPayload(req)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
 		return
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	for _, usr := range s.users {
-		if usr.Email == payload.Email && usr.Password == payload.Password {
-			token := fmt.Sprintf("token-%s", usr.ID)
-			s.tokens[token] = usr.ID
+		if usr.email == payload.email && usr.secret == payload.secret {
+			token := fmt.Sprintf("token-%s", usr.id)
+			s.tokens[token] = usr.id
 			writeJSON(w, http.StatusOK, map[string]interface{}{"access_token": token})
+
 			return
 		}
 	}
+
 	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid credentials"})
 }
 
@@ -140,8 +157,10 @@ func (s *serverState) createPost(w http.ResponseWriter, req *http.Request) {
 	userID, ok := s.authenticate(req)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid token"})
+
 		return
 	}
+
 	var payload struct {
 		Title   string   `json:"title"`
 		Content string   `json:"content"`
@@ -149,46 +168,60 @@ func (s *serverState) createPost(w http.ResponseWriter, req *http.Request) {
 	}
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
 		return
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	id := strconv.Itoa(s.nextPostID)
 	s.nextPostID++
-	created := post{ID: id, UserID: userID, Title: payload.Title, Content: payload.Content, Tags: payload.Tags}
+	created := post{id: id, userID: userID, title: payload.Title, content: payload.Content, tags: payload.Tags}
 	s.posts[id] = created
-	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": created.ID, "title": created.Title, "content": created.Content, "tags": created.Tags})
+	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": created.id, "title": created.title, "content": created.content, "tags": created.tags})
 }
 
 func (s *serverState) getPost(w http.ResponseWriter, req *http.Request) {
 	if _, ok := s.authenticate(req); !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid token"})
+
 		return
 	}
+
 	id := mux.Vars(req)["id"]
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	post, exists := s.posts[id]
+
+	pst, exists := s.posts[id]
 	if !exists {
 		writeJSON(w, http.StatusNotFound, map[string]interface{}{"error": "not found"})
+
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"id": post.ID, "title": post.Title, "content": post.Content, "tags": post.Tags})
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"id": pst.id, "title": pst.title, "content": pst.content, "tags": pst.tags})
 }
 
 func (s *serverState) deletePost(w http.ResponseWriter, req *http.Request) {
 	if _, ok := s.authenticate(req); !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid token"})
+
 		return
 	}
+
 	id := mux.Vars(req)["id"]
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if _, exists := s.posts[id]; !exists {
 		writeJSON(w, http.StatusNotFound, map[string]interface{}{"error": "not found"})
+
 		return
 	}
+
 	delete(s.posts, id)
 	writeJSON(w, http.StatusNoContent, map[string]interface{}{"deleted": true})
 }
@@ -196,29 +229,46 @@ func (s *serverState) deletePost(w http.ResponseWriter, req *http.Request) {
 func (s *serverState) connectCreateUser(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("Connect-Protocol-Version") == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "missing Connect-Protocol-Version"})
+
 		return
 	}
 
-	var payload struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+	payload, err := decodeCredentialPayload(req)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
 		return
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	id := strconv.Itoa(s.nextUserID)
 	s.nextUserID++
-	user := user{ID: id, Email: payload.Email, Password: payload.Password}
-	s.users[id] = user
+	usr := user{id: id, email: payload.email, secret: payload.secret}
+	s.users[id] = usr
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":         id,
-		"email":      payload.Email,
+		"email":      payload.email,
 		"created_at": "2026-01-01T00:00:00Z",
 	})
+}
+
+type credentialPayload struct {
+	email  string
+	secret string
+}
+
+func decodeCredentialPayload(req *http.Request) (*credentialPayload, error) {
+	data := map[string]string{}
+	if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("decode credential payload: %w", err)
+	}
+
+	return &credentialPayload{
+		email:  data["email"],
+		secret: data["password"],
+	}, nil
 }
 
 func (s *serverState) authenticate(req *http.Request) (string, bool) {
@@ -226,10 +276,14 @@ func (s *serverState) authenticate(req *http.Request) (string, bool) {
 	if !strings.HasPrefix(auth, "Bearer ") {
 		return "", false
 	}
+
 	token := strings.TrimPrefix(auth, "Bearer ")
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	userID, ok := s.tokens[token]
+
 	return userID, ok
 }
 

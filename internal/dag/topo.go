@@ -8,7 +8,9 @@ func TopologicalLayers(g *Graph) ([][]string, error) {
 	for name, degree := range g.inDegree {
 		remainingIn[name] = degree
 	}
+
 	ready := make([]string, 0)
+
 	for name, degree := range remainingIn {
 		if degree == 0 {
 			ready = append(ready, name)
@@ -17,12 +19,15 @@ func TopologicalLayers(g *Graph) ([][]string, error) {
 
 	layers := make([][]string, 0)
 	processed := 0
+
 	for len(ready) > 0 {
 		current := append([]string(nil), ready...)
 		ready = ready[:0]
+
 		layers = append(layers, current)
 		for _, node := range current {
 			processed++
+
 			for out := range g.edgesOut[node] {
 				remainingIn[out]--
 				if remainingIn[out] == 0 {
@@ -35,5 +40,6 @@ func TopologicalLayers(g *Graph) ([][]string, error) {
 	if processed != len(g.nodes) {
 		return nil, fmt.Errorf("dependency cycle detected")
 	}
+
 	return layers, nil
 }

@@ -18,6 +18,7 @@ func NewScenarioState(stepNames []string) *ScenarioState {
 	for _, name := range stepNames {
 		results[name] = cty.EmptyObjectVal
 	}
+
 	return &ScenarioState{results: results}
 }
 
@@ -25,10 +26,12 @@ func NewScenarioState(stepNames []string) *ScenarioState {
 func (s *ScenarioState) GetResultMap() map[string]cty.Value {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	out := make(map[string]cty.Value, len(s.results))
 	for k, v := range s.results {
 		out[k] = v
 	}
+
 	return out
 }
 
@@ -36,5 +39,6 @@ func (s *ScenarioState) GetResultMap() map[string]cty.Value {
 func (s *ScenarioState) SetStepResult(step string, value cty.Value) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.results[step] = value
 }

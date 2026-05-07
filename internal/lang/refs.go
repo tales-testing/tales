@@ -12,19 +12,24 @@ func FindStepRefs(expr hcl.Expression) []string {
 	if expr == nil {
 		return nil
 	}
+
 	refs := map[string]struct{}{}
+
 	for _, traversal := range expr.Variables() {
 		if len(traversal) < 2 {
 			continue
 		}
+
 		root, ok := traversal[0].(hcl.TraverseRoot)
 		if !ok || root.Name != "result" {
 			continue
 		}
+
 		attr, ok := traversal[1].(hcl.TraverseAttr)
 		if !ok {
 			continue
 		}
+
 		refs[attr.Name] = struct{}{}
 	}
 
@@ -32,6 +37,7 @@ func FindStepRefs(expr hcl.Expression) []string {
 	for ref := range refs {
 		out = append(out, ref)
 	}
+
 	return out
 }
 
@@ -51,6 +57,7 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 	if step.When.Expr != nil {
 		collect(step.When)
 	}
+
 	if step.Request != nil {
 		collect(step.Request.Method)
 		collect(step.Request.URL)
@@ -60,21 +67,25 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 		collect(step.Request.Body)
 		collect(step.Request.Timeout)
 	}
+
 	if step.Expect != nil {
 		collect(step.Expect.Status)
 		collect(step.Expect.Headers)
 		collect(step.Expect.JSON)
 		collect(step.Expect.Strict)
 	}
+
 	for _, capExpr := range step.Capture {
 		collect(capExpr)
 	}
+
 	if step.Keyword != nil {
 		collect(step.Keyword.Name)
 		collect(step.Keyword.Inputs)
 	}
 
 	delete(deps, step.Name)
+
 	for dep := range deps {
 		if dep == step.Name {
 			return nil, fmt.Errorf("step %q cannot depend on itself", step.Name)

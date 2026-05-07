@@ -10,6 +10,7 @@ import (
 
 func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 	var raw fileSchema
+
 	diags := gohcl.DecodeBody(body, nil, &raw)
 	if diags.HasErrors() {
 		return nil, diags
@@ -26,6 +27,7 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 	for _, cfg := range raw.Config {
 		attrs, attrDiags := cfg.Body.JustAttributes()
 		diags = append(diags, attrDiags...)
+
 		for name, attr := range attrs {
 			suite.ConfigExpr[name] = model.Expression{Expr: attr.Expr, File: path, Line: attr.Range.Start.Line}
 		}
@@ -44,14 +46,19 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 
 	for _, kw := range raw.Keywords {
 		inputs := map[string]model.Expression{}
+
 		if kw.InputsBlock != nil {
 			var iDiags hcl.Diagnostics
+
 			inputs, iDiags = bodyToNamedExprMap(path, kw.InputsBlock.Body)
 			diags = append(diags, iDiags...)
 		}
+
 		outputs := map[string]model.Expression{}
+
 		if kw.Outputs != nil {
 			var oDiags hcl.Diagnostics
+
 			outputs, oDiags = bodyToNamedExprMap(path, kw.Outputs.Body)
 			diags = append(diags, oDiags...)
 		}
@@ -73,6 +80,7 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 		diags = append(diags, sDiags...)
 
 		teardownSteps := make([]*model.Step, 0)
+
 		for _, td := range sc.Teardowns {
 			steps, tDiags := decodeSteps(path, append(td.Steps, td.Cases...))
 			diags = append(diags, tDiags...)
@@ -107,9 +115,11 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 		if rs.When != nil {
 			step.Line = rs.When.Range().Start.Line
 		}
+
 		if step.Line == 0 {
 			step.Line = 1
 		}
+
 		if rs.Request != nil {
 			step.Request = &model.Request{
 				Method:  expr(path, rs.Request.Method),
@@ -126,6 +136,7 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 		if expect == nil {
 			expect = rs.Response
 		}
+
 		if expect != nil {
 			step.Expect = &model.Expect{
 				Status:  expr(path, expect.Status),
@@ -164,6 +175,7 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 
 func bodyToNamedExprMap(path string, body hcl.Body) (map[string]model.Expression, hcl.Diagnostics) {
 	attrs, diags := body.JustAttributes()
+
 	res := make(map[string]model.Expression, len(attrs))
 	for name, attr := range attrs {
 		res[name] = model.Expression{Expr: attr.Expr, File: path, Line: attr.Range.Start.Line}
@@ -176,5 +188,6 @@ func expr(path string, e hcl.Expression) model.Expression {
 	if e == nil {
 		return model.Expression{}
 	}
+
 	return model.Expression{Expr: e, File: path, Line: e.Range().Start.Line}
 }

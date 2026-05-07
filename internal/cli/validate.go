@@ -19,12 +19,16 @@ func NewValidateCommand() *cli.Command {
 			if c.NArg() > 0 {
 				path = c.Args().First()
 			}
+
 			_, diags := parser.LoadPath(path)
 			if diags.HasErrors() {
 				_, _ = fmt.Fprintf(os.Stderr, "%s\n", diags.Error())
+
 				return cli.Exit("validation failed", 2)
 			}
+
 			_, _ = fmt.Fprintf(os.Stdout, "Validation OK\n")
+
 			return nil
 		},
 	}

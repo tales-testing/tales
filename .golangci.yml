@@ -1,16 +1,131 @@
-version: "2"
-
-run:
-  timeout: 3m
-  tests: true
-linters:
-  disable-all: true
+formatters:
   enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - ineffassign
-    - unused
-    - misspell
+    - gofmt
+  exclusions:
+    paths:
+      - .cloud/.*
+      - .github/.*
+      - .claude/.*
+      - .data/.*
+      - .vscode/.*
+      - .dev/.*
+      - .build/.*
+      - apps/audio-fingerprint/.*
+      - apps/mobile-android/.*
+      - apps/mobile-ios/.*
+      - apps/sealway-postfix/.*
+      - apps/website/.*
+      - apps/webapp/.*
+      - packages/sdk-swift/.*
+      - packages/sdk-rust/.*
+      - packages/sdk-web/.*
+      - packages/audio-fingerprint-rust/.*
+      - resources/.*
+      - testdata/.*
+      - target/.*
+      - node_modules/.*
+      - website/.*
+      - proto/.*
+      - infra/.*
+      - build/.*
+      - docs/.*
+      - design/.*
+      - .*_mock\.go
+      - mock_.*\.go
+      - .*/pkg/mod/.*$
+      - .*/go/src/.*\.go
+      - third_party$
+      - builtin$
+      - examples$
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - go.opentelemetry.io
 issues:
-  exclude-use-default: false
+  max-issues-per-linter: 50
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bodyclose
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forbidigo
+    - forcetypeassert
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nestif
+    - nilerr
+    - nlreturn
+    - noctx
+    - prealloc
+    - predeclared
+    - revive
+    - sqlclosecheck
+    - staticcheck
+    - unconvert
+    - unused
+    - whitespace
+    - wrapcheck
+    - wsl_v5
+  exclusions:
+    paths:
+      - .*_mock\.go
+      - mock_.*\.go
+      - .*/pkg/mod/.*$
+      - .*/go/src/.*\.go
+      - third_party$
+      - builtin$
+      - examples$
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+  settings:
+    depguard:
+      rules:
+        main:
+          allow:
+            - $all
+    dupl:
+      threshold: 99
+    errcheck:
+      check-blank: false
+      check-type-assertions: false
+    goconst:
+      min-len: 3
+      min-occurrences: 2
+    gocyclo:
+      min-complexity: 18
+    govet:
+      disable:
+        - shadow
+    misspell:
+      ignore-rules:
+        - cancelled
+      locale: US
+    revive:
+      severity: warning
+output:
+  formats:
+    text:
+      path: stdout
+      print-issued-lines: true
+      print-linter-name: true
+run:
+  concurrency: 4
+  issues-exit-code: 1
+  tests: false
+version: "2"

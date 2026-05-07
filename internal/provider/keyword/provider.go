@@ -24,5 +24,6 @@ func (p *Provider) Type() string {
 func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider.Output, error) {
 	_ = ctx
 	_ = input
+
 	return nil, fmt.Errorf("keyword provider is not implemented yet")
 }

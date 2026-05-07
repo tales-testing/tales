@@ -19,31 +19,13 @@ func LoadPath(path string) (*model.Suite, hcl.Diagnostics) {
 		return nil, hcl.Diagnostics{diagError("Invalid path", fmt.Sprintf("Cannot open %q: %v", path, err), nil)}
 	}
 
-	files := make([]string, 0)
-	if stat.IsDir() {
-		walkErr := filepath.Walk(path, func(current string, info os.FileInfo, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if info.IsDir() {
-				return nil
-			}
-			if strings.HasSuffix(info.Name(), ".tales") {
-				files = append(files, current)
-			}
-			return nil
-		})
-		if walkErr != nil {
-			return nil, hcl.Diagnostics{diagError("Read error", fmt.Sprintf("Cannot walk %q: %v", path, walkErr), nil)}
-		}
-	} else {
-		if !strings.HasSuffix(path, ".tales") {
-			return nil, hcl.Diagnostics{diagError("Invalid file", "Input file must end with .tales", nil)}
-		}
-		files = append(files, path)
+	files, fileErr := collectFiles(path, stat)
+	if fileErr != nil {
+		return nil, hcl.Diagnostics{diagError("Read error", fileErr.Error(), nil)}
 	}
 
 	sort.Strings(files)
+
 	if len(files) == 0 {
 		return nil, hcl.Diagnostics{diagError("No tales files", fmt.Sprintf("No .tales files found under %q", path), nil)}
 	}
@@ -58,16 +40,19 @@ func LoadPath(path string) (*model.Suite, hcl.Diagnostics) {
 	}
 
 	parser := hclparse.NewParser()
+
 	var diags hcl.Diagnostics
 
 	for _, file := range files {
 		hclFile, parseDiags := parser.ParseHCLFile(file)
+
 		diags = append(diags, parseDiags...)
 		if parseDiags.HasErrors() {
 			continue
 		}
 
 		decoded, decodeDiags := decodeFile(file, hclFile.Body)
+
 		diags = append(diags, decodeDiags...)
 		if decodeDiags.HasErrors() {
 			continue
@@ -85,27 +70,68 @@ func LoadPath(path string) (*model.Suite, hcl.Diagnostics) {
 	return suite, diags
 }
 
+func collectFiles(path string, stat os.FileInfo) ([]string, error) {
+	if !stat.IsDir() {
+		if !strings.HasSuffix(path, ".tales") {
+			return nil, fmt.Errorf("input file must end with .tales")
+		}
+
+		return []string{path}, nil
+	}
+
+	files := make([]string, 0)
+
+	walkErr := filepath.Walk(path, func(current string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		if strings.HasSuffix(info.Name(), ".tales") {
+			files = append(files, current)
+		}
+
+		return nil
+	})
+	if walkErr != nil {
+		return nil, fmt.Errorf("cannot walk %q: %w", path, walkErr)
+	}
+
+	return files, nil
+}
+
 func mergeSuite(dst, src *model.Suite, diags *hcl.Diagnostics) {
 	if src.Version > 0 {
 		dst.Version = src.Version
 	}
+
 	for k, v := range src.ConfigExpr {
 		dst.ConfigExpr[k] = v
 	}
+
 	for name, gen := range src.Generators {
 		if _, exists := dst.Generators[name]; exists {
 			*diags = append(*diags, diagError("Duplicate generator", fmt.Sprintf("Generator %q is defined multiple times", name), nil))
+
 			continue
 		}
+
 		dst.Generators[name] = gen
 	}
+
 	for name, kw := range src.Keywords {
 		if _, exists := dst.Keywords[name]; exists {
 			*diags = append(*diags, diagError("Duplicate keyword", fmt.Sprintf("Keyword %q is defined multiple times", name), nil))
+
 			continue
 		}
+
 		dst.Keywords[name] = kw
 	}
+
 	dst.Scenarios = append(dst.Scenarios, src.Scenarios...)
 }
 
@@ -115,6 +141,7 @@ func validateSuite(suite *model.Suite, diags *hcl.Diagnostics) {
 		if _, exists := scenarioNames[sc.Name]; exists {
 			*diags = append(*diags, diagError("Duplicate scenario", fmt.Sprintf("Scenario %q is defined multiple times", sc.Name), nil))
 		}
+
 		scenarioNames[sc.Name] = struct{}{}
 
 		stepNames := map[string]struct{}{}
@@ -122,12 +149,15 @@ func validateSuite(suite *model.Suite, diags *hcl.Diagnostics) {
 			if _, exists := stepNames[step.Name]; exists {
 				*diags = append(*diags, diagError("Duplicate step", fmt.Sprintf("Scenario %q has duplicate step %q", sc.Name, step.Name), nil))
 			}
+
 			stepNames[step.Name] = struct{}{}
 		}
+
 		for _, step := range sc.Teardown {
 			if _, exists := stepNames[step.Name]; exists {
 				*diags = append(*diags, diagError("Duplicate step", fmt.Sprintf("Scenario %q duplicates step/teardown name %q", sc.Name, step.Name), nil))
 			}
+
 			stepNames[step.Name] = struct{}{}
 		}
 	}

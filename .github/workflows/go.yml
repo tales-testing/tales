@@ -2,23 +2,20 @@ name: Go
 
 on:
   push:
-    branches: [master]
+    branches: [ master ]
   pull_request:
-    branches: [master]
+    branches: [ master ]
 
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.15
-        id: go
+      - uses: actions/checkout@v6
 
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
 
       - name: Build
         run: go build -race -v ./...
@@ -26,11 +23,11 @@ jobs:
       - name: Test
         run: go test -race -cover -coverprofile ./coverage.out ./...
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
-          skip-cache: true
+          version: v2.10.1
+          args: --timeout=300s
 
       - name: Coveralls
         uses: shogo82148/actions-goveralls@v1
