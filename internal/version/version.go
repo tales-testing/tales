@@ -3,6 +3,7 @@ package version
 import (
 	"fmt"
 	"runtime"
+	"sync"
 )
 
 var version string
@@ -22,10 +23,11 @@ type Info struct {
 }
 
 var instance *Info
+var instanceOnce sync.Once
 
 // Get returns immutable build/runtime metadata.
 func Get() *Info {
-	if instance == nil {
+	instanceOnce.Do(func() {
 		instance = &Info{
 			Version:      version,
 			GitCommit:    gitCommit,
@@ -35,7 +37,7 @@ func Get() *Info {
 			Compiler:     runtime.Compiler,
 			Platform:     fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 		}
-	}
+	})
 
 	return instance
 }

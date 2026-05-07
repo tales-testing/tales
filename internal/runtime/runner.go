@@ -43,7 +43,7 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 		opts.Parallel = 1
 	}
 
-	configValues, err := evalConfig(suite, opts.Seed)
+	configValues, err := evalConfig(suite)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +140,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	}
 
 	failedSteps := map[string]struct{}{}
+	failedStepsMu := sync.RWMutex{}
 	stepByName := map[string]*model.Step{}
 	depsByStep := map[string]map[string]struct{}{}
 
@@ -167,16 +168,34 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 			go func(step *model.Step) {
 				defer wg.Done()
 
+				dependencyFailed := false
+
 				for dep := range depsByStep[step.Name] {
-					if _, failed := failedSteps[dep]; failed {
-						mu.Lock()
+					failedStepsMu.RLock()
 
-						sResult.Steps = append(sResult.Steps, &report.StepResult{File: step.File, Scenario: scenario.Name, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusSkip})
-						failedSteps[step.Name] = struct{}{}
-						mu.Unlock()
+					_, failed := failedSteps[dep]
 
-						return
+					failedStepsMu.RUnlock()
+
+					if failed {
+						dependencyFailed = true
+
+						break
 					}
+				}
+
+				if dependencyFailed {
+					mu.Lock()
+
+					sResult.Steps = append(sResult.Steps, &report.StepResult{File: step.File, Scenario: scenario.Name, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusSkip})
+
+					mu.Unlock()
+
+					failedStepsMu.Lock()
+					failedSteps[step.Name] = struct{}{}
+					failedStepsMu.Unlock()
+
+					return
 				}
 
 				stepResult := r.executeStep(ctx, evaluator, scenario.Name, config, state, step)
@@ -185,7 +204,9 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 
 				sResult.Steps = append(sResult.Steps, stepResult)
 				if stepResult.Status == report.StatusFail {
+					failedStepsMu.Lock()
 					failedSteps[step.Name] = struct{}{}
+					failedStepsMu.Unlock()
 
 					if sResult.Failure == nil {
 						sResult.Failure = stepResult.Failure
@@ -252,7 +273,6 @@ func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, sce
 		return stepReport
 	}
 
-	stepReport.Duration = output.Duration
 	stepReport.StatusCode = output.StatusCode
 	stepReport.Request = summarize(output.Request)
 	stepReport.Response = summarize(output.Response)
@@ -554,7 +574,7 @@ func toBool(value cty.Value) (bool, error) {
 	return value.True(), nil
 }
 
-func evalConfig(suite *model.Suite, seed int64) (map[string]cty.Value, error) {
+func evalConfig(suite *model.Suite) (map[string]cty.Value, error) {
 	result := map[string]cty.Value{}
 	evaluator := lang.NewEvaluator(func(name string, meta lang.GenerateMeta) (cty.Value, error) {
 		_ = meta
@@ -577,8 +597,6 @@ func evalConfig(suite *model.Suite, seed int64) (map[string]cty.Value, error) {
 
 		result[key] = value
 	}
-
-	_ = seed
 
 	return result, nil
 }

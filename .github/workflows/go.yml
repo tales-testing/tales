@@ -28,8 +28,7 @@ jobs:
         with:
           version: v2.10.1
           args: --timeout=300s
-
-      - name: Coveralls
-        uses: shogo82148/actions-goveralls@v1
-        with:
-          path-to-profile: coverage.out
+      # - name: Coveralls
+      #  uses: shogo82148/actions-goveralls@v1
+      #  with:
+      #    path-to-profile: coverage.out

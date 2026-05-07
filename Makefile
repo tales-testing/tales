@@ -1,3 +1,5 @@
+SHELL := /usr/bin/env bash
+
 BUILD_DIR ?= build
 TALES_BIN := $(BUILD_DIR)/tales
 MOCK_BIN := $(BUILD_DIR)/mockserver
