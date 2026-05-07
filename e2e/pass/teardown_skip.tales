@@ -1,0 +1,41 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "Skipped teardown when capture is missing" {
+  tags = ["teardown"]
+
+  step "http" "health" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+      headers = {
+        Content-Type = contains("application/json")
+      }
+      json = {
+        ok = true
+      }
+    }
+  }
+
+  teardown {
+    step "http" "delete_missing_user" {
+      when = can(result.create_user.id)
+
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/users/${result.create_user.id}"
+      }
+
+      expect {
+        status = one_of([200, 204, 404])
+      }
+    }
+  }
+}

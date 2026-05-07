@@ -1,5 +1,0 @@
-version = 1
-
-config "baseUrl" {
-    value = "http://localhost:1337"
-}

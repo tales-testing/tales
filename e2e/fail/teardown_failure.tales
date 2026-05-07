@@ -1,0 +1,108 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+generator "email" "teardown_email" {
+  prefix = "teardown-"
+  domain = "example.com"
+}
+
+scenario "Teardown runs after failure" {
+  tags = ["failure", "teardown"]
+
+  step "http" "create_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = generate("teardown_email")
+        password = "Passw0rd!"
+      }
+    }
+
+    expect {
+      status = 201
+      headers = {
+        Content-Type = contains("application/json")
+      }
+      json = {
+        id = is_string()
+      }
+    }
+
+    capture {
+      id       = response.json.id
+      email    = request.json.email
+      password = request.json.password
+    }
+  }
+
+  step "http" "auth_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/auth"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = result.create_user.email
+        password = result.create_user.password
+      }
+    }
+
+    expect {
+      status = 200
+      headers = {
+        Content-Type = contains("application/json")
+      }
+      json = {
+        access_token = is_string()
+      }
+    }
+
+    capture {
+      token = response.json.access_token
+    }
+  }
+
+  step "http" "intentional_failure" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/does-not-exist"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+
+  teardown {
+    step "http" "delete_user" {
+      when = can(result.create_user.id)
+
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/users/${result.create_user.id}"
+
+        headers = {
+          Authorization = "Bearer ${result.auth_user.token}"
+        }
+      }
+
+      expect {
+        status = one_of([200, 204, 404])
+      }
+    }
+  }
+}

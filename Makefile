@@ -1,110 +1,73 @@
 BUILD_DIR ?= build
-COMMIT = $(shell git rev-parse HEAD)
-VERSION ?= $(shell git describe --always --tags --dirty)
-ORG := github.com/hyperxlab
-PROJECT := tales
-REPOPATH ?= $(ORG)/$(PROJECT)
-VERSION_PACKAGE = $(REPOPATH)/pkg/tales/version
+TALES_BIN := $(BUILD_DIR)/tales
+MOCK_BIN := $(BUILD_DIR)/mockserver
+BUILD_READY := .build-ready
 
-GO_LDFLAGS :="
-GO_LDFLAGS += -X $(VERSION_PACKAGE).version=$(VERSION)
-GO_LDFLAGS += -X $(VERSION_PACKAGE).buildDate=$(shell date +'%Y-%m-%dT%H:%M:%SZ')
-GO_LDFLAGS += -X $(VERSION_PACKAGE).gitCommit=$(COMMIT)
-GO_LDFLAGS += -X $(VERSION_PACKAGE).gitTreeState=$(if $(shell git status --porcelain),dirty,clean)
-GO_LDFLAGS +="
+UNIT_PKGS := ./internal/... ./cmd/tales
 
-GO_FILES := $(shell find . -type f -name '*.go' -not -path "./vendor/*")
+.PHONY: build tales-bin mock-bin
+build: tales-bin mock-bin
 
-.PHONY: all
-all: deps build test
+$(BUILD_READY):
+	@mkdir -p $(BUILD_DIR)
+	@touch $(BUILD_READY)
 
-.PHONY: deps
-deps:
-	@go mod download
+tales-bin: | $(BUILD_READY)
+	@go build -o $(TALES_BIN) ./cmd/tales
 
-.PHONY: clean
-clean:
-	@go clean -i ./...
+mock-bin: | $(BUILD_READY)
+	@go build -o $(MOCK_BIN) ./e2e/mockserver
 
-_build:
-	@mkdir -p ${BUILD_DIR}
-
-$(BUILD_DIR)/coverage.out: _build $(GO_FILES)
-	@go test -cover -race -coverprofile $(BUILD_DIR)/coverage.out.tmp -timeout 300s ./...
-	@cat $(BUILD_DIR)/coverage.out.tmp | grep -v '.pb.go' | grep -v 'mock_' | grep -v 'bindata.go' > $(BUILD_DIR)/coverage.out
-	@rm $(BUILD_DIR)/coverage.out.tmp
-
-ci-test: _build
-ifeq (, $(shell which go2xunit))
-	@echo "Install go2xunit..."
-	@go get github.com/tebeka/go2xunit
-endif
-	@mkdir -p ./test-results
-	@go test -race -timeout 300s -cover -coverprofile $(BUILD_DIR)/coverage.out.tmp -v ./... | go2xunit -fail -output ./test-results/tests.xml
-	@cat $(BUILD_DIR)/coverage.out.tmp | grep -v '.pb.go' | grep -v 'mock_' > $(BUILD_DIR)/coverage.out
-	@rm $(BUILD_DIR)/coverage.out.tmp
-	@echo ""
-	@go tool cover -func $(BUILD_DIR)/coverage.out
+.PHONY: test
+test:
+	@go test -race -count=1 $(UNIT_PKGS)
 
 .PHONY: lint
 lint:
-ifeq (, $(shell which golangci-lint))
-	@echo "Install golangci-lint..."
-	@curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b ${GOPATH}/bin v1.20.0
-endif
-	@echo "lint..."
-	@golangci-lint run --timeout=300s ./...
+	@golangci-lint run ./cmd/tales ./internal/... ./e2e/mockserver
 
-.PHONY: test
-test: $(BUILD_DIR)/coverage.out
+.PHONY: e2e
+e2e: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 4 --report-junit $(BUILD_DIR)/reports/e2e.junit.xml --report-jsonl $(BUILD_DIR)/reports/e2e.jsonl ./e2e/pass
 
-.PHONY: coverage
-coverage: $(BUILD_DIR)/coverage.out
-	@echo ""
-	@go tool cover -func ./$(BUILD_DIR)/coverage.out
-
-.PHONY: coverage-html
-coverage-html: $(BUILD_DIR)/coverage.out
-	@go tool cover -html ./$(BUILD_DIR)/coverage.out
-
-generate: $(GO_FILES)
-	@go generate ./...
-
-${BUILD_DIR}/acme-api-server: $(GO_FILES) go.mod go.sum
-	@echo "Building $@..."
-	@go generate ./cmd/$(subst ${BUILD_DIR}/,,$@)/
-	@go build -ldflags $(GO_LDFLAGS) -o $@ ./cmd/$(subst ${BUILD_DIR}/,,$@)/
-
-
-${BUILD_DIR}/tales: $(GO_FILES) go.mod go.sum
-	@echo "Building $@..."
-	@go generate ./cmd/$(subst ${BUILD_DIR}/,,$@)/
-	@go build -ldflags $(GO_LDFLAGS) -o $@ ./cmd/$(subst ${BUILD_DIR}/,,$@)/
-
-
-${BUILD_DIR}/tales-v2: $(GO_FILES) go.mod go.sum
-	@echo "Building $@..."
-	@go generate ./cmd/$(subst ${BUILD_DIR}/,,$@)/
-	@go build -ldflags $(GO_LDFLAGS) -o $@ ./cmd/$(subst ${BUILD_DIR}/,,$@)/
-
-
-.PHONY: run-acme-api-server
-run-acme-api-server: ${BUILD_DIR}/acme-api-server
-	@echo "Running $<..."
-	@./$<
-
-.PHONY: run-tales
-run-tales: ${BUILD_DIR}/tales
-	@echo "Running $<..."
-	@./$<
-
-run: run-tales
-
-.PHONY: build
-build: ${BUILD_DIR}/acme-api-server ${BUILD_DIR}/tales ${BUILD_DIR}/tales-v2
-
-run-dev-v2: ${BUILD_DIR}/tales-v2
-	@./$< dev/api.tales
-
-run-dev: ${BUILD_DIR}/tales
-	@cd dev; ../$<
+.PHONY: e2e-failure
+e2e-failure: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	set +e; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 1 --report-jsonl $(BUILD_DIR)/reports/e2e-failure.jsonl ./e2e/fail; \
+	exit_code=$$?; \
+	set -e; \
+	test $$exit_code -eq 1
