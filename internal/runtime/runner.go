@@ -331,10 +331,10 @@ func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evalua
 }
 
 func buildLayers(steps []*model.Step) ([][]string, error) {
-	return buildLayersWithOptions(steps, false)
+	return buildLayersWithExternalDeps(steps, nil)
 }
 
-func buildLayersWithOptions(steps []*model.Step, allowExternalDeps bool) ([][]string, error) {
+func buildLayersWithExternalDeps(steps []*model.Step, externalDeps map[string]struct{}) ([][]string, error) {
 	g := dag.NewGraph()
 	knownSteps := map[string]struct{}{}
 
@@ -354,7 +354,7 @@ func buildLayersWithOptions(steps []*model.Step, allowExternalDeps bool) ([][]st
 
 		for dep := range deps {
 			if _, exists := knownSteps[dep]; !exists {
-				if allowExternalDeps {
+				if _, external := externalDeps[dep]; external {
 					continue
 				}
 
@@ -662,7 +662,7 @@ func evalWhen(condition model.Expression, evaluator *lang.Evaluator, scope lang.
 func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, start time.Time, stepReport *report.StepResult) *report.StepResult {
 	if step.Keyword == nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: "keyword step is missing name/inputs definition"}
+		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: "keyword step is missing keyword call configuration"}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -696,8 +696,21 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 		return stepReport
 	}
 
-	keywordState := newKeywordState(state.GetResultMap(), keyword.Steps)
-	if err := r.executeKeywordSteps(ctx, evaluator, suite, scenarioName, config, keywordState, callInputs, keyword); err != nil {
+	outerResults := state.GetResultMap()
+
+	keywordState, stateErr := newKeywordState(outerResults, keyword.Steps)
+	if stateErr != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: stateErr.Error()}
+		stepReport.Duration = time.Since(start)
+		stepReport.Request = requestSummary
+
+		return stepReport
+	}
+
+	externalDeps := toKeySet(outerResults)
+
+	if err := r.executeKeywordSteps(ctx, evaluator, suite, scenarioName, config, keywordState, callInputs, keyword, externalDeps); err != nil {
 		stepReport.Status = report.StatusFail
 		stepReport.Failure = err
 		stepReport.Duration = time.Since(start)
@@ -706,7 +719,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 		return stepReport
 	}
 
-	outputValues, err := evaluateKeywordOutputs(evaluator, scenarioName, config, keywordState, callInputs, keyword)
+	outputValues, err := evaluateKeywordOutputs(evaluator, scenarioName, step.Name, config, keywordState, callInputs, keyword)
 	if err != nil {
 		stepReport.Status = report.StatusFail
 		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: err.Error()}
@@ -770,14 +783,19 @@ func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scenarioName str
 	return keywordName, inputValues, requestSummary, nil
 }
 
-func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) *ScenarioState {
+func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) (*ScenarioState, error) {
 	stepNames := make([]string, 0, len(outerResults)+len(steps))
+	outerStepSet := toKeySet(outerResults)
 
 	for name := range outerResults {
 		stepNames = append(stepNames, name)
 	}
 
 	for _, step := range steps {
+		if _, conflict := outerStepSet[step.Name]; conflict {
+			return nil, fmt.Errorf("keyword step %q collides with existing scenario step name", step.Name)
+		}
+
 		stepNames = append(stepNames, step.Name)
 	}
 
@@ -787,11 +805,11 @@ func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) *Sc
 		keywordState.SetStepResult(name, value)
 	}
 
-	return keywordState
+	return keywordState, nil
 }
 
-func (r *Runner) executeKeywordSteps(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword) *report.ErrorDetail {
-	layers, err := buildLayersWithOptions(keyword.Steps, true)
+func (r *Runner) executeKeywordSteps(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword, externalDeps map[string]struct{}) *report.ErrorDetail {
+	layers, err := buildLayersWithExternalDeps(keyword.Steps, externalDeps)
 	if err != nil {
 		return &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("keyword %q graph error: %v", keyword.Name, err)}
 	}
@@ -852,7 +870,7 @@ func hasFailedDependency(stepName string, depsByStep map[string]map[string]struc
 	return false
 }
 
-func evaluateKeywordOutputs(evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword) (map[string]cty.Value, error) {
+func evaluateKeywordOutputs(evaluator *lang.Evaluator, scenarioName, callingStepName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword) (map[string]cty.Value, error) {
 	outputValues := map[string]cty.Value{}
 
 	if len(keyword.Outputs) == 0 {
@@ -875,7 +893,7 @@ func evaluateKeywordOutputs(evaluator *lang.Evaluator, scenarioName string, conf
 	}
 
 	for _, key := range keys {
-		value, err := evaluator.Eval(keyword.Outputs[key], scope, lang.GenerateMeta{Scenario: scenarioName, ExprPath: "keyword." + keyword.Name + ".outputs." + key})
+		value, err := evaluator.Eval(keyword.Outputs[key], scope, lang.GenerateMeta{Scenario: scenarioName, Step: callingStepName, ExprPath: "keyword." + keyword.Name + ".outputs." + key})
 		if err != nil {
 			return nil, fmt.Errorf("keyword %q outputs.%s: %w", keyword.Name, key, err)
 		}
@@ -918,6 +936,16 @@ func toValueMap(value cty.Value, field string) (map[string]cty.Value, error) {
 	}
 
 	return value.AsValueMap(), nil
+}
+
+func toKeySet(values map[string]cty.Value) map[string]struct{} {
+	keys := make(map[string]struct{}, len(values))
+
+	for key := range values {
+		keys[key] = struct{}{}
+	}
+
+	return keys
 }
 
 func summarize(values map[string]cty.Value) map[string]string {

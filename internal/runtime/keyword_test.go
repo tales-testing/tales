@@ -234,6 +234,99 @@ func TestKeywordStepUnknownKeywordFailsScenario(t *testing.T) {
 	}
 }
 
+func TestKeywordStepNameCollisionFailsScenario(t *testing.T) {
+	t.Parallel()
+
+	httpProvider := &keywordFlowProvider{}
+	runner := NewRunner(provider.NewRegistry(httpProvider))
+	suite := &model.Suite{
+		Keywords: map[string]*model.Keyword{
+			"authenticate": {
+				Name: "authenticate",
+				Steps: []*model.Step{
+					{
+						Provider: "http",
+						Name:     "create_user",
+						Request: &model.Request{
+							Method: expr(`"POST"`),
+							URL:    expr(`"http://example.test/users"`),
+							JSON:   expr(`{ email = input.email, password = input.password }`),
+						},
+						Expect: &model.Expect{Status: expr("201")},
+					},
+				},
+			},
+		},
+		Scenarios: []*model.Scenario{buildKeywordScenario()},
+	}
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+	if err != nil {
+		t.Fatalf("unexpected run error: %v", err)
+	}
+
+	scenarioResult := result.Scenarios[0]
+	if scenarioResult.Status != report.StatusFail {
+		t.Fatalf("scenario should fail, got %s", scenarioResult.Status)
+	}
+
+	if scenarioResult.Failure == nil {
+		t.Fatalf("expected failure details")
+	}
+
+	if !strings.Contains(scenarioResult.Failure.Message, "collides with existing scenario step name") {
+		t.Fatalf("unexpected failure message: %s", scenarioResult.Failure.Message)
+	}
+}
+
+func TestKeywordUnknownExternalDependencyFailsGraphValidation(t *testing.T) {
+	t.Parallel()
+
+	httpProvider := &keywordFlowProvider{}
+	runner := NewRunner(provider.NewRegistry(httpProvider))
+	suite := &model.Suite{
+		Keywords: map[string]*model.Keyword{
+			"authenticate": {
+				Name: "authenticate",
+				Steps: []*model.Step{
+					{
+						Provider: "http",
+						Name:     "auth_user",
+						Request: &model.Request{
+							Method: expr(`"POST"`),
+							URL:    expr(`"http://example.test/auth"`),
+							JSON:   expr(`{ email = result.missing_step.email, password = input.password }`),
+						},
+						Expect: &model.Expect{Status: expr("200")},
+					},
+				},
+				Outputs: map[string]model.Expression{
+					"token": expr(`"token"`),
+				},
+			},
+		},
+		Scenarios: []*model.Scenario{buildKeywordScenario()},
+	}
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+	if err != nil {
+		t.Fatalf("unexpected run error: %v", err)
+	}
+
+	scenarioResult := result.Scenarios[0]
+	if scenarioResult.Status != report.StatusFail {
+		t.Fatalf("scenario should fail, got %s", scenarioResult.Status)
+	}
+
+	if scenarioResult.Failure == nil {
+		t.Fatalf("expected failure details")
+	}
+
+	if !strings.Contains(scenarioResult.Failure.Message, "references unknown dependency") {
+		t.Fatalf("unexpected failure message: %s", scenarioResult.Failure.Message)
+	}
+}
+
 func buildKeywordScenario() *model.Scenario {
 	return &model.Scenario{
 		Name: "keyword flow",
