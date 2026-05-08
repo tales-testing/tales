@@ -140,6 +140,65 @@ func TestJUnitFailureOutputMasksSensitiveFields(t *testing.T) {
 	}
 }
 
+func TestConsoleFailurePrefixUsesKindAndScenarioFailureIsPrinted(t *testing.T) {
+	t.Parallel()
+
+	result := &SuiteResult{
+		Seed:     1234,
+		Duration: 10 * time.Millisecond,
+		Scenarios: []*ScenarioResult{{
+			File:     "e2e/fail/example.tales",
+			Name:     "DAG failure",
+			Status:   StatusFail,
+			Duration: time.Millisecond,
+			Failure: &ErrorDetail{
+				Kind:    "dag",
+				Path:    "topology",
+				Message: "dependency cycle detected",
+			},
+		}},
+	}
+
+	buffer := bytes.Buffer{}
+
+	if err := PrintConsole(&buffer, result); err != nil {
+		t.Fatalf("print console: %v", err)
+	}
+
+	output := buffer.String()
+	if !strings.Contains(output, "dag failed at topology") {
+		t.Fatalf("expected kind-based failure prefix, got: %s", output)
+	}
+
+	if !strings.Contains(output, "dependency cycle detected") {
+		t.Fatalf("expected scenario failure message, got: %s", output)
+	}
+}
+
+func TestJUnitFailureMessageUsesKindForNonAssertion(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/report.xml"
+	result := &SuiteResult{
+		Seed:      1234,
+		Scenarios: []*ScenarioResult{sampleCaptureFailedScenario()},
+	}
+
+	if err := WriteJUnit(path, result); err != nil {
+		t.Fatalf("write junit: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read junit: %v", err)
+	}
+
+	text := string(content)
+	if !strings.Contains(text, `message="capture failed at token"`) {
+		t.Fatalf("expected capture-based junit message, got: %s", text)
+	}
+}
+
 func sampleFailedScenario() *ScenarioResult {
 	step := &StepResult{
 		File:       "e2e/fail/teardown_failure.tales",
@@ -185,6 +244,32 @@ func sampleFailedScenario() *ScenarioResult {
 	return &ScenarioResult{
 		File:     "e2e/fail/teardown_failure.tales",
 		Name:     "Teardown runs after failure",
+		Status:   StatusFail,
+		Duration: 2 * time.Millisecond,
+		Steps:    []*StepResult{step},
+		Failure:  step.Failure,
+	}
+}
+
+func sampleCaptureFailedScenario() *ScenarioResult {
+	step := &StepResult{
+		File:       "e2e/fail/capture_failure.tales",
+		Scenario:   "Capture failure",
+		Name:       "capture_token",
+		Provider:   "http",
+		Phase:      "step",
+		Status:     StatusFail,
+		Duration:   time.Millisecond,
+		StatusCode: 200,
+		Failure: &ErrorDetail{
+			Kind: "capture",
+			Path: "token",
+		},
+	}
+
+	return &ScenarioResult{
+		File:     "e2e/fail/capture_failure.tales",
+		Name:     "Capture failure",
 		Status:   StatusFail,
 		Duration: 2 * time.Millisecond,
 		Steps:    []*StepResult{step},

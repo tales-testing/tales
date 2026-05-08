@@ -8,6 +8,8 @@ import (
 	"github.com/hyperxlab/tales/internal/diagnostic"
 )
 
+const failurePrefixDefault = "failure"
+
 // PrintConsole writes human-friendly report.
 func PrintConsole(out io.Writer, result *SuiteResult) error {
 	stats := &consoleStats{}
@@ -66,6 +68,16 @@ func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *c
 		}
 	}
 
+	if scenario.Failure != nil && findFirstFailedStep(scenario) == nil {
+		if _, err := fmt.Fprintf(out, "  scenario failure:\\n"); err != nil {
+			return fmt.Errorf("print scenario failure title: %w", err)
+		}
+
+		if err := printFailure(out, scenario.Failure); err != nil {
+			return err
+		}
+	}
+
 	if scenario.Failure != nil {
 		if _, err := fmt.Fprintf(out, "  replay: tales test --seed %d --scenario %q %s\n", seed, scenario.Name, scenario.File); err != nil {
 			return fmt.Errorf("print replay command: %w", err)
@@ -115,9 +127,9 @@ func printStep(out io.Writer, label string, width int, step *StepResult) error {
 }
 
 func printFailure(out io.Writer, failure *ErrorDetail) error {
-	prefix := "assertion failed"
+	prefix := failurePrefix(failure)
 	if failure.Path != "" {
-		prefix = fmt.Sprintf("assertion failed at %s", failure.Path)
+		prefix = fmt.Sprintf("%s at %s", prefix, failure.Path)
 	}
 
 	if _, err := fmt.Fprintf(out, "    %s\n", prefix); err != nil {
@@ -143,6 +155,22 @@ func printFailure(out io.Writer, failure *ErrorDetail) error {
 	}
 
 	return nil
+}
+
+func failurePrefix(failure *ErrorDetail) string {
+	if failure == nil {
+		return failurePrefixDefault
+	}
+
+	if failure.Kind == "" {
+		return failurePrefixDefault
+	}
+
+	if failure.Kind == "assertion" {
+		return "assertion failed"
+	}
+
+	return failure.Kind + " failed"
 }
 
 func printRequest(out io.Writer, request map[string]interface{}) error {

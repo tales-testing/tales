@@ -66,12 +66,16 @@ func WriteJUnit(path string, result *SuiteResult) error {
 
 func buildJUnitFailure(seed int64, scenario *ScenarioResult) (string, string) {
 	message := "scenario failed"
-	if scenario.Failure != nil && scenario.Failure.Path != "" {
-		message = fmt.Sprintf("assertion failed at %s", scenario.Failure.Path)
-	}
+	if scenario.Failure != nil {
+		message = failurePrefix(scenario.Failure)
 
-	if scenario.Failure != nil && scenario.Failure.Path == "" && scenario.Failure.Message != "" {
-		message = scenario.Failure.Message
+		if scenario.Failure.Path != "" {
+			message = fmt.Sprintf("%s at %s", message, scenario.Failure.Path)
+		}
+
+		if scenario.Failure.Message != "" {
+			message = scenario.Failure.Message
+		}
 	}
 
 	failedStep := findFirstFailedStep(scenario)
