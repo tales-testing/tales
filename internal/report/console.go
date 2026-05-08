@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/hyperxlab/tales/internal/diagnostic"
+	"github.com/mattn/go-isatty"
 )
 
 const (
@@ -116,17 +117,27 @@ func (c colorPainter) paint(colorCode, value string) string {
 func (c colorPainter) status(value Status) string {
 	upper := strings.ToUpper(string(value))
 
+	return c.colorizeStatus(value, upper)
+}
+
+func (c colorPainter) statusPadded(value Status, width int) string {
+	plain := fmt.Sprintf("%-*s", width, strings.ToUpper(string(value)))
+
+	return c.colorizeStatus(value, plain)
+}
+
+func (c colorPainter) colorizeStatus(value Status, rendered string) string {
 	switch value {
 	case StatusPass:
-		return c.paint(ansiGreen, upper)
+		return c.paint(ansiGreen, rendered)
 	case StatusFail:
-		return c.paint(ansiRed, upper)
+		return c.paint(ansiRed, rendered)
 	case StatusSkip:
-		return c.paint(ansiYellow, upper)
+		return c.paint(ansiYellow, rendered)
 	case StatusUnknown:
-		return c.paint(ansiGray, upper)
+		return c.paint(ansiGray, rendered)
 	default:
-		return c.paint(ansiGray, upper)
+		return c.paint(ansiGray, rendered)
 	}
 }
 
@@ -227,9 +238,9 @@ func updateStepStats(stats *consoleStats, status Status) {
 }
 
 func printStep(out io.Writer, label string, width int, step *StepResult, painter colorPainter) error {
-	statusLabel := painter.status(step.Status)
+	statusLabel := painter.statusPadded(step.Status, 7)
 
-	if _, err := fmt.Fprintf(out, "  %s %-*s [%s] %-7s %s\n", label, width, step.Name, step.Provider, statusLabel, step.Duration); err != nil {
+	if _, err := fmt.Fprintf(out, "  %s %-*s [%s] %s %s\n", label, width, step.Name, step.Provider, statusLabel, step.Duration); err != nil {
 		return fmt.Errorf("print line: %w", err)
 	}
 
@@ -447,12 +458,7 @@ func supportsTerminalFeatures(out io.Writer) bool {
 		return false
 	}
 
-	stat, err := file.Stat()
-	if err != nil {
-		return false
-	}
-
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
+	if !isatty.IsTerminal(file.Fd()) && !isatty.IsCygwinTerminal(file.Fd()) {
 		return false
 	}
 
