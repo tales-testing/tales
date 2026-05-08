@@ -1,0 +1,193 @@
+package report
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/zclconf/go-cty/cty"
+)
+
+func TestConsoleFailureOutputNoCTYAndMaskedSecrets(t *testing.T) {
+	t.Parallel()
+
+	result := &SuiteResult{
+		Seed:      1234,
+		Duration:  10 * time.Millisecond,
+		Scenarios: []*ScenarioResult{sampleFailedScenario()},
+	}
+
+	buffer := bytes.Buffer{}
+
+	if err := PrintConsole(&buffer, result); err != nil {
+		t.Fatalf("print console: %v", err)
+	}
+
+	output := buffer.String()
+
+	if strings.Contains(output, "cty.") {
+		t.Fatalf("console output should not contain cty internals: %s", output)
+	}
+
+	if strings.Contains(output, "Bearer REAL_TOKEN") {
+		t.Fatalf("authorization should be masked: %s", output)
+	}
+
+	if strings.Contains(output, "Passw0rd!") {
+		t.Fatalf("password should be masked: %s", output)
+	}
+
+	if strings.Contains(output, "secret-access-token") {
+		t.Fatalf("access token should be masked: %s", output)
+	}
+
+	if !strings.Contains(output, "***") {
+		t.Fatalf("masked token marker should be present: %s", output)
+	}
+}
+
+func TestJSONLFailureOutputMasksSensitiveFields(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/events.jsonl"
+	result := &SuiteResult{
+		Seed:      1234,
+		Scenarios: []*ScenarioResult{sampleFailedScenario()},
+	}
+
+	if err := WriteJSONL(path, result); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	handle, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open jsonl: %v", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	scanner := bufio.NewScanner(handle)
+
+	for scanner.Scan() {
+		var event map[string]interface{}
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("unmarshal event: %v", err)
+		}
+
+		if event["type"] != "step" || event["status"] != "fail" {
+			continue
+		}
+
+		request := event["request"].(map[string]interface{})
+		headers := request["headers"].(map[string]interface{})
+		if headers["Authorization"] != "***" {
+			t.Fatalf("authorization must be masked: %#v", headers)
+		}
+
+		requestJSON := request["json"].(map[string]interface{})
+		if requestJSON["password"] != "***" {
+			t.Fatalf("password must be masked: %#v", requestJSON)
+		}
+
+		response := event["response"].(map[string]interface{})
+		responseJSON := response["json"].(map[string]interface{})
+		if responseJSON["access_token"] != "***" {
+			t.Fatalf("access_token must be masked: %#v", responseJSON)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan jsonl: %v", err)
+	}
+}
+
+func TestJUnitFailureOutputMasksSensitiveFields(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/report.xml"
+	result := &SuiteResult{
+		Seed:      1234,
+		Scenarios: []*ScenarioResult{sampleFailedScenario()},
+	}
+
+	if err := WriteJUnit(path, result); err != nil {
+		t.Fatalf("write junit: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read junit: %v", err)
+	}
+
+	text := string(content)
+	if strings.Contains(text, "Bearer REAL_TOKEN") {
+		t.Fatalf("authorization should be masked in junit: %s", text)
+	}
+
+	if strings.Contains(text, "Passw0rd!") {
+		t.Fatalf("password should be masked in junit: %s", text)
+	}
+
+	if strings.Contains(text, "secret-access-token") {
+		t.Fatalf("access token should be masked in junit: %s", text)
+	}
+
+	if !strings.Contains(text, "***") {
+		t.Fatalf("masked marker should be present in junit: %s", text)
+	}
+}
+
+func sampleFailedScenario() *ScenarioResult {
+	step := &StepResult{
+		File:       "e2e/fail/teardown_failure.tales",
+		Scenario:   "Teardown runs after failure",
+		Name:       "intentional_failure",
+		Provider:   "http",
+		Phase:      "step",
+		Status:     StatusFail,
+		Duration:   time.Millisecond,
+		StatusCode: 404,
+		Request: map[string]interface{}{
+			"method": "POST",
+			"url":    "http://localhost:1337/auth",
+			"headers": map[string]interface{}{
+				"Accept":        "application/json",
+				"Authorization": "Bearer REAL_TOKEN",
+			},
+			"json": map[string]interface{}{
+				"email":    "user@example.com",
+				"password": "Passw0rd!",
+			},
+		},
+		Response: map[string]interface{}{
+			"status": 404,
+			"headers": map[string]interface{}{
+				"Content-Type": "application/json",
+			},
+			"json": map[string]interface{}{
+				"access_token": "secret-access-token",
+				"error":        "not found",
+			},
+			"body": `{"access_token":"secret-access-token","error":"not found"}`,
+		},
+		Failure: &ErrorDetail{
+			Kind:    "assertion",
+			Path:    "status",
+			Want:    cty.NumberIntVal(200),
+			Got:     cty.NumberIntVal(404),
+			Message: "assertion failed at status",
+		},
+	}
+
+	return &ScenarioResult{
+		File:     "e2e/fail/teardown_failure.tales",
+		Name:     "Teardown runs after failure",
+		Status:   StatusFail,
+		Duration: 2 * time.Millisecond,
+		Steps:    []*StepResult{step},
+		Failure:  step.Failure,
+	}
+}

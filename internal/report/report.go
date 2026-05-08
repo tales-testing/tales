@@ -43,8 +43,8 @@ type StepResult struct {
 	Phase      string
 	Status     Status
 	Duration   time.Duration
-	Request    map[string]string
-	Response   map[string]string
+	Request    map[string]interface{}
+	Response   map[string]interface{}
 	StatusCode int
 	Failure    *ErrorDetail
 }

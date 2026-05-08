@@ -16,7 +16,7 @@ func Equal(path string, expected, actual cty.Value) error {
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Want: expected.GoString(), Got: actual.GoString()}
+	return &Mismatch{Kind: "assertion", Path: path, Want: expected, Got: actual}
 }
 
 // MatchJSON performs JSON assertion with partial object semantics by default.
@@ -49,7 +49,7 @@ func MatchJSON(expected, actual cty.Value, strict bool, path string) error {
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Want: expected.GoString(), Got: actual.GoString()}
+	return &Mismatch{Kind: "assertion", Path: path, Want: expected, Got: actual}
 }
 
 func matchJSONObject(expected, actual cty.Value, strict bool, path string) error {
