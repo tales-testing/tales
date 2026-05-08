@@ -78,12 +78,26 @@ scenario "Teardown runs after failure" {
 
   step "http" "intentional_failure" {
     request {
-      method = "GET"
-      url    = "${config.base_url}/does-not-exist"
+      method = "POST"
+      url    = "${config.base_url}/auth"
+
+      headers = {
+        Accept        = "application/json"
+        Content-Type  = "application/json"
+        Authorization = "Bearer ${result.auth_user.token}"
+      }
+
+      json = {
+        email    = result.create_user.email
+        password = result.create_user.password
+      }
     }
 
     expect {
       status = 200
+      json = {
+        access_token = "this-token-should-not-match"
+      }
     }
   }
 

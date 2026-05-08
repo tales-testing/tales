@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/hyperxlab/tales/internal/diagnostic"
 )
 
 // WriteJSONL writes compact newline-delimited events.
@@ -47,7 +49,7 @@ func encodeScenarioEvent(encoder *json.Encoder, seed int64, scenario *ScenarioRe
 		"seed":        seed,
 	}
 	if scenario.Failure != nil {
-		event["error"] = scenario.Failure
+		event["error"] = sanitizeErrorDetail(scenario.Failure)
 	}
 
 	if err := encoder.Encode(event); err != nil {
@@ -74,7 +76,15 @@ func encodeStepEvent(encoder *json.Encoder, seed int64, phase string, step *Step
 	}
 
 	if step.Failure != nil {
-		stepEvent["error"] = step.Failure
+		stepEvent["error"] = sanitizeErrorDetail(step.Failure)
+	}
+
+	if len(step.Request) > 0 {
+		stepEvent["request"] = diagnostic.SanitizeMap(step.Request)
+	}
+
+	if len(step.Response) > 0 {
+		stepEvent["response"] = diagnostic.SanitizeMap(step.Response)
 	}
 
 	if err := encoder.Encode(stepEvent); err != nil {
@@ -82,4 +92,18 @@ func encodeStepEvent(encoder *json.Encoder, seed int64, phase string, step *Step
 	}
 
 	return nil
+}
+
+func sanitizeErrorDetail(detail *ErrorDetail) map[string]interface{} {
+	if detail == nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"kind":    detail.Kind,
+		"path":    detail.Path,
+		"want":    diagnostic.Normalize(detail.Want),
+		"got":     diagnostic.Normalize(detail.Got),
+		"message": detail.Message,
+	}
 }

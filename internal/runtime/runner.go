@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hyperxlab/tales/internal/assertion"
 	"github.com/hyperxlab/tales/internal/dag"
+	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/hyperxlab/tales/internal/lang"
 	"github.com/hyperxlab/tales/internal/model"
 	"github.com/hyperxlab/tales/internal/provider"
@@ -278,8 +279,8 @@ func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, sui
 	}
 
 	stepReport.StatusCode = output.StatusCode
-	stepReport.Request = summarize(output.Request)
-	stepReport.Response = summarize(output.Response)
+	stepReport.Request = diagnostic.FromCTYMap(output.Request)
+	stepReport.Response = diagnostic.FromCTYMap(output.Response)
 
 	scope.Request = output.Request
 
@@ -729,7 +730,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 		return stepReport
 	}
 
-	responseSummary := summarize(map[string]cty.Value{"outputs": cty.ObjectVal(outputValues)})
+	responseSummary := diagnostic.FromCTYMap(map[string]cty.Value{"outputs": cty.ObjectVal(outputValues)})
 	stepReport.Request = requestSummary
 	stepReport.Response = responseSummary
 
@@ -740,7 +741,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 	return stepReport
 }
 
-func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) (string, map[string]cty.Value, map[string]string, error) {
+func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) (string, map[string]cty.Value, map[string]interface{}, error) {
 	scope := lang.ScopeData{
 		Config:   config,
 		Result:   state.GetResultMap(),
@@ -775,7 +776,7 @@ func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scenarioName str
 		inputValues = valueMap
 	}
 
-	requestSummary := summarize(map[string]cty.Value{
+	requestSummary := diagnostic.FromCTYMap(map[string]cty.Value{
 		"name":   cty.StringVal(keywordName),
 		"inputs": cty.ObjectVal(inputValues),
 	})
@@ -948,26 +949,21 @@ func toKeySet(values map[string]cty.Value) map[string]struct{} {
 	return keys
 }
 
-func summarize(values map[string]cty.Value) map[string]string {
-	out := map[string]string{}
-
-	for key, value := range values {
-		if value.Type() == cty.String {
-			out[key] = value.AsString()
-
-			continue
-		}
-
-		out[key] = value.GoString()
-	}
-
-	return out
-}
-
 func toErrorDetail(err error) *report.ErrorDetail {
 	var mismatch *assertion.Mismatch
 	if errors.As(err, &mismatch) {
-		return &report.ErrorDetail{Kind: mismatch.Kind, Path: mismatch.Path, Want: mismatch.Want, Got: mismatch.Got, Message: mismatch.Error()}
+		message := mismatch.Message
+		if message == "" {
+			message = fmt.Sprintf("assertion failed at %s", mismatch.Path)
+		}
+
+		return &report.ErrorDetail{
+			Kind:    mismatch.Kind,
+			Path:    mismatch.Path,
+			Want:    diagnostic.Normalize(mismatch.Want),
+			Got:     diagnostic.Normalize(mismatch.Got),
+			Message: message,
+		}
 	}
 
 	return &report.ErrorDetail{Kind: "assertion", Message: err.Error()}
