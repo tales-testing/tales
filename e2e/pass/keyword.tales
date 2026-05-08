@@ -1,0 +1,172 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+generator "email" "keyword_email" {
+  prefix = "kw-"
+  domain = "example.com"
+}
+
+keyword "authenticate" {
+  inputs {
+    email    = string
+    password = string
+  }
+
+  step "http" "auth_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/auth"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = input.email
+        password = input.password
+      }
+    }
+
+    expect {
+      status = 200
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        access_token = is_string()
+      }
+    }
+  }
+
+  outputs {
+    token = result.auth_user.response.json.access_token
+  }
+}
+
+scenario "Keyword authentication flow" {
+  tags = ["keyword"]
+
+  step "http" "create_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = generate("keyword_email")
+        password = "Passw0rd!"
+      }
+    }
+
+    expect {
+      status = 201
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        id    = is_string()
+        email = request.json.email
+      }
+    }
+
+    capture {
+      id       = response.json.id
+      email    = request.json.email
+      password = request.json.password
+    }
+  }
+
+  step "keyword" "auth" {
+    name = "authenticate"
+
+    inputs = {
+      email    = result.create_user.email
+      password = result.create_user.password
+    }
+  }
+
+  step "http" "create_blog_post" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/blog/posts"
+
+      headers = {
+        Accept        = "application/json"
+        Content-Type  = "application/json"
+        Authorization = "Bearer ${result.auth.token}"
+      }
+
+      json = {
+        title   = "keyword post"
+        content = "hello"
+        tags    = ["keyword"]
+      }
+    }
+
+    expect {
+      status = 201
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        id      = is_string()
+        title   = request.json.title
+        content = request.json.content
+      }
+    }
+
+    capture {
+      id = response.json.id
+    }
+  }
+
+  teardown {
+    step "http" "delete_blog_post" {
+      when = can(result.create_blog_post.id)
+
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/blog/posts/${result.create_blog_post.id}"
+
+        headers = {
+          Authorization = "Bearer ${result.auth.token}"
+        }
+      }
+
+      expect {
+        status = one_of([200, 204, 404])
+      }
+    }
+
+    step "http" "delete_user" {
+      when = can(result.create_user.id)
+
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/users/${result.create_user.id}"
+
+        headers = {
+          Authorization = "Bearer ${result.auth.token}"
+        }
+      }
+
+      expect {
+        status = one_of([200, 204, 404])
+      }
+    }
+  }
+}

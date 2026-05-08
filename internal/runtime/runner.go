@@ -198,7 +198,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 					return
 				}
 
-				stepResult := r.executeStep(ctx, evaluator, scenario.Name, config, state, step)
+				stepResult := r.executeStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
 
 				mu.Lock()
 
@@ -222,7 +222,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	}
 
 	for _, step := range scenario.Teardown {
-		stepResult := r.executeTeardownStep(ctx, evaluator, scenario.Name, config, state, step)
+		stepResult := r.executeTeardownStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
 
 		sResult.Teardown = append(sResult.Teardown, stepResult)
 		if stepResult.Status == report.StatusFail {
@@ -240,11 +240,15 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	return sResult, nil
 }
 
-func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, step *model.Step) *report.StepResult {
+func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
 	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusPass}
 	start := time.Now()
 
-	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: map[string]cty.Value{}}
+	if step.Provider == "keyword" {
+		return r.executeKeywordStep(ctx, evaluator, suite, scenarioName, config, state, input, step, start, stepReport)
+	}
+
+	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
 
 	requestValues, timeout, err := evaluateRequest(evaluator, scope, scenarioName, step)
 	if err != nil {
@@ -315,23 +319,31 @@ func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, sce
 	return stepReport
 }
 
-func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, step *model.Step) *report.StepResult {
-	if !evalWhen(step.When, evaluator, lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: map[string]cty.Value{}}, scenarioName, step.Name) {
+func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
+	if !evalWhen(step.When, evaluator, lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}, scenarioName, step.Name) {
 		return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "teardown", Status: report.StatusSkip}
 	}
 
-	result := r.executeStep(ctx, evaluator, scenarioName, config, state, step)
+	result := r.executeStep(ctx, evaluator, suite, scenarioName, config, state, input, step)
 	result.Phase = "teardown"
 
 	return result
 }
 
 func buildLayers(steps []*model.Step) ([][]string, error) {
+	return buildLayersWithOptions(steps, false)
+}
+
+func buildLayersWithOptions(steps []*model.Step, allowExternalDeps bool) ([][]string, error) {
 	g := dag.NewGraph()
+	knownSteps := map[string]struct{}{}
+
 	for _, step := range steps {
 		if err := g.AddNode(step.Name); err != nil {
 			return nil, fmt.Errorf("add node %q: %w", step.Name, err)
 		}
+
+		knownSteps[step.Name] = struct{}{}
 	}
 
 	for _, step := range steps {
@@ -341,6 +353,14 @@ func buildLayers(steps []*model.Step) ([][]string, error) {
 		}
 
 		for dep := range deps {
+			if _, exists := knownSteps[dep]; !exists {
+				if allowExternalDeps {
+					continue
+				}
+
+				return nil, fmt.Errorf("step %q references unknown dependency %q", step.Name, dep)
+			}
+
 			if err := g.AddEdge(dep, step.Name); err != nil {
 				return nil, fmt.Errorf("step %q: %w", step.Name, err)
 			}
@@ -637,6 +657,267 @@ func evalWhen(condition model.Expression, evaluator *lang.Evaluator, scope lang.
 	}
 
 	return boolValue
+}
+
+func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, start time.Time, stepReport *report.StepResult) *report.StepResult {
+	if step.Keyword == nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: "keyword step is missing name/inputs definition"}
+		stepReport.Duration = time.Since(start)
+
+		return stepReport
+	}
+
+	callName, callInputs, requestSummary, err := r.evaluateKeywordCall(evaluator, scenarioName, config, state, input, step)
+	if err != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: err.Error()}
+		stepReport.Duration = time.Since(start)
+
+		return stepReport
+	}
+
+	keyword, ok := suite.Keywords[callName]
+	if !ok {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("unknown keyword %q", callName)}
+		stepReport.Duration = time.Since(start)
+		stepReport.Request = requestSummary
+
+		return stepReport
+	}
+
+	if err := validateKeywordInputs(keyword, callInputs); err != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: err.Error()}
+		stepReport.Duration = time.Since(start)
+		stepReport.Request = requestSummary
+
+		return stepReport
+	}
+
+	keywordState := newKeywordState(state.GetResultMap(), keyword.Steps)
+	if err := r.executeKeywordSteps(ctx, evaluator, suite, scenarioName, config, keywordState, callInputs, keyword); err != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = err
+		stepReport.Duration = time.Since(start)
+		stepReport.Request = requestSummary
+
+		return stepReport
+	}
+
+	outputValues, err := evaluateKeywordOutputs(evaluator, scenarioName, config, keywordState, callInputs, keyword)
+	if err != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: err.Error()}
+		stepReport.Duration = time.Since(start)
+		stepReport.Request = requestSummary
+
+		return stepReport
+	}
+
+	responseSummary := summarize(map[string]cty.Value{"outputs": cty.ObjectVal(outputValues)})
+	stepReport.Request = requestSummary
+	stepReport.Response = responseSummary
+
+	state.SetStepResult(step.Name, cty.ObjectVal(outputValues))
+
+	stepReport.Duration = time.Since(start)
+
+	return stepReport
+}
+
+func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) (string, map[string]cty.Value, map[string]string, error) {
+	scope := lang.ScopeData{
+		Config:   config,
+		Result:   state.GetResultMap(),
+		Request:  map[string]cty.Value{},
+		Response: map[string]cty.Value{},
+		Input:    ensureValueMap(input),
+	}
+
+	nameValue, err := evaluator.Eval(step.Keyword.Name, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "keyword.name"})
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("keyword.name: %w", err)
+	}
+
+	if nameValue.Type() != cty.String {
+		return "", nil, nil, fmt.Errorf("keyword.name must be a string")
+	}
+
+	keywordName := nameValue.AsString()
+	inputValues := map[string]cty.Value{}
+
+	if !step.Keyword.Inputs.Empty() {
+		evaluatedInputs, evalErr := evaluator.Eval(step.Keyword.Inputs, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "keyword.inputs"})
+		if evalErr != nil {
+			return "", nil, nil, fmt.Errorf("keyword.inputs: %w", evalErr)
+		}
+
+		valueMap, mapErr := toValueMap(evaluatedInputs, "keyword.inputs")
+		if mapErr != nil {
+			return "", nil, nil, mapErr
+		}
+
+		inputValues = valueMap
+	}
+
+	requestSummary := summarize(map[string]cty.Value{
+		"name":   cty.StringVal(keywordName),
+		"inputs": cty.ObjectVal(inputValues),
+	})
+
+	return keywordName, inputValues, requestSummary, nil
+}
+
+func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) *ScenarioState {
+	stepNames := make([]string, 0, len(outerResults)+len(steps))
+
+	for name := range outerResults {
+		stepNames = append(stepNames, name)
+	}
+
+	for _, step := range steps {
+		stepNames = append(stepNames, step.Name)
+	}
+
+	keywordState := NewScenarioState(stepNames)
+
+	for name, value := range outerResults {
+		keywordState.SetStepResult(name, value)
+	}
+
+	return keywordState
+}
+
+func (r *Runner) executeKeywordSteps(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword) *report.ErrorDetail {
+	layers, err := buildLayersWithOptions(keyword.Steps, true)
+	if err != nil {
+		return &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("keyword %q graph error: %v", keyword.Name, err)}
+	}
+
+	stepByName := map[string]*model.Step{}
+	depsByStep := map[string]map[string]struct{}{}
+	failedSteps := map[string]struct{}{}
+
+	for _, step := range keyword.Steps {
+		stepByName[step.Name] = step
+
+		deps, depErr := lang.StepDependencies(step)
+		if depErr != nil {
+			return &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("keyword %q dependencies for step %q: %v", keyword.Name, step.Name, depErr)}
+		}
+
+		depsByStep[step.Name] = deps
+	}
+
+	for _, layer := range layers {
+		for _, stepName := range layer {
+			step := stepByName[stepName]
+
+			if hasFailedDependency(step.Name, depsByStep, failedSteps) {
+				failedSteps[step.Name] = struct{}{}
+
+				continue
+			}
+
+			stepResult := r.executeStep(ctx, evaluator, suite, scenarioName, config, keywordState, input, step)
+			if stepResult.Status == report.StatusFail {
+				failedSteps[step.Name] = struct{}{}
+
+				message := "keyword step failed"
+				if stepResult.Failure != nil {
+					message = stepResult.Failure.Message
+				}
+
+				return &report.ErrorDetail{
+					Kind:    "keyword",
+					Path:    step.Name,
+					Message: fmt.Sprintf("keyword %q step %q failed: %s", keyword.Name, step.Name, message),
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func hasFailedDependency(stepName string, depsByStep map[string]map[string]struct{}, failedSteps map[string]struct{}) bool {
+	for dependency := range depsByStep[stepName] {
+		if _, failed := failedSteps[dependency]; failed {
+			return true
+		}
+	}
+
+	return false
+}
+
+func evaluateKeywordOutputs(evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword) (map[string]cty.Value, error) {
+	outputValues := map[string]cty.Value{}
+
+	if len(keyword.Outputs) == 0 {
+		return outputValues, nil
+	}
+
+	keys := make([]string, 0, len(keyword.Outputs))
+	for key := range keyword.Outputs {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	scope := lang.ScopeData{
+		Config:   config,
+		Result:   keywordState.GetResultMap(),
+		Request:  map[string]cty.Value{},
+		Response: map[string]cty.Value{},
+		Input:    ensureValueMap(input),
+	}
+
+	for _, key := range keys {
+		value, err := evaluator.Eval(keyword.Outputs[key], scope, lang.GenerateMeta{Scenario: scenarioName, ExprPath: "keyword." + keyword.Name + ".outputs." + key})
+		if err != nil {
+			return nil, fmt.Errorf("keyword %q outputs.%s: %w", keyword.Name, key, err)
+		}
+
+		outputValues[key] = value
+	}
+
+	return outputValues, nil
+}
+
+func validateKeywordInputs(keyword *model.Keyword, inputs map[string]cty.Value) error {
+	if len(keyword.Inputs) == 0 {
+		return nil
+	}
+
+	for name := range keyword.Inputs {
+		if _, ok := inputs[name]; !ok {
+			return fmt.Errorf("keyword %q missing required input %q", keyword.Name, name)
+		}
+	}
+
+	return nil
+}
+
+func ensureValueMap(values map[string]cty.Value) map[string]cty.Value {
+	if values == nil {
+		return map[string]cty.Value{}
+	}
+
+	return values
+}
+
+func toValueMap(value cty.Value, field string) (map[string]cty.Value, error) {
+	if value.IsNull() {
+		return map[string]cty.Value{}, nil
+	}
+
+	if !value.Type().IsMapType() && !value.Type().IsObjectType() {
+		return nil, fmt.Errorf("%s must be an object", field)
+	}
+
+	return value.AsValueMap(), nil
 }
 
 func summarize(values map[string]cty.Value) map[string]string {

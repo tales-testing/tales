@@ -23,10 +23,9 @@ This repository contains a pragmatic V1 focused on HTTP workflows:
 - `capture` for stable step outputs.
 - `teardown` block always executed after main steps.
 - `when = can(...)` support in teardown.
+- executable `keyword` blocks with `inputs` and `outputs`.
 - Parallel scenario execution (`--parallel`).
 - Deterministic generation via `--seed`.
-
-The `keyword` provider is parsed but intentionally not implemented yet.
 
 ## Installation and Build
 
@@ -204,6 +203,7 @@ Exit codes:
 - `capture` to expose a stable contract for next steps.
 - `result.<step_name>.<field>` for cross-step references.
 - `teardown { ... }` for deterministic cleanup.
+- `keyword \"...\" { ... }` for reusable flows.
 
 Backward-compatible aliases currently accepted:
 
@@ -309,8 +309,7 @@ make e2e
 
 ## Current Limitations
 
-- Only HTTP provider is production-ready.
-- Keyword execution provider is not implemented yet.
+- HTTP is the only production-ready external provider.
 - No browser/mobile providers.
 - No external plugin system.
 - No dedicated ConnectRPC provider (Connect JSON works through HTTP).
