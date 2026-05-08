@@ -23,7 +23,7 @@ func TestConsoleFailureOutputNoCTYAndMaskedSecrets(t *testing.T) {
 
 	buffer := bytes.Buffer{}
 
-	if err := PrintConsole(&buffer, result); err != nil {
+	if err := PrintConsoleWithOptions(&buffer, result, ConsoleOptions{Color: false, Progress: false}); err != nil {
 		t.Fatalf("print console: %v", err)
 	}
 
@@ -161,7 +161,7 @@ func TestConsoleFailurePrefixUsesKindAndScenarioFailureIsPrinted(t *testing.T) {
 
 	buffer := bytes.Buffer{}
 
-	if err := PrintConsole(&buffer, result); err != nil {
+	if err := PrintConsoleWithOptions(&buffer, result, ConsoleOptions{Color: false, Progress: false}); err != nil {
 		t.Fatalf("print console: %v", err)
 	}
 
@@ -172,6 +172,32 @@ func TestConsoleFailurePrefixUsesKindAndScenarioFailureIsPrinted(t *testing.T) {
 
 	if !strings.Contains(output, "dependency cycle detected") {
 		t.Fatalf("expected scenario failure message, got: %s", output)
+	}
+}
+
+func TestConsoleProgressLine(t *testing.T) {
+	t.Parallel()
+
+	scenario := sampleFailedScenario()
+	scenario.Status = StatusPass
+	scenario.Failure = nil
+	scenario.Steps[0].Status = StatusPass
+	scenario.Steps[0].Failure = nil
+
+	result := &SuiteResult{
+		Seed:      1234,
+		Duration:  10 * time.Millisecond,
+		Scenarios: []*ScenarioResult{scenario},
+	}
+
+	buffer := bytes.Buffer{}
+	if err := PrintConsoleWithOptions(&buffer, result, ConsoleOptions{Color: false, Progress: true}); err != nil {
+		t.Fatalf("print console: %v", err)
+	}
+
+	output := buffer.String()
+	if !strings.Contains(output, "[ scenario: 1/1, step: 1/1, skip: 0, success: 1, failure: 0 ]") {
+		t.Fatalf("progress line not found: %s", output)
 	}
 }
 

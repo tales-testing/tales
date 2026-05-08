@@ -27,6 +27,8 @@ func NewTestCommand() *cli.Command {
 			&cli.IntFlag{Name: "parallel", Value: runtime.NumCPU(), Usage: "Scenario parallelism"},
 			&cli.StringSliceFlag{Name: "tag", Usage: "Filter scenario by tag"},
 			&cli.StringFlag{Name: "scenario", Usage: "Run only one scenario by exact name"},
+			&cli.BoolFlag{Name: "no-color", Usage: "Disable colorized console output"},
+			&cli.BoolFlag{Name: "no-progress", Usage: "Disable progress counters in console output"},
 			&cli.StringFlag{Name: "report-junit", Usage: "Write JUnit XML report"},
 			&cli.StringFlag{Name: "report-jsonl", Usage: "Write JSONL report"},
 		},
@@ -69,7 +71,16 @@ func runTest(c *cli.Context) error {
 		return cli.Exit("runtime failed", 3)
 	}
 
-	if printErr := report.PrintConsole(os.Stdout, result); printErr != nil {
+	consoleOptions := report.DefaultConsoleOptions(os.Stdout)
+	if c.Bool("no-color") {
+		consoleOptions.Color = false
+	}
+
+	if c.Bool("no-progress") {
+		consoleOptions.Progress = false
+	}
+
+	if printErr := report.PrintConsoleWithOptions(os.Stdout, result, consoleOptions); printErr != nil {
 		return cli.Exit(printErr.Error(), 3)
 	}
 

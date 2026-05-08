@@ -3,30 +3,69 @@ package report
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/hyperxlab/tales/internal/diagnostic"
+	"github.com/mattn/go-isatty"
 )
 
-const failurePrefixDefault = "failure"
+const (
+	failurePrefixDefault = "failure"
+	ansiReset            = "\x1b[0m"
+	ansiRed              = "\x1b[31m"
+	ansiGreen            = "\x1b[32m"
+	ansiYellow           = "\x1b[33m"
+	ansiBlue             = "\x1b[34m"
+	ansiCyan             = "\x1b[36m"
+	ansiGray             = "\x1b[90m"
+)
+
+// ConsoleOptions controls CLI human output behavior.
+type ConsoleOptions struct {
+	Color    bool
+	Progress bool
+}
+
+// DefaultConsoleOptions computes default console options from writer environment.
+func DefaultConsoleOptions(out io.Writer) ConsoleOptions {
+	enableColor := supportsTerminalFeatures(out)
+
+	return ConsoleOptions{
+		Color:    enableColor,
+		Progress: enableColor,
+	}
+}
 
 // PrintConsole writes human-friendly report.
 func PrintConsole(out io.Writer, result *SuiteResult) error {
-	stats := &consoleStats{}
+	return PrintConsoleWithOptions(out, result, DefaultConsoleOptions(out))
+}
+
+// PrintConsoleWithOptions writes human-friendly report with explicit options.
+func PrintConsoleWithOptions(out io.Writer, result *SuiteResult, options ConsoleOptions) error {
+	stats := newConsoleStats(result)
+	painter := newColorPainter(options.Color)
 
 	for _, scenario := range result.Scenarios {
-		if err := printScenario(out, result.Seed, scenario, stats); err != nil {
+		stats.currentScenario++
+
+		if err := printScenario(out, result.Seed, scenario, stats, options, painter); err != nil {
 			return fmt.Errorf("print scenario %q: %w", scenario.Name, err)
 		}
 	}
 
+	summaryLabel := painter.paint(ansiBlue, "Summary")
+
 	if _, err := fmt.Fprintf(
 		out,
-		"\nSummary: scenarios %d passed / %d failed, steps %d passed / %d failed, duration %s, seed %d\n",
+		"\n%s: scenarios %d passed / %d failed, steps %d passed / %d failed, skipped %d, duration %s, seed %d\n",
+		summaryLabel,
 		stats.passedScenarios,
 		stats.failedScenarios,
 		stats.passedSteps,
 		stats.failedSteps,
+		stats.skippedSteps,
 		result.Duration,
 		result.Seed,
 	); err != nil {
@@ -37,39 +76,117 @@ func PrintConsole(out io.Writer, result *SuiteResult) error {
 }
 
 type consoleStats struct {
+	totalScenarios  int
+	totalSteps      int
+	currentScenario int
+	currentStep     int
 	passedScenarios int
 	failedScenarios int
 	passedSteps     int
 	failedSteps     int
+	skippedSteps    int
 }
 
-func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *consoleStats) error {
+func newConsoleStats(result *SuiteResult) *consoleStats {
+	stats := &consoleStats{totalScenarios: len(result.Scenarios)}
+
+	for _, scenario := range result.Scenarios {
+		stats.totalSteps += len(scenario.Steps)
+		stats.totalSteps += len(scenario.Teardown)
+	}
+
+	return stats
+}
+
+type colorPainter struct {
+	enabled bool
+}
+
+func newColorPainter(enabled bool) colorPainter {
+	return colorPainter{enabled: enabled}
+}
+
+func (c colorPainter) paint(colorCode, value string) string {
+	if !c.enabled || value == "" {
+		return value
+	}
+
+	return colorCode + value + ansiReset
+}
+
+func (c colorPainter) status(value Status) string {
+	upper := strings.ToUpper(string(value))
+
+	return c.colorizeStatus(value, upper)
+}
+
+func (c colorPainter) statusPadded(value Status, width int) string {
+	plain := fmt.Sprintf("%-*s", width, strings.ToUpper(string(value)))
+
+	return c.colorizeStatus(value, plain)
+}
+
+func (c colorPainter) colorizeStatus(value Status, rendered string) string {
+	switch value {
+	case StatusPass:
+		return c.paint(ansiGreen, rendered)
+	case StatusFail:
+		return c.paint(ansiRed, rendered)
+	case StatusSkip:
+		return c.paint(ansiYellow, rendered)
+	case StatusUnknown:
+		return c.paint(ansiGray, rendered)
+	default:
+		return c.paint(ansiGray, rendered)
+	}
+}
+
+func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *consoleStats, options ConsoleOptions, painter colorPainter) error {
 	if scenario.Status == StatusPass {
 		stats.passedScenarios++
 	} else {
 		stats.failedScenarios++
 	}
 
-	if _, err := fmt.Fprintf(out, "Scenario %s (%s) %s in %s\n", scenario.Name, scenario.File, strings.ToUpper(string(scenario.Status)), scenario.Duration); err != nil {
+	scenarioLabel := painter.paint(ansiCyan, "Scenario")
+	statusLabel := painter.status(scenario.Status)
+
+	if _, err := fmt.Fprintf(out, "%s %s (%s) %s in %s\n", scenarioLabel, scenario.Name, scenario.File, statusLabel, scenario.Duration); err != nil {
 		return fmt.Errorf("print scenario header: %w", err)
 	}
 
 	for _, step := range scenario.Steps {
+		stats.currentStep++
 		updateStepStats(stats, step.Status)
 
-		if err := printStep(out, "step", 20, step); err != nil {
+		if options.Progress {
+			if err := printProgress(out, stats, painter); err != nil {
+				return err
+			}
+		}
+
+		if err := printStep(out, "step", 20, step, painter); err != nil {
 			return fmt.Errorf("print step %q: %w", step.Name, err)
 		}
 	}
 
 	for _, step := range scenario.Teardown {
-		if err := printStep(out, "teardown", 16, step); err != nil {
+		stats.currentStep++
+		updateStepStats(stats, step.Status)
+
+		if options.Progress {
+			if err := printProgress(out, stats, painter); err != nil {
+				return err
+			}
+		}
+
+		if err := printStep(out, "teardown", 16, step, painter); err != nil {
 			return fmt.Errorf("print teardown step %q: %w", step.Name, err)
 		}
 	}
 
 	if scenario.Failure != nil && findFirstFailedStep(scenario) == nil {
-		if _, err := fmt.Fprintf(out, "  scenario failure:\\n"); err != nil {
+		if _, err := fmt.Fprintf(out, "  scenario failure:\n"); err != nil {
 			return fmt.Errorf("print scenario failure title: %w", err)
 		}
 
@@ -87,19 +204,43 @@ func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *c
 	return nil
 }
 
+func printProgress(out io.Writer, stats *consoleStats, painter colorPainter) error {
+	text := fmt.Sprintf(
+		"[ scenario: %d/%d, step: %d/%d, skip: %d, success: %d, failure: %d ]",
+		stats.currentScenario,
+		stats.totalScenarios,
+		stats.currentStep,
+		stats.totalSteps,
+		stats.skippedSteps,
+		stats.passedSteps,
+		stats.failedSteps,
+	)
+
+	line := painter.paint(ansiGray, text)
+	if _, err := fmt.Fprintf(out, "  %s\n", line); err != nil {
+		return fmt.Errorf("print progress: %w", err)
+	}
+
+	return nil
+}
+
 func updateStepStats(stats *consoleStats, status Status) {
 	switch status {
 	case StatusPass:
 		stats.passedSteps++
 	case StatusFail:
 		stats.failedSteps++
-	case StatusSkip, StatusUnknown:
+	case StatusSkip:
+		stats.skippedSteps++
+	case StatusUnknown:
 		return
 	}
 }
 
-func printStep(out io.Writer, label string, width int, step *StepResult) error {
-	if _, err := fmt.Fprintf(out, "  %s %-*s [%s] %-7s %s\n", label, width, step.Name, step.Provider, strings.ToUpper(string(step.Status)), step.Duration); err != nil {
+func printStep(out io.Writer, label string, width int, step *StepResult, painter colorPainter) error {
+	statusLabel := painter.statusPadded(step.Status, 7)
+
+	if _, err := fmt.Fprintf(out, "  %s %-*s [%s] %s %s\n", label, width, step.Name, step.Provider, statusLabel, step.Duration); err != nil {
 		return fmt.Errorf("print line: %w", err)
 	}
 
@@ -309,4 +450,26 @@ func indentMultiline(value, indent string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func supportsTerminalFeatures(out io.Writer) bool {
+	file, ok := out.(*os.File)
+	if !ok {
+		return false
+	}
+
+	if !isatty.IsTerminal(file.Fd()) && !isatty.IsCygwinTerminal(file.Fd()) {
+		return false
+	}
+
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+
+	term := strings.TrimSpace(os.Getenv("TERM"))
+	if term == "" || term == "dumb" {
+		return false
+	}
+
+	return true
 }
