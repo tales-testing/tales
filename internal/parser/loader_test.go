@@ -112,6 +112,293 @@ scenario "retry" {
 	}
 }
 
+func TestLoadPathRequestBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+config {
+  basic_auth = {
+    username = "admin"
+    password = "secret"
+  }
+}
+
+scenario "basic auth" {
+  step "http" "protected" {
+    request {
+      method = "GET"
+      url = "http://example.test"
+      auth {
+        basic {
+          username = config.basic_auth.username
+          password = config.basic_auth.password
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "basic.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	suite, diags := LoadPath(dir)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	auth := suite.Scenarios[0].Steps[0].Request.Auth
+	if auth == nil || auth.Basic == nil {
+		t.Fatalf("basic auth was not decoded")
+	}
+
+	if auth.Basic.Username.Empty() {
+		t.Fatalf("basic auth username expression was not decoded")
+	}
+
+	if auth.Basic.Password.Empty() {
+		t.Fatalf("basic auth password expression was not decoded")
+	}
+}
+
+func TestLoadPathRequestForm(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "form" {
+  step "http" "submit" {
+    request {
+      method = "POST"
+      url = "http://example.test"
+      body {
+        form = {
+          value = "a&b=c"
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "form.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	suite, diags := LoadPath(dir)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	body := suite.Scenarios[0].Steps[0].Request.Body
+	if body == nil || body.Form.Empty() {
+		t.Fatalf("request.body.form was not decoded")
+	}
+}
+
+func TestLoadPathRequestBodyRejectsMultipleModes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "form conflict" {
+  step "http" "submit" {
+    request {
+      method = "POST"
+      url = "http://example.test"
+      body {
+        form = {
+          value = "a&b=c"
+        }
+        raw = "value=a%26b%3Dc"
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "form.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := LoadPath(dir)
+	if !diags.HasErrors() {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
+func TestLoadPathBasicAuthMissingUsername(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "basic auth" {
+  step "http" "protected" {
+    request {
+      method = "GET"
+      url = "http://example.test"
+      auth {
+        basic {
+          password = "secret"
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "basic.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := LoadPath(dir)
+	if !diags.HasErrors() {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
+func TestLoadPathBasicAuthMissingPassword(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "basic auth" {
+  step "http" "protected" {
+    request {
+      method = "GET"
+      url = "http://example.test"
+      auth {
+        basic {
+          username = "admin"
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "basic.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := LoadPath(dir)
+	if !diags.HasErrors() {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
+func TestLoadPathDuplicateAuthBlocks(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "basic auth" {
+  step "http" "protected" {
+    request {
+      method = "GET"
+      url = "http://example.test"
+      auth {
+        basic {
+          username = "admin"
+          password = "secret"
+        }
+      }
+      auth {
+        basic {
+          username = "admin"
+          password = "secret"
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "basic.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := LoadPath(dir)
+	if !diags.HasErrors() {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
+func TestLoadPathDuplicateBasicAuthBlocks(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "basic auth" {
+  step "http" "protected" {
+    request {
+      method = "GET"
+      url = "http://example.test"
+      auth {
+        basic {
+          username = "admin"
+          password = "secret"
+        }
+        basic {
+          username = "admin"
+          password = "secret"
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "basic.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := LoadPath(dir)
+	if !diags.HasErrors() {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
+func TestLoadPathUnknownAuthScheme(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "basic auth" {
+  step "http" "protected" {
+    request {
+      method = "GET"
+      url = "http://example.test"
+      auth {
+        bearer {
+          token = "abc"
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "basic.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := LoadPath(dir)
+	if !diags.HasErrors() {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
 func TestLoadPathInvalidRetryAttempts(t *testing.T) {
 	t.Parallel()
 

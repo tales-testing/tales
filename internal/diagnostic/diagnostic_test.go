@@ -112,3 +112,34 @@ func TestMaskJSONNestedAndArrays(t *testing.T) {
 		t.Fatalf("non-sensitive fields should be preserved: %#v", second)
 	}
 }
+
+func TestMaskBodyFormEncodedSecrets(t *testing.T) {
+	t.Parallel()
+
+	masked := MaskBody("grant_type=password&password=pa%2Bss+%25%23&username=user%40example.com")
+	if masked != "grant_type=password&password=***&username=user%40example.com" {
+		t.Fatalf("unexpected masked form body: %v", masked)
+	}
+}
+
+func TestSanitizeMapMasksAuthPassword(t *testing.T) {
+	t.Parallel()
+
+	sanitized := SanitizeMap(map[string]interface{}{
+		"auth": map[string]interface{}{
+			"basic": map[string]interface{}{
+				"username": "admin",
+				"password": "secret",
+			},
+		},
+	})
+
+	auth := sanitized["auth"].(map[string]interface{})
+	basic := auth["basic"].(map[string]interface{})
+	if basic["username"] != "admin" {
+		t.Fatalf("username should remain visible: %#v", basic)
+	}
+	if basic["password"] != "***" {
+		t.Fatalf("password should be masked: %#v", basic)
+	}
+}

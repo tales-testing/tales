@@ -25,9 +25,11 @@ keyword "authenticate" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = input.email
-        password = input.password
+      body {
+        json = {
+          email    = input.email
+          password = input.password
+        }
       }
     }
 
@@ -62,9 +64,11 @@ scenario "Keyword authentication flow" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = generate("keyword_email")
-        password = "Passw0rd!"
+      body {
+        json = {
+          email    = generate("keyword_email")
+          password = "Passw0rd!"
+        }
       }
     }
 
@@ -77,14 +81,14 @@ scenario "Keyword authentication flow" {
 
       json = {
         id    = is_string()
-        email = request.json.email
+        email = request.body.json.email
       }
     }
 
     capture {
       id       = response.json.id
-      email    = request.json.email
-      password = request.json.password
+      email    = request.body.json.email
+      password = request.body.json.password
     }
   }
 
@@ -108,10 +112,12 @@ scenario "Keyword authentication flow" {
         Authorization = "Bearer ${result.auth.token}"
       }
 
-      json = {
-        title   = "keyword post"
-        content = "hello"
-        tags    = ["keyword"]
+      body {
+        json = {
+          title   = "keyword post"
+          content = "hello"
+          tags    = ["keyword"]
+        }
       }
     }
 
@@ -124,8 +130,8 @@ scenario "Keyword authentication flow" {
 
       json = {
         id      = is_string()
-        title   = request.json.title
-        content = request.json.content
+        title   = request.body.json.title
+        content = request.body.json.content
       }
     }
 

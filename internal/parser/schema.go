@@ -57,9 +57,21 @@ type requestBlock struct {
 	URL     hcl.Expression `hcl:"url,optional"`
 	Headers hcl.Expression `hcl:"headers,optional"`
 	Query   hcl.Expression `hcl:"query,optional"`
-	JSON    hcl.Expression `hcl:"json,optional"`
-	Body    hcl.Expression `hcl:"body,optional"`
+	Body    []bodyBlock    `hcl:"body,block"`
 	Timeout hcl.Expression `hcl:"timeout,optional"`
+	Auth    []authBlock    `hcl:"auth,block"`
+}
+
+type bodyBlock struct {
+	Body hcl.Body `hcl:",remain"`
+}
+
+type authBlock struct {
+	Basic []basicAuthBlock `hcl:"basic,block"`
+}
+
+type basicAuthBlock struct {
+	Body hcl.Body `hcl:",remain"`
 }
 
 type expectBlock struct {

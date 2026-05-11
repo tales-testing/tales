@@ -63,8 +63,18 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 		collect(step.Request.URL)
 		collect(step.Request.Headers)
 		collect(step.Request.Query)
-		collect(step.Request.JSON)
-		collect(step.Request.Body)
+
+		if step.Request.Body != nil {
+			collect(step.Request.Body.JSON)
+			collect(step.Request.Body.Form)
+			collect(step.Request.Body.Raw)
+		}
+
+		if step.Request.Auth != nil && step.Request.Auth.Basic != nil {
+			collect(step.Request.Auth.Basic.Username)
+			collect(step.Request.Auth.Basic.Password)
+		}
+
 		collect(step.Request.Timeout)
 	}
 

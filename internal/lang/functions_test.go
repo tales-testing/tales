@@ -73,6 +73,15 @@ func TestRegexFindConvertsNonStringInput(t *testing.T) {
 	}
 }
 
+func TestURLEncode(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `url_encode("a&b=c +%#")`)
+	if value.AsString() != "a%26b%3Dc+%2B%25%23" {
+		t.Fatalf("unexpected encoded value: %s", value.AsString())
+	}
+}
+
 func evalTestExpression(t *testing.T, src string) cty.Value {
 	t.Helper()
 

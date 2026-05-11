@@ -32,7 +32,7 @@ func (p *keywordFlowProvider) Execute(ctx context.Context, input provider.Input)
 
 	switch input.Step.Name {
 	case "create_user":
-		email, err := nestedString(input.Request, "json", "email")
+		email, err := nestedString(input.Request, "body", "json", "email")
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +51,7 @@ func (p *keywordFlowProvider) Execute(ctx context.Context, input provider.Input)
 			}),
 		}), nil
 	case "auth_user":
-		email, err := nestedString(input.Request, "json", "email")
+		email, err := nestedString(input.Request, "body", "json", "email")
 		if err != nil {
 			return nil, err
 		}
@@ -107,27 +107,40 @@ func okOutput(status int, request map[string]cty.Value, response map[string]cty.
 	}
 }
 
-func nestedString(container map[string]cty.Value, root, key string) (string, error) {
-	rootValue, ok := container[root]
-	if !ok {
-		return "", fmt.Errorf("missing %s", root)
+func nestedString(container map[string]cty.Value, path ...string) (string, error) {
+	if len(path) == 0 {
+		return "", fmt.Errorf("missing path")
 	}
 
-	if !rootValue.Type().IsObjectType() && !rootValue.Type().IsMapType() {
-		return "", fmt.Errorf("%s must be an object", root)
+	rootValue, ok := container[path[0]]
+	if !ok {
+		return "", fmt.Errorf("missing %s", strings.Join(path, "."))
 	}
 
-	valueMap := rootValue.AsValueMap()
-	value, ok := valueMap[key]
-	if !ok {
-		return "", fmt.Errorf("missing %s.%s", root, key)
+	value := rootValue
+	for _, part := range path[1:] {
+		if !value.Type().IsObjectType() && !value.Type().IsMapType() {
+			return "", fmt.Errorf("%s must be an object", strings.Join(path, "."))
+		}
+
+		valueMap := value.AsValueMap()
+		nested, ok := valueMap[part]
+		if !ok {
+			return "", fmt.Errorf("missing %s", strings.Join(path, "."))
+		}
+
+		value = nested
 	}
 
 	if value.Type() != cty.String {
-		return "", fmt.Errorf("%s.%s must be string", root, key)
+		return "", fmt.Errorf("%s must be string", strings.Join(path, "."))
 	}
 
 	return value.AsString(), nil
+}
+
+func bodyJSONExpr(src string) *model.RequestBody {
+	return &model.RequestBody{JSON: expr(src)}
 }
 
 func TestKeywordStepProducesOutputUsableByNextStep(t *testing.T) {
@@ -151,7 +164,7 @@ func TestKeywordStepProducesOutputUsableByNextStep(t *testing.T) {
 						Request: &model.Request{
 							Method: expr(`"POST"`),
 							URL:    expr(`"http://example.test/auth"`),
-							JSON:   expr(`{ email = input.email, password = input.password }`),
+							Body:   bodyJSONExpr(`{ email = input.email, password = input.password }`),
 						},
 						Expect: &model.Expect{Status: expr("200")},
 					},
@@ -250,7 +263,7 @@ func TestKeywordStepNameCollisionFailsScenario(t *testing.T) {
 						Request: &model.Request{
 							Method: expr(`"POST"`),
 							URL:    expr(`"http://example.test/users"`),
-							JSON:   expr(`{ email = input.email, password = input.password }`),
+							Body:   bodyJSONExpr(`{ email = input.email, password = input.password }`),
 						},
 						Expect: &model.Expect{Status: expr("201")},
 					},
@@ -295,7 +308,7 @@ func TestKeywordUnknownExternalDependencyFailsGraphValidation(t *testing.T) {
 						Request: &model.Request{
 							Method: expr(`"POST"`),
 							URL:    expr(`"http://example.test/auth"`),
-							JSON:   expr(`{ email = result.missing_step.email, password = input.password }`),
+							Body:   bodyJSONExpr(`{ email = result.missing_step.email, password = input.password }`),
 						},
 						Expect: &model.Expect{Status: expr("200")},
 					},
@@ -338,12 +351,12 @@ func buildKeywordScenario() *model.Scenario {
 				Request: &model.Request{
 					Method: expr(`"POST"`),
 					URL:    expr(`"http://example.test/users"`),
-					JSON:   expr(`{ email = "user@example.com", password = "Passw0rd!" }`),
+					Body:   bodyJSONExpr(`{ email = "user@example.com", password = "Passw0rd!" }`),
 				},
 				Expect: &model.Expect{Status: expr("201")},
 				Capture: map[string]model.Expression{
-					"email":    expr("request.json.email"),
-					"password": expr("request.json.password"),
+					"email":    expr("request.body.json.email"),
+					"password": expr("request.body.json.password"),
 				},
 			},
 			{
@@ -366,7 +379,7 @@ func buildKeywordScenario() *model.Scenario {
 					Headers: expr(`{
 						Authorization = "Bearer ${result.auth.token}"
 					}`),
-					JSON: expr(`{
+					Body: bodyJSONExpr(`{
 						title   = "keyword post"
 						content = "hello"
 					}`),

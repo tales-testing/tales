@@ -148,15 +148,45 @@ func renderRequestForJUnit(request map[string]interface{}) string {
 	_, _ = fmt.Fprintf(&builder, "  url: %s\n", valueAsString(sanitized["url"]))
 	builder.WriteString(renderHeadersForJUnit(sanitized, "headers"))
 
-	if value, ok := sanitized["json"]; ok && value != nil {
+	if value, ok := sanitized["body"]; ok && value != nil {
+		builder.WriteString(renderRequestBodyForJUnit(value))
+	}
+
+	return builder.String()
+}
+
+func renderRequestBodyForJUnit(value interface{}) string {
+	bodyMap, ok := value.(map[string]interface{})
+	if !ok {
+		body := valueAsString(value)
+		if body == "" {
+			return ""
+		}
+
+		builder := strings.Builder{}
+		builder.WriteString("  body:\n")
+		builder.WriteString(indentMultiline(body, "    "))
+		builder.WriteString("\n")
+
+		return builder.String()
+	}
+
+	builder := strings.Builder{}
+	if jsonValue, ok := bodyMap["json"]; ok && jsonValue != nil {
 		builder.WriteString("  json:\n")
-		builder.WriteString(indentMultiline(diagnostic.PrettyJSON(value), "    "))
+		builder.WriteString(indentMultiline(diagnostic.PrettyJSON(jsonValue), "    "))
 		builder.WriteString("\n")
 	}
 
-	if value, ok := sanitized["body"]; ok && value != nil && valueAsString(value) != "" {
+	if formValue, ok := bodyMap["form"]; ok && formValue != nil {
+		builder.WriteString("  form:\n")
+		builder.WriteString(indentMultiline(diagnostic.PrettyJSON(formValue), "    "))
+		builder.WriteString("\n")
+	}
+
+	if rawValue, ok := bodyMap["raw"]; ok && rawValue != nil && valueAsString(rawValue) != "" {
 		builder.WriteString("  body:\n")
-		builder.WriteString(indentMultiline(valueAsString(value), "    "))
+		builder.WriteString(indentMultiline(valueAsString(rawValue), "    "))
 		builder.WriteString("\n")
 	}
 

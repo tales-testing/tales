@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ const maskedValue = "***"
 const (
 	boolStringTrue  = "true"
 	boolStringFalse = "false"
+	jsonKey         = "json"
 )
 
 var sensitiveHeaders = map[string]struct{}{
@@ -107,9 +109,11 @@ func SanitizeMap(values map[string]interface{}) map[string]interface{} {
 		switch strings.ToLower(key) {
 		case "headers":
 			sanitized[key] = MaskHeaders(value)
-		case "json":
+		case jsonKey:
 			sanitized[key] = MaskJSON(value)
 		case "body":
+			sanitized[key] = MaskBody(value)
+		case "raw_body":
 			sanitized[key] = MaskBody(value)
 		default:
 			sanitized[key] = SanitizeUnknown(value)
@@ -186,7 +190,11 @@ func MaskHeaders(value interface{}) map[string]string {
 
 	for key, current := range headers {
 		if isSensitiveHeader(key) {
-			headers[key] = maskedValue
+			if strings.HasPrefix(strings.ToLower(current), "basic ") {
+				headers[key] = "Basic " + maskedValue
+			} else {
+				headers[key] = maskedValue
+			}
 
 			continue
 		}
@@ -240,6 +248,25 @@ func MaskJSON(value interface{}) interface{} {
 
 // MaskBody masks JSON bodies when possible, otherwise returns the original body.
 func MaskBody(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		masked := make(map[string]interface{}, len(typed))
+		for key, nested := range typed {
+			switch strings.ToLower(key) {
+			case jsonKey, "form":
+				masked[key] = MaskJSON(nested)
+			case "raw":
+				masked[key] = MaskBody(nested)
+			default:
+				masked[key] = SanitizeUnknown(nested)
+			}
+		}
+
+		return masked
+	case map[string]string:
+		return MaskJSON(typed)
+	}
+
 	body, ok := value.(string)
 	if !ok {
 		return value
@@ -251,7 +278,7 @@ func MaskBody(value interface{}) interface{} {
 	}
 
 	if !looksLikeJSON(trimmed) {
-		return body
+		return MaskFormBody(body)
 	}
 
 	var decoded interface{}
@@ -267,6 +294,34 @@ func MaskBody(value interface{}) interface{} {
 	}
 
 	return string(encoded)
+}
+
+// MaskFormBody masks sensitive application/x-www-form-urlencoded fields when a body looks like form data.
+func MaskFormBody(body string) interface{} {
+	if !strings.Contains(body, "=") {
+		return body
+	}
+
+	values, err := url.ParseQuery(body)
+	if err != nil || len(values) == 0 {
+		return body
+	}
+
+	masked := url.Values{}
+
+	for key, items := range values {
+		if isSensitiveJSONField(key) {
+			masked.Set(key, maskedValue)
+
+			continue
+		}
+
+		for _, item := range items {
+			masked.Add(key, item)
+		}
+	}
+
+	return strings.ReplaceAll(masked.Encode(), url.QueryEscape(maskedValue), maskedValue)
 }
 
 // ScalarString renders simple values in a stable human-friendly way.

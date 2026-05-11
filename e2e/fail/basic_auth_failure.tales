@@ -1,0 +1,27 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "HTTP basic auth failure" {
+  tags = ["http", "auth", "failure"]
+
+  step "http" "basic_auth_invalid" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/basic-auth"
+
+      auth {
+        basic {
+          username = "admin"
+          password = "wrong-secret"
+        }
+      }
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}

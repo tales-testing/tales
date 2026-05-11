@@ -52,16 +52,18 @@ scenario "Register and verify account from email" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = generate("verification_email")
-        password = generate("verification_password")
-        timezone = generate("verification_timezone")
-        locale   = generate("verification_locale")
-        person   = generate("verification_person")
-        device   = {
-          mac_address = generate("verification_device_mac")
+      body {
+        json = {
+          email    = generate("verification_email")
+          password = generate("verification_password")
+          timezone = generate("verification_timezone")
+          locale   = generate("verification_locale")
+          person   = generate("verification_person")
+          device   = {
+            mac_address = generate("verification_device_mac")
+          }
+          trace_id = generate("verification_trace_id")
         }
-        trace_id = generate("verification_trace_id")
       }
     }
 
@@ -74,19 +76,19 @@ scenario "Register and verify account from email" {
 
       json = {
         id    = is_string()
-        email = request.json.email
+        email = request.body.json.email
       }
     }
 
     capture {
       id       = response.json.id
       email    = response.json.email
-      password = request.json.password
-      timezone = request.json.timezone
-      locale   = request.json.locale
-      person   = request.json.person
-      device_mac = request.json.device.mac_address
-      trace_id = request.json.trace_id
+      password = request.body.json.password
+      timezone = request.body.json.timezone
+      locale   = request.body.json.locale
+      person   = request.body.json.person
+      device_mac = request.body.json.device.mac_address
+      trace_id = request.body.json.trace_id
     }
   }
 
@@ -131,9 +133,11 @@ scenario "Register and verify account from email" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email = result.register.email
-        code  = result.find_verification_email.code
+      body {
+        json = {
+          email = result.register.email
+          code  = result.find_verification_email.code
+        }
       }
     }
 
@@ -160,9 +164,11 @@ scenario "Register and verify account from email" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = result.register.email
-        password = result.register.password
+      body {
+        json = {
+          email    = result.register.email
+          password = result.register.password
+        }
       }
     }
 

@@ -43,3 +43,32 @@ func TestStepDependencies(t *testing.T) {
 		t.Fatalf("missing explicit dep")
 	}
 }
+
+func TestStepDependenciesIncludesBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "protected",
+		Provider: "http",
+		Request: &model.Request{
+			URL: parseExpr(t, `"http://example.test"`),
+			Auth: &model.RequestAuth{Basic: &model.BasicAuth{
+				Username: parseExpr(t, `result.create_client.id`),
+				Password: parseExpr(t, `result.create_client.secret`),
+			}},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(deps) != 1 {
+		t.Fatalf("want 1 dep got %d: %#v", len(deps), deps)
+	}
+
+	if _, ok := deps["create_client"]; !ok {
+		t.Fatalf("missing auth implicit dep")
+	}
+}
