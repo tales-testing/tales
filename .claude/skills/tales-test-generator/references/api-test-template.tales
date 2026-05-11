@@ -18,6 +18,27 @@ generator "password" "user_password" {
   specials    = "!@#$%^&*"
 }
 
+generator "timezone" "user_timezone" {}
+
+generator "locale" "user_locale" {
+  separator = "-"
+}
+
+generator "person" "user_person" {
+  gender = "female"
+}
+
+generator "mac_address" "device_mac" {
+  prefix    = "aa:bb"
+  separator = "-"
+  lowercase = true
+}
+
+generator "bytes" "trace_id" {
+  length   = 8
+  encoding = "hex"
+}
+
 scenario "API happy path" {
   tags = ["api", "smoke"]
 
@@ -34,6 +55,13 @@ scenario "API happy path" {
       json = {
         email    = generate("user_email")
         password = generate("user_password")
+        timezone = generate("user_timezone")
+        locale   = generate("user_locale")
+        person   = generate("user_person")
+        device   = {
+          mac_address = generate("device_mac")
+        }
+        trace_id = generate("trace_id")
       }
     }
 

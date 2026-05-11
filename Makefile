@@ -8,9 +8,13 @@ GO_GOBIN := $(shell go env GOBIN)
 GO_GOPATH := $(shell go env GOPATH)
 INSTALL_DIR ?= $(if $(GOBIN),$(GOBIN),$(if $(GO_GOBIN),$(GO_GOBIN),$(GO_GOPATH)/bin))
 
+SKILL_NAME := tales-test-generator
+SKILL_SRC := .claude/skills/$(SKILL_NAME)
+CLAUDE_SKILLS_DIR ?= $(HOME)/.claude/skills
+
 UNIT_PKGS := ./internal/... ./cmd/tales
 
-.PHONY: build tales-bin mock-bin install
+.PHONY: build tales-bin mock-bin install install-skill
 build: tales-bin mock-bin
 
 $(BUILD_READY):
@@ -28,6 +32,14 @@ install: tales-bin
 	@mkdir -p "$(INSTALL_DIR)"
 	@install -m 755 "$(TALES_BIN)" "$(INSTALL_DIR)/tales"
 	@echo "Installed $(TALES_BIN) to $(INSTALL_DIR)/tales"
+
+install-skill:
+	@test -d "$(SKILL_SRC)" || { echo "Skill source not found: $(SKILL_SRC)"; exit 1; }
+	@mkdir -p "$(CLAUDE_SKILLS_DIR)"
+	@rm -rf "$(CLAUDE_SKILLS_DIR)/$(SKILL_NAME)"
+	@cp -R "$(SKILL_SRC)" "$(CLAUDE_SKILLS_DIR)/$(SKILL_NAME)"
+	@echo "Installed skill '$(SKILL_NAME)' to $(CLAUDE_SKILLS_DIR)/$(SKILL_NAME)"
+
 .PHONY: test
 test:
 	@go test -race -count=1 $(UNIT_PKGS)

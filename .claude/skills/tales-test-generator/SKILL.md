@@ -72,6 +72,11 @@ Use this skill when asked to:
 - `request.url` must be an absolute `http` or `https` URL.
 - Prefer `generator "password"` + `generate("...")` over hard-coded reusable passwords when creating users.
 - Password generator options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
+- Faker-backed generators currently available: `email`, `password`, `timezone`, `locale`, `person`, `mac_address`, and `bytes`.
+- Locale generator options are `language`, `country`, and `separator`.
+- Person generator option is `gender` (`any`, `male`, or `female`) and it returns an object with `first_name`, `last_name`, `gender`, and `name`.
+- MAC address generator options are `prefix`, `separator`, `lowercase`, and `uppercase`.
+- Bytes generator options are `length` and `encoding` (`hex` or `base64`).
 - `expect.body` can be used for raw response-body assertions, including matchers such as `contains(...)`.
 - Response headers are accessible by key, for example `response.headers["Content-Type"]`; lower-case lookup such as `response.headers["content-type"]` is supported for HTTP responses.
 - `retry.attempts` must be `>= 1`.
