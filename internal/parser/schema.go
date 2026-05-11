@@ -34,17 +34,22 @@ type teardownDef struct {
 }
 
 type stepBlock struct {
-	Provider  string         `hcl:",label"`
-	Name      string         `hcl:",label"`
-	DependsOn []string       `hcl:"depends_on,optional"`
-	When      hcl.Expression `hcl:"when,optional"`
-	Request   *requestBlock  `hcl:"request,block"`
-	Expect    *expectBlock   `hcl:"expect,block"`
-	Response  *expectBlock   `hcl:"response,block"`
-	Capture   *captureBlock  `hcl:"capture,block"`
-	Retry     *retryBlock    `hcl:"retry,block"`
-	CallName  hcl.Expression `hcl:"name,optional"`
-	Inputs    hcl.Expression `hcl:"inputs,optional"`
+	Provider  string                `hcl:",label"`
+	Name      string                `hcl:",label"`
+	DependsOn []string              `hcl:"depends_on,optional"`
+	When      hcl.Expression        `hcl:"when,optional"`
+	Request   *requestBlock         `hcl:"request,block"`
+	Expect    *expectBlock          `hcl:"expect,block"`
+	Response  *expectBlock          `hcl:"response,block"`
+	Capture   *captureBlock         `hcl:"capture,block"`
+	Retry     *retryBlock           `hcl:"retry,block"`
+	CallName  hcl.Expression        `hcl:"name,optional"`
+	Inputs    hcl.Expression        `hcl:"inputs,optional"`
+	Platform  hcl.Expression        `hcl:"platform,optional"`
+	Target    hcl.Expression        `hcl:"target,optional"`
+	Launch    *mobileLaunchBlock    `hcl:"launch,block"`
+	Terminate *mobileTerminateBlock `hcl:"terminate,block"`
+	Actions   *mobileActionsBlock   `hcl:"actions,block"`
 }
 
 type retryBlock struct {
@@ -75,11 +80,28 @@ type basicAuthBlock struct {
 }
 
 type expectBlock struct {
-	Status  hcl.Expression `hcl:"status,optional"`
-	Headers hcl.Expression `hcl:"headers,optional"`
-	JSON    hcl.Expression `hcl:"json,optional"`
-	Body    hcl.Expression `hcl:"body,optional"`
-	Strict  hcl.Expression `hcl:"strict,optional"`
+	Status     hcl.Expression  `hcl:"status,optional"`
+	Headers    hcl.Expression  `hcl:"headers,optional"`
+	JSON       hcl.Expression  `hcl:"json,optional"`
+	Body       hcl.Expression  `hcl:"body,optional"`
+	Strict     hcl.Expression  `hcl:"strict,optional"`
+	Visible    []*visibleBlock `hcl:"visible,block"`
+	NotVisible []*visibleBlock `hcl:"not_visible,block"`
+}
+
+type visibleBlock struct {
+	ID      hcl.Expression `hcl:"id,optional"`
+	Timeout hcl.Expression `hcl:"timeout,optional"`
+}
+
+type mobileLaunchBlock struct {
+	ClearState hcl.Expression `hcl:"clear_state,optional"`
+}
+
+type mobileTerminateBlock struct{}
+
+type mobileActionsBlock struct {
+	Body hcl.Body `hcl:",remain"`
 }
 
 type captureBlock struct {
