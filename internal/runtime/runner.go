@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 	"time"
@@ -87,6 +88,8 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 
 	wg.Wait()
 
+	r.closeProviders()
+
 	result.EndedAt = time.Now()
 	result.Duration = result.EndedAt.Sub(result.StartedAt)
 
@@ -95,6 +98,20 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 	}
 
 	return result, nil
+}
+
+// closeProviders best-effort closes every provider that implements io.Closer
+// so long-lived sessions (e.g. xcodebuild subprocesses owned by the mobile
+// provider) do not leak past the end of a suite.
+func (r *Runner) closeProviders() {
+	for _, p := range r.providers.All() {
+		closer, ok := p.(io.Closer)
+		if !ok {
+			continue
+		}
+
+		_ = closer.Close()
+	}
 }
 
 func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *model.Scenario, config map[string]cty.Value, seed int64) (*report.ScenarioResult, error) {
