@@ -303,7 +303,7 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 		return stepReport
 	}
 
-	output, err := providerImpl.Execute(ctx, provider.Input{Scenario: scenarioName, Step: step, Request: requestValues, Timeout: timeout})
+	output, err := providerImpl.Execute(ctx, provider.Input{Scenario: scenarioName, Step: step, Config: config, Request: requestValues, Timeout: timeout})
 	if err != nil {
 		stepReport.Status = report.StatusFail
 		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: err.Error()}
