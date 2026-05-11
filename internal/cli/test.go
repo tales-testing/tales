@@ -11,6 +11,7 @@ import (
 	"github.com/hyperxlab/tales/internal/provider"
 	httpprovider "github.com/hyperxlab/tales/internal/provider/http"
 	keywordprovider "github.com/hyperxlab/tales/internal/provider/keyword"
+	mobileprovider "github.com/hyperxlab/tales/internal/provider/mobile"
 	"github.com/hyperxlab/tales/internal/report"
 	talesruntime "github.com/hyperxlab/tales/internal/runtime"
 	"github.com/urfave/cli/v2"
@@ -57,6 +58,7 @@ func runTest(c *cli.Context) error {
 	runner := talesruntime.NewRunner(provider.NewRegistry(
 		httpprovider.New(),
 		keywordprovider.New(),
+		mobileprovider.NewApple(),
 	))
 
 	result, err := runner.Run(context.Background(), suite, talesruntime.Options{
