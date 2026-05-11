@@ -48,6 +48,14 @@ type StepResult struct {
 	StatusCode int
 	Attempts   int
 	Failure    *ErrorDetail
+	Artifacts  []Artifact
+}
+
+// Artifact references one file produced by a step (mobile screenshots,
+// hierarchy dumps, ...). Paths are relative to the working directory.
+type Artifact struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
 }
 
 // ErrorDetail is compact machine+human readable failure details.

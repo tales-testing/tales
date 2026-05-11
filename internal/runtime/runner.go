@@ -283,6 +283,10 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 		return r.executeKeywordStep(ctx, evaluator, suite, scenarioName, config, state, input, step, start, stepReport)
 	}
 
+	if step.Provider == mobileProviderType {
+		return r.executeMobileStep(ctx, evaluator, scenarioName, config, state, input, step)
+	}
+
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
 
 	requestValues, timeout, err := evaluateRequest(evaluator, scope, scenarioName, step)
