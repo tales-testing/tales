@@ -51,15 +51,16 @@ Pipeline: HCL files → parser → model → runtime → providers → reporters
 - [internal/provider/](internal/provider/) — pluggable execution backends.
   - `http/provider.go` — HTTP provider (including Connect JSON over HTTP). Supports `request.body { json | form | raw }`, `request.auth.basic`. Rejects combining `headers.Authorization` with `auth.basic`.
   - `keyword/` — pseudo-provider that invokes user-defined keyword flows.
-- [internal/report/](internal/report/) — console (ANSI), JUnit XML, and JSONL writers. `SuiteResult.Failed()` drives the CLI exit code.
+  - `mobile/` — iOS UI provider (V1, `platform = "ios"`). Owns per-target sessions cleaned up at suite end via `Close()` (called by the runner through an `io.Closer` type-assertion). Subpackages: `driver` (transport-agnostic interface + HTTP/JSON client), `tree` (normalized UI hierarchy + locator), `apple` (`simctl`, `xcodebuild` launcher, lifecycle facade, target resolver). Swift driver lives in [drivers/apple/TalesAppleDriver](drivers/apple/TalesAppleDriver). See [docs/mobile/ios.md](docs/mobile/ios.md).
+- [internal/report/](internal/report/) — console (ANSI), JUnit XML, and JSONL writers. `SuiteResult.Failed()` drives the CLI exit code. `StepResult.Artifacts` surfaces screenshot / hierarchy paths produced by the mobile provider on failure.
 - [internal/diagnostic/](internal/diagnostic/) — error formatting helpers shared by parser and runtime.
 - [e2e/mockserver/](e2e/mockserver/) — small in-memory HTTP API used by all E2E suites; started by `make e2e` on port 1337.
 
 ## DSL Surface (when editing it)
 
-The DSL accepts these top-level blocks: `version`, `config`, `generator "<type>" "<name>"`, `scenario "<name>"`, `keyword "<name>"`. Inside `scenario`: `step "<provider>" "<name>"` (with optional `retry`, `request`, `expect`, `capture`, `depends_on`, `when`) and `teardown { step ... }`. Backward-compatible aliases — `case` for `step`, `response` for `expect` — are decoded in [internal/parser/schema.go](internal/parser/schema.go) and must keep working.
+The DSL accepts these top-level blocks: `version`, `config`, `generator "<type>" "<name>"`, `scenario "<name>"`, `keyword "<name>"`. Inside `scenario`: `step "<provider>" "<name>"` (with optional `retry`, `request`, `expect`, `capture`, `depends_on`, `when`) and `teardown { step ... }`. Mobile steps additionally accept `platform`, `target`, `launch { clear_state }`, `terminate {}`, `actions { tap | input_text | clear_text }` (decoded in source order via `hclsyntax`), and `expect { visible | not_visible }` blocks. Backward-compatible aliases — `case` for `step`, `response` for `expect` — are decoded in [internal/parser/schema.go](internal/parser/schema.go) and must keep working.
 
-Available generator types: `email`, `password`, `timezone`, `locale`, `person`, `mac_address`, `bytes`. Available matchers/functions: `env`, `generate`, `jsonencode`, `url_encode`, `regex_find`, `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`. The README and the `tales-test-generator` skill carry the user-facing reference; keep all three in sync when adding to this list.
+Available generator types: `email`, `password`, `timezone`, `locale`, `person`, `mac_address`, `bytes`. Available matchers/functions: `env`, `generate`, `jsonencode`, `url_encode`, `regex_find`, `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`. Mobile capture exposes two extra functions — `value("id")` and `text("id")` — injected by the runtime into the EvalContext for mobile steps; they close over the hierarchy recorded for the step. The README and the `tales-test-generator` skill carry the user-facing reference; keep all three in sync when adding to this list.
 
 ## Working With `.tales` Test Files
 
