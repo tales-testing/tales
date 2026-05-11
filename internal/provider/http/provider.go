@@ -51,6 +51,11 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, fmt.Errorf("resolve headers: %w", err)
 	}
 
+	basicAuth, err := resolveBasicAuth(input.Request, headers)
+	if err != nil {
+		return nil, err
+	}
+
 	body, err := resolveBody(input.Request, headers)
 	if err != nil {
 		return nil, fmt.Errorf("resolve body: %w", err)
@@ -63,6 +68,14 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 
 	for key, value := range headers {
 		req.Header.Set(key, value)
+	}
+
+	reportHeaders := cloneHeaders(headers)
+
+	if basicAuth != nil {
+		req.SetBasicAuth(basicAuth.username, basicAuth.password)
+
+		reportHeaders["Authorization"] = "Basic ***"
 	}
 
 	client := p.client
@@ -86,7 +99,7 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, fmt.Errorf("read response body failed: %w", err)
 	}
 
-	output, err := buildOutput(method, requestURL, headers, body, resp, respBytes, time.Since(start), input.Request)
+	output, err := buildOutput(method, requestURL, reportHeaders, body, resp, respBytes, time.Since(start), input.Request)
 	if err != nil {
 		return nil, fmt.Errorf("build output: %w", err)
 	}
@@ -186,6 +199,74 @@ func resolveHeaders(request map[string]cty.Value) (map[string]string, error) {
 	return mapped, nil
 }
 
+type basicAuthConfig struct {
+	username string
+	password string
+}
+
+func resolveBasicAuth(request map[string]cty.Value, headers map[string]string) (*basicAuthConfig, error) {
+	authValue, ok := request["auth"]
+	if !ok || authValue.IsNull() {
+		return nil, nil
+	}
+
+	if !authValue.Type().IsObjectType() && !authValue.Type().IsMapType() {
+		return nil, fmt.Errorf("request.auth must be object")
+	}
+
+	authMap := authValue.AsValueMap()
+
+	basicValue, ok := authMap["basic"]
+	if !ok || basicValue.IsNull() {
+		return nil, nil
+	}
+
+	if hasAuthorizationHeader(headers) {
+		return nil, fmt.Errorf("request cannot define both headers.Authorization and auth.basic")
+	}
+
+	if !basicValue.Type().IsObjectType() && !basicValue.Type().IsMapType() {
+		return nil, fmt.Errorf("request.auth.basic must be object")
+	}
+
+	basicMap := basicValue.AsValueMap()
+
+	username, err := authFieldString(basicMap, "username")
+	if err != nil {
+		return nil, err
+	}
+
+	password, err := authFieldString(basicMap, "password")
+	if err != nil {
+		return nil, err
+	}
+
+	return &basicAuthConfig{username: username, password: password}, nil
+}
+
+func hasAuthorizationHeader(headers map[string]string) bool {
+	for key := range headers {
+		if strings.EqualFold(key, "Authorization") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func authFieldString(values map[string]cty.Value, key string) (string, error) {
+	value, ok := values[key]
+	if !ok || value.IsNull() {
+		return "", nil
+	}
+
+	if value.Type() != cty.String {
+		return "", fmt.Errorf("request.auth.basic.%s must be a string", key)
+	}
+
+	return value.AsString(), nil
+}
+
 func resolveBody(request map[string]cty.Value, headers map[string]string) ([]byte, error) {
 	var body []byte
 
@@ -211,6 +292,15 @@ func resolveBody(request map[string]cty.Value, headers map[string]string) ([]byt
 	}
 
 	return body, nil
+}
+
+func cloneHeaders(headers map[string]string) map[string]string {
+	cloned := make(map[string]string, len(headers)+1)
+	for key, value := range headers {
+		cloned[key] = value
+	}
+
+	return cloned
 }
 
 func buildOutput(

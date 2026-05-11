@@ -1,0 +1,39 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+  basic_auth = {
+    username = "admin"
+    password = "secret"
+  }
+}
+
+scenario "HTTP basic auth" {
+  tags = ["http", "auth"]
+
+  step "http" "basic_auth" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/basic-auth"
+
+      auth {
+        basic {
+          username = config.basic_auth.username
+          password = config.basic_auth.password
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        authenticated = true
+      }
+    }
+  }
+}

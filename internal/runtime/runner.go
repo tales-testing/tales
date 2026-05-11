@@ -480,6 +480,10 @@ func evaluateRequest(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioNa
 		return nil, 0, fmt.Errorf("request.body: %w", err)
 	}
 
+	if err := evaluateRequestAuth(evaluator, scope, scenarioName, step, values); err != nil {
+		return nil, 0, fmt.Errorf("request.auth: %w", err)
+	}
+
 	timeout := time.Duration(0)
 
 	if !step.Request.Timeout.Empty() {
@@ -501,6 +505,43 @@ func evaluateRequest(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioNa
 	}
 
 	return values, timeout, nil
+}
+
+func evaluateRequestAuth(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, values map[string]cty.Value) error {
+	if step.Request.Auth == nil || step.Request.Auth.Basic == nil {
+		return nil
+	}
+
+	usernameValue, err := evaluator.Eval(step.Request.Auth.Basic.Username, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "request.auth.basic.username"})
+	if err != nil {
+		return fmt.Errorf("basic.username: %w", err)
+	}
+
+	passwordValue, err := evaluator.Eval(step.Request.Auth.Basic.Password, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "request.auth.basic.password"})
+	if err != nil {
+		return fmt.Errorf("basic.password: %w", err)
+	}
+
+	values["auth"] = cty.ObjectVal(map[string]cty.Value{
+		"basic": cty.ObjectVal(map[string]cty.Value{
+			"username": cty.StringVal(authString(usernameValue)),
+			"password": cty.StringVal(authString(passwordValue)),
+		}),
+	})
+
+	return nil
+}
+
+func authString(value cty.Value) string {
+	if !value.IsKnown() || value.IsNull() {
+		return ""
+	}
+
+	if value.Type() == cty.String {
+		return value.AsString()
+	}
+
+	return diagnostic.ScalarString(value)
 }
 
 func evaluateExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, output *provider.Output) error {

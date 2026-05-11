@@ -186,7 +186,11 @@ func MaskHeaders(value interface{}) map[string]string {
 
 	for key, current := range headers {
 		if isSensitiveHeader(key) {
-			headers[key] = maskedValue
+			if strings.HasPrefix(strings.ToLower(current), "basic ") {
+				headers[key] = "Basic " + maskedValue
+			} else {
+				headers[key] = maskedValue
+			}
 
 			continue
 		}

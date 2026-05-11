@@ -67,6 +67,7 @@ func main() {
 	r.HandleFunc("/users", state.createUser).Methods(http.MethodPost)
 	r.HandleFunc("/users/{id}", state.deleteUser).Methods(http.MethodDelete)
 	r.HandleFunc("/auth", state.auth).Methods(http.MethodPost)
+	r.HandleFunc("/basic-auth", state.basicAuth).Methods(http.MethodGet)
 	r.HandleFunc("/mail/messages", state.mailMessages).Methods(http.MethodGet)
 	r.HandleFunc("/verify-email", state.verifyEmail).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
@@ -161,6 +162,17 @@ func (s *serverState) auth(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid credentials"})
+}
+
+func (s *serverState) basicAuth(w http.ResponseWriter, req *http.Request) {
+	username, password, ok := req.BasicAuth()
+	if ok && username == "admin" && password == "secret" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"authenticated": true})
+
+		return
+	}
+
+	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "unauthorized"})
 }
 
 func (s *serverState) mailMessages(w http.ResponseWriter, req *http.Request) {

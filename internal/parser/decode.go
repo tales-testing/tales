@@ -123,6 +123,9 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 		}
 
 		if rs.Request != nil {
+			auth, authDiags := decodeRequestAuth(path, rs.Request.Auth)
+			diags = append(diags, authDiags...)
+
 			step.Request = &model.Request{
 				Method:  expr(path, rs.Request.Method),
 				URL:     expr(path, rs.Request.URL),
@@ -131,6 +134,7 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 				JSON:    expr(path, rs.Request.JSON),
 				Body:    expr(path, rs.Request.Body),
 				Timeout: expr(path, rs.Request.Timeout),
+				Auth:    auth,
 			}
 		}
 
@@ -180,6 +184,58 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 	}
 
 	return steps, diags
+}
+
+func decodeRequestAuth(path string, raw []authBlock) (*model.RequestAuth, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+	if len(raw) == 0 {
+		return nil, diags
+	}
+
+	if len(raw) > 1 {
+		diags = append(diags, diagError("Duplicate auth block", "request supports at most one auth block.", nil))
+	}
+
+	auth := &model.RequestAuth{}
+	first := raw[0]
+
+	if len(first.Basic) == 0 {
+		diags = append(diags, diagError("Missing auth scheme", "auth block must contain a basic block.", nil))
+
+		return auth, diags
+	}
+
+	if len(first.Basic) > 1 {
+		diags = append(diags, diagError("Duplicate basic auth block", "auth supports at most one basic block.", nil))
+	}
+
+	attrs, attrDiags := first.Basic[0].Body.JustAttributes()
+	diags = append(diags, attrDiags...)
+
+	usernameAttr, hasUsername := attrs["username"]
+	if !hasUsername {
+		diags = append(diags, diagError("Missing basic auth username", "auth.basic.username is required.", nil))
+	}
+
+	passwordAttr, hasPassword := attrs["password"]
+	if !hasPassword {
+		diags = append(diags, diagError("Missing basic auth password", "auth.basic.password is required.", nil))
+	}
+
+	auth.Basic = &model.BasicAuth{
+		Username: attrExpr(path, usernameAttr),
+		Password: attrExpr(path, passwordAttr),
+	}
+
+	return auth, diags
+}
+
+func attrExpr(path string, attr *hcl.Attribute) model.Expression {
+	if attr == nil {
+		return model.Expression{}
+	}
+
+	return model.Expression{Expr: attr.Expr, File: path, Line: attr.Range.Start.Line}
 }
 
 func decodeRetry(raw *retryBlock) (*model.Retry, hcl.Diagnostics) {

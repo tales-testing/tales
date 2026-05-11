@@ -26,6 +26,18 @@ type Request struct {
 	JSON    Expression
 	Body    Expression
 	Timeout Expression
+	Auth    *RequestAuth
+}
+
+// RequestAuth holds authentication configuration for a request.
+type RequestAuth struct {
+	Basic *BasicAuth
+}
+
+// BasicAuth holds HTTP Basic Authentication expressions.
+type BasicAuth struct {
+	Username Expression
+	Password Expression
 }
 
 // Expect holds provider-agnostic assertions.

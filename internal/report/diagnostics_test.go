@@ -3,6 +3,7 @@ package report
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"strings"
@@ -140,6 +141,74 @@ func TestJUnitFailureOutputMasksSensitiveFields(t *testing.T) {
 	}
 }
 
+func TestConsoleFailureOutputMasksBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	result := &SuiteResult{
+		Seed:      1234,
+		Duration:  10 * time.Millisecond,
+		Scenarios: []*ScenarioResult{sampleBasicAuthFailedScenario()},
+	}
+
+	buffer := bytes.Buffer{}
+	if err := PrintConsoleWithOptions(&buffer, result, ConsoleOptions{Color: false, Progress: false}); err != nil {
+		t.Fatalf("print console: %v", err)
+	}
+
+	assertNoBasicAuthLeak(t, buffer.String())
+	if !strings.Contains(buffer.String(), "Authorization: Basic ***") {
+		t.Fatalf("expected masked basic authorization, got: %s", buffer.String())
+	}
+}
+
+func TestJSONLFailureOutputMasksBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/events.jsonl"
+	result := &SuiteResult{
+		Seed:      1234,
+		Scenarios: []*ScenarioResult{sampleBasicAuthFailedScenario()},
+	}
+
+	if err := WriteJSONL(path, result); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read jsonl: %v", err)
+	}
+
+	assertNoBasicAuthLeak(t, string(content))
+	if !strings.Contains(string(content), `"Authorization":"Basic ***"`) {
+		t.Fatalf("expected masked basic authorization, got: %s", string(content))
+	}
+}
+
+func TestJUnitFailureOutputMasksBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/report.xml"
+	result := &SuiteResult{
+		Seed:      1234,
+		Scenarios: []*ScenarioResult{sampleBasicAuthFailedScenario()},
+	}
+
+	if err := WriteJUnit(path, result); err != nil {
+		t.Fatalf("write junit: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read junit: %v", err)
+	}
+
+	assertNoBasicAuthLeak(t, string(content))
+	if !strings.Contains(string(content), "Authorization: Basic ***") {
+		t.Fatalf("expected masked basic authorization, got: %s", string(content))
+	}
+}
+
 func TestConsoleFailurePrefixUsesKindAndScenarioFailureIsPrinted(t *testing.T) {
 	t.Parallel()
 
@@ -274,6 +343,67 @@ func sampleFailedScenario() *ScenarioResult {
 		Duration: 2 * time.Millisecond,
 		Steps:    []*StepResult{step},
 		Failure:  step.Failure,
+	}
+}
+
+func sampleBasicAuthFailedScenario() *ScenarioResult {
+	rawAuthorization := "Basic " + base64.StdEncoding.EncodeToString([]byte("admin:wrong-secret"))
+	step := &StepResult{
+		File:       "e2e/fail/basic_auth_failure.tales",
+		Scenario:   "HTTP basic auth failure",
+		Name:       "basic_auth_invalid",
+		Provider:   "http",
+		Phase:      "step",
+		Status:     StatusFail,
+		Duration:   time.Millisecond,
+		StatusCode: 401,
+		Request: map[string]interface{}{
+			"method": "GET",
+			"url":    "http://localhost:1337/basic-auth",
+			"headers": map[string]interface{}{
+				"Authorization": rawAuthorization,
+			},
+			"json": map[string]interface{}{
+				"password": "wrong-secret",
+			},
+		},
+		Response: map[string]interface{}{
+			"status": 401,
+			"headers": map[string]interface{}{
+				"Content-Type": "application/json",
+			},
+			"body": `{"error":"unauthorized"}`,
+		},
+		Failure: &ErrorDetail{
+			Kind:    "assertion",
+			Path:    "status",
+			Want:    cty.NumberIntVal(200),
+			Got:     cty.NumberIntVal(401),
+			Message: "assertion failed at status",
+		},
+	}
+
+	return &ScenarioResult{
+		File:     "e2e/fail/basic_auth_failure.tales",
+		Name:     "HTTP basic auth failure",
+		Status:   StatusFail,
+		Duration: 2 * time.Millisecond,
+		Steps:    []*StepResult{step},
+		Failure:  step.Failure,
+	}
+}
+
+func assertNoBasicAuthLeak(t *testing.T, output string) {
+	t.Helper()
+
+	for _, forbidden := range []string{
+		"wrong-secret",
+		"admin:wrong-secret",
+		base64.StdEncoding.EncodeToString([]byte("admin:wrong-secret")),
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("basic auth secret leaked (%q): %s", forbidden, output)
+		}
 	}
 }
 

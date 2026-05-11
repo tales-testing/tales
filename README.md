@@ -236,6 +236,7 @@ Exit codes:
 - `step "http" "name" { ... }`
 - `request.json` for JSON body.
 - `request.body` for non-JSON payloads.
+- `request.auth.basic` for HTTP Basic Authentication.
 - `expect` assertions for status/headers/json.
 - `capture` to expose a stable contract for next steps.
 - `result.<step_name>.<field>` for cross-step references.

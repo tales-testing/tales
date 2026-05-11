@@ -70,6 +70,8 @@ Use this skill when asked to:
   - keyword internal step names must not collide with outer scenario step names
 - Use `request.json` for JSON payloads and `request.body` for non-JSON text payloads.
 - `request.url` must be an absolute `http` or `https` URL.
+- Use `request.auth.basic` for HTTP Basic Authentication instead of manually setting an `Authorization` header.
+- Do not combine `headers.Authorization` with `auth.basic`; Tales rejects that conflict.
 - Prefer `generator "password"` + `generate("...")` over hard-coded reusable passwords when creating users.
 - Password generator options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
 - Faker-backed generators currently available: `email`, `password`, `timezone`, `locale`, `person`, `mac_address`, and `bytes`.
