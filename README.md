@@ -62,6 +62,15 @@ generator "email" "user_email" {
   domain = "example.com"
 }
 
+generator "password" "user_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+  specials    = "!@#$%^&*"
+}
+
 scenario "Create a blog post" {
   tags = ["demo"]
 
@@ -77,7 +86,7 @@ scenario "Create a blog post" {
 
       json = {
         email    = generate("user_email")
-        password = "Passw0rd!"
+        password = generate("user_password")
       }
     }
 
@@ -202,6 +211,7 @@ Exit codes:
 - `expect` assertions for status/headers/json.
 - `capture` to expose a stable contract for next steps.
 - `result.<step_name>.<field>` for cross-step references.
+- `generator "email"` and `generator "password"` for deterministic test data.
 - `teardown { ... }` for deterministic cleanup.
 - `keyword \"...\" { ... }` for reusable flows.
 
@@ -238,6 +248,9 @@ Matchers:
 Generation is deterministic with `--seed` and stable derivation inputs.
 
 Running the same suite with the same seed produces the same generated values, even with parallel execution.
+Step retries reuse the same deterministic generation context, so generated values do not change between retry attempts.
+
+Password generators default to a 16-character password with at least one uppercase letter, lowercase letter, digit, and special character. Supported password options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
 
 ## Reports
 

@@ -70,6 +70,8 @@ Use this skill when asked to:
   - keyword internal step names must not collide with outer scenario step names
 - Use `request.json` for JSON payloads and `request.body` for non-JSON text payloads.
 - `request.url` must be an absolute `http` or `https` URL.
+- Prefer `generator "password"` + `generate("...")` over hard-coded reusable passwords when creating users.
+- Password generator options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
 - `expect.body` can be used for raw response-body assertions, including matchers such as `contains(...)`.
 - Response headers are accessible by key, for example `response.headers["Content-Type"]`; lower-case lookup such as `response.headers["content-type"]` is supported for HTTP responses.
 - `retry.attempts` must be `>= 1`.

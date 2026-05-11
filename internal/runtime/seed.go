@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	randv2 "math/rand/v2"
 )
 
 // DeterministicRand is a deterministic pseudo-random generator.
@@ -50,4 +51,18 @@ func NewDeterministicRand(globalSeed int64, parts ...string) *DeterministicRand 
 	}
 
 	return &DeterministicRand{state: seed}
+}
+
+// NewDeterministicRandV2 returns a deterministic math/rand/v2 source.
+func NewDeterministicRandV2(globalSeed int64, parts ...string) *randv2.Rand {
+	seed1 := DeriveSeed(globalSeed, parts...)
+	seedParts2 := append(append([]string(nil), parts...), "randv2")
+
+	seed2 := DeriveSeed(globalSeed, seedParts2...)
+	if seed1 == 0 && seed2 == 0 {
+		seed2 = 1
+	}
+
+	//nolint:gosec // Deterministic test data requires seeded pseudo-randomness.
+	return randv2.New(randv2.NewPCG(seed1, seed2))
 }

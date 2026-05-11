@@ -9,6 +9,15 @@ generator "email" "verification_email" {
   domain = "example.com"
 }
 
+generator "password" "verification_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+  specials    = "!@#$%^&*"
+}
+
 scenario "Register and verify account from email" {
   tags = ["email", "verification"]
 
@@ -24,7 +33,7 @@ scenario "Register and verify account from email" {
 
       json = {
         email    = generate("verification_email")
-        password = "Passw0rd!"
+        password = generate("verification_password")
       }
     }
 

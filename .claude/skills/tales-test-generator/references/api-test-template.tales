@@ -9,6 +9,15 @@ generator "email" "user_email" {
   domain = "example.com"
 }
 
+generator "password" "user_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+  specials    = "!@#$%^&*"
+}
+
 scenario "API happy path" {
   tags = ["api", "smoke"]
 
@@ -24,7 +33,7 @@ scenario "API happy path" {
 
       json = {
         email    = generate("user_email")
-        password = "Passw0rd!"
+        password = generate("user_password")
       }
     }
 
