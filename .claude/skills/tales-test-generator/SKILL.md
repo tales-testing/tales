@@ -31,7 +31,7 @@ Use this skill when asked to:
 - optional `config { ... }`
 - optional `generator "type" "name" { ... }`
 - `scenario "..." { ... }`
-- `step "http" "name" { request { ... } expect { ... } capture { ... } }`
+- `step "http" "name" { optional retry { ... } request { ... } expect { ... } capture { ... } }`
 - optional `teardown { step ... }`
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
 
@@ -42,6 +42,7 @@ Use this skill when asked to:
 - Prefer robust assertions (`contains`, `is_string`, `one_of`) over brittle full payload equality unless strict matching is explicitly required.
 - Capture only reusable values needed by later steps/teardown.
 - Use `result.<step>.<field>` references to model dependencies.
+- Use bounded `retry` blocks for eventually consistent HTTP flows instead of adding artificial sleeps.
 
 4. Always include resilient cleanup:
 - Put cleanup calls in `teardown`.
@@ -69,7 +70,40 @@ Use this skill when asked to:
   - keyword internal step names must not collide with outer scenario step names
 - Use `request.json` for JSON payloads and `request.body` for non-JSON text payloads.
 - `request.url` must be an absolute `http` or `https` URL.
-- Matchers available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`.
+- `expect.body` can be used for raw response-body assertions, including matchers such as `contains(...)`.
+- Response headers are accessible by key, for example `response.headers["Content-Type"]`; lower-case lookup such as `response.headers["content-type"]` is supported for HTTP responses.
+- `retry.attempts` must be `>= 1`.
+- `retry.interval` must be a valid Go duration string such as `"100ms"`, `"500ms"`, or `"2s"`.
+- Matchers/functions available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`, `regex_find`.
+- Use `regex_find(value, pattern)` for full matches and `regex_find(value, pattern, group)` for capture groups.
+- `coalesce(...)` is intentionally not a supported fallback primitive yet because lazy evaluation is required for missing-reference fallbacks.
+
+## Async polling pattern
+
+For asynchronous API effects such as email verification, prefer an HTTP polling step with `retry` and capture extracted data with `regex_find`:
+
+```hcl
+step "http" "find_verification_email" {
+  retry {
+    attempts = 10
+    interval = "100ms"
+  }
+
+  request {
+    method = "GET"
+    url    = "${config.base_url}/mail/messages?to=${result.register.email}"
+  }
+
+  expect {
+    status = 200
+    body   = contains(result.register.email)
+  }
+
+  capture {
+    code = regex_find(response.body, "verification code is ([A-Z0-9]{6})", 1)
+  }
+}
+```
 
 ## Output contract
 

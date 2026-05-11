@@ -242,6 +242,43 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 }
 
 func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
+	retry := retryOptions(step)
+	start := time.Now()
+
+	var lastResult *report.StepResult
+
+	for attempt := 1; attempt <= retry.Attempts; attempt++ {
+		attemptResult := r.executeStepAttempt(ctx, evaluator, suite, scenarioName, config, state, input, step)
+		attemptResult.Attempts = attempt
+		lastResult = attemptResult
+
+		if attemptResult.Status == report.StatusPass || attempt == retry.Attempts {
+			attemptResult.Duration = time.Since(start)
+
+			return attemptResult
+		}
+
+		if retry.Interval > 0 {
+			if !sleepWithContext(ctx, retry.Interval) {
+				attemptResult.Status = report.StatusFail
+				attemptResult.Failure = &report.ErrorDetail{Kind: "runtime", Message: "step retry interrupted by context cancellation"}
+				attemptResult.Duration = time.Since(start)
+
+				return attemptResult
+			}
+		}
+	}
+
+	if lastResult != nil {
+		lastResult.Duration = time.Since(start)
+
+		return lastResult
+	}
+
+	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusFail, Attempts: retry.Attempts, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: "runtime", Message: "step was not executed"}}
+}
+
+func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
 	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusPass}
 	start := time.Now()
 
@@ -318,6 +355,31 @@ func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, sui
 	stepReport.Duration = time.Since(start)
 
 	return stepReport
+}
+
+func retryOptions(step *model.Step) model.Retry {
+	if step.Retry == nil {
+		return model.Retry{Attempts: 1}
+	}
+
+	retry := *step.Retry
+	if retry.Attempts < 1 {
+		retry.Attempts = 1
+	}
+
+	return retry
+}
+
+func sleepWithContext(ctx context.Context, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
@@ -461,6 +523,10 @@ func evaluateExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioNam
 		return err
 	}
 
+	if err := assertExpectedBody(evaluator, scope, scenarioName, step, output); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -541,6 +607,28 @@ func assertExpectedJSON(evaluator *lang.Evaluator, scope lang.ScopeData, scenari
 	responseJSON := output.Response["json"]
 	if err := assertion.MatchJSON(expectedJSON, responseJSON, strict, "$"); err != nil {
 		return fmt.Errorf("assert json body: %w", err)
+	}
+
+	return nil
+}
+
+func assertExpectedBody(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, output *provider.Output) error {
+	if step.Expect.Body.Empty() {
+		return nil
+	}
+
+	expectedBody, err := evaluator.Eval(step.Expect.Body, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "expect.body"})
+	if err != nil {
+		return fmt.Errorf("expect.body: %w", err)
+	}
+
+	if expectedBody.IsNull() {
+		return nil
+	}
+
+	responseBody := output.Response["body"]
+	if err := assertion.MatchJSON(expectedBody, responseBody, true, "body"); err != nil {
+		return fmt.Errorf("assert body: %w", err)
 	}
 
 	return nil

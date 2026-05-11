@@ -29,21 +29,25 @@ type post struct {
 }
 
 type serverState struct {
-	mu         sync.Mutex
-	nextUserID int
-	nextPostID int
-	users      map[string]user
-	posts      map[string]post
-	tokens     map[string]string
+	mu                sync.Mutex
+	nextUserID        int
+	nextPostID        int
+	users             map[string]user
+	posts             map[string]post
+	tokens            map[string]string
+	verificationCodes map[string]string
+	mailPolls         map[string]int
 }
 
 func newState() *serverState {
 	return &serverState{
-		nextUserID: 1,
-		nextPostID: 1,
-		users:      map[string]user{},
-		posts:      map[string]post{},
-		tokens:     map[string]string{},
+		nextUserID:        1,
+		nextPostID:        1,
+		users:             map[string]user{},
+		posts:             map[string]post{},
+		tokens:            map[string]string{},
+		verificationCodes: map[string]string{},
+		mailPolls:         map[string]int{},
 	}
 }
 
@@ -63,6 +67,8 @@ func main() {
 	r.HandleFunc("/users", state.createUser).Methods(http.MethodPost)
 	r.HandleFunc("/users/{id}", state.deleteUser).Methods(http.MethodDelete)
 	r.HandleFunc("/auth", state.auth).Methods(http.MethodPost)
+	r.HandleFunc("/mail/messages", state.mailMessages).Methods(http.MethodGet)
+	r.HandleFunc("/verify-email", state.verifyEmail).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts/{id}", state.getPost).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts/{id}", state.deletePost).Methods(http.MethodDelete)
@@ -100,6 +106,7 @@ func (s *serverState) createUser(w http.ResponseWriter, req *http.Request) {
 	s.nextUserID++
 	usr := user{id: id, email: payload.email, secret: payload.secret}
 	s.users[id] = usr
+	s.verificationCodes[usr.email] = verificationCode(id)
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":         id,
 		"email":      usr.email,
@@ -119,13 +126,16 @@ func (s *serverState) deleteUser(w http.ResponseWriter, req *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.users[id]; !exists {
+	usr, exists := s.users[id]
+	if !exists {
 		writeJSON(w, http.StatusNotFound, map[string]interface{}{"error": "not found"})
 
 		return
 	}
 
 	delete(s.users, id)
+	delete(s.verificationCodes, usr.email)
+	delete(s.mailPolls, usr.email)
 	writeJSON(w, http.StatusNoContent, map[string]interface{}{"deleted": true})
 }
 
@@ -151,6 +161,61 @@ func (s *serverState) auth(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid credentials"})
+}
+
+func (s *serverState) mailMessages(w http.ResponseWriter, req *http.Request) {
+	email := req.URL.Query().Get("to")
+	if email == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "missing to"})
+
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.mailPolls[email]++
+
+	code, ok := s.verificationCodes[email]
+	if !ok || s.mailPolls[email] < 2 {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"messages": []interface{}{}})
+
+		return
+	}
+
+	w.Header().Set("X-Test-Verification-Code", code)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"messages": []interface{}{
+			map[string]interface{}{
+				"to":      email,
+				"subject": "Verify your account",
+				"body":    fmt.Sprintf("Your verification code is %s", code),
+			},
+		},
+	})
+}
+
+func (s *serverState) verifyEmail(w http.ResponseWriter, req *http.Request) {
+	payload := map[string]string{}
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	email := payload["email"]
+	code := payload["code"]
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.verificationCodes[email] != code {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid verification code"})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"verified": true})
 }
 
 func (s *serverState) createPost(w http.ResponseWriter, req *http.Request) {
@@ -247,6 +312,7 @@ func (s *serverState) connectCreateUser(w http.ResponseWriter, req *http.Request
 	s.nextUserID++
 	usr := user{id: id, email: payload.email, secret: payload.secret}
 	s.users[id] = usr
+	s.verificationCodes[usr.email] = verificationCode(id)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":         id,
 		"email":      payload.email,
@@ -291,4 +357,13 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func verificationCode(id string) string {
+	value, err := strconv.Atoi(id)
+	if err != nil {
+		return "A00000"
+	}
+
+	return fmt.Sprintf("A%05d", value)
 }

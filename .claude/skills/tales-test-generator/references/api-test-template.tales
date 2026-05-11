@@ -47,6 +47,12 @@ scenario "API happy path" {
   }
 
   step "http" "auth_user" {
+    # For eventually consistent APIs, add a bounded retry block:
+    # retry {
+    #   attempts = 5
+    #   interval = "100ms"
+    # }
+
     request {
       method = "POST"
       url    = "${config.base_url}/auth"

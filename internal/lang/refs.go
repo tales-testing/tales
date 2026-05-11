@@ -72,6 +72,7 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 		collect(step.Expect.Status)
 		collect(step.Expect.Headers)
 		collect(step.Expect.JSON)
+		collect(step.Expect.Body)
 		collect(step.Expect.Strict)
 	}
 

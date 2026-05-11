@@ -1,0 +1,158 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+generator "email" "verification_email" {
+  prefix = "verify-"
+  domain = "example.com"
+}
+
+scenario "Register and verify account from email" {
+  tags = ["email", "verification"]
+
+  step "http" "register" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = generate("verification_email")
+        password = "Passw0rd!"
+      }
+    }
+
+    expect {
+      status = 201
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        id    = is_string()
+        email = request.json.email
+      }
+    }
+
+    capture {
+      id       = response.json.id
+      email    = response.json.email
+      password = request.json.password
+    }
+  }
+
+  step "http" "find_verification_email" {
+    retry {
+      attempts = 10
+      interval = "100ms"
+    }
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/mail/messages?to=${result.register.email}"
+    }
+
+    expect {
+      status = 200
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        messages = is_array()
+      }
+
+      body = contains(result.register.email)
+    }
+
+    capture {
+      code      = regex_find(response.body, "verification code is ([A-Z0-9]{6})", 1)
+      header_ct = response.headers["content-type"]
+    }
+  }
+
+  step "http" "verify_email" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/verify-email"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email = result.register.email
+        code  = result.find_verification_email.code
+      }
+    }
+
+    expect {
+      status = 200
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        verified = true
+      }
+    }
+  }
+
+  step "http" "auth_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/auth"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      json = {
+        email    = result.register.email
+        password = result.register.password
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        access_token = is_string()
+      }
+    }
+
+    capture {
+      token = response.json.access_token
+    }
+  }
+
+  teardown {
+    step "http" "delete_user" {
+      when = can(result.register.id)
+
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/users/${result.register.id}"
+
+        headers = {
+          Authorization = "Bearer ${result.auth_user.token}"
+        }
+      }
+
+      expect {
+        status = one_of([200, 204, 404])
+      }
+    }
+  }
+}

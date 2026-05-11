@@ -240,7 +240,12 @@ func updateStepStats(stats *consoleStats, status Status) {
 func printStep(out io.Writer, label string, width int, step *StepResult, painter colorPainter) error {
 	statusLabel := painter.statusPadded(step.Status, 7)
 
-	if _, err := fmt.Fprintf(out, "  %s %-*s [%s] %s %s\n", label, width, step.Name, step.Provider, statusLabel, step.Duration); err != nil {
+	attempts := ""
+	if step.Attempts > 1 {
+		attempts = fmt.Sprintf(" attempts=%d", step.Attempts)
+	}
+
+	if _, err := fmt.Fprintf(out, "  %s %-*s [%s] %s %s%s\n", label, width, step.Name, step.Provider, statusLabel, step.Duration, attempts); err != nil {
 		return fmt.Errorf("print line: %w", err)
 	}
 
