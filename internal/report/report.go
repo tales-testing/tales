@@ -46,6 +46,7 @@ type StepResult struct {
 	Request    map[string]interface{}
 	Response   map[string]interface{}
 	StatusCode int
+	Attempts   int
 	Failure    *ErrorDetail
 }
 

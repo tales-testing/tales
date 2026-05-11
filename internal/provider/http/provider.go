@@ -223,8 +223,11 @@ func buildOutput(
 	request map[string]cty.Value,
 ) (*provider.Output, error) {
 	responseHeaders := map[string]cty.Value{}
+
 	for key, values := range resp.Header {
-		responseHeaders[key] = cty.StringVal(strings.Join(values, ","))
+		joined := strings.Join(values, ",")
+		responseHeaders[key] = cty.StringVal(joined)
+		responseHeaders[strings.ToLower(key)] = cty.StringVal(joined)
 	}
 
 	responseJSON := decodeResponseJSON(resp.Header.Get("Content-Type"), respBytes)

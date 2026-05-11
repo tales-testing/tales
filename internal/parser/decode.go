@@ -2,10 +2,12 @@ package parser
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hyperxlab/tales/internal/model"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
@@ -142,8 +144,15 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 				Status:  expr(path, expect.Status),
 				Headers: expr(path, expect.Headers),
 				JSON:    expr(path, expect.JSON),
+				Body:    expr(path, expect.Body),
 				Strict:  expr(path, expect.Strict),
 			}
+		}
+
+		if rs.Retry != nil {
+			retry, rDiags := decodeRetry(rs.Retry)
+			diags = append(diags, rDiags...)
+			step.Retry = retry
 		}
 
 		if rs.Capture != nil {
@@ -171,6 +180,103 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 	}
 
 	return steps, diags
+}
+
+func decodeRetry(raw *retryBlock) (*model.Retry, hcl.Diagnostics) {
+	retry := &model.Retry{Attempts: 1}
+	diags := make(hcl.Diagnostics, 0, 2)
+
+	if raw.Attempts == nil && raw.Interval == nil {
+		return retry, diags
+	}
+
+	attempts, attemptsDiags := decodeRetryAttempts(raw.Attempts)
+
+	diags = append(diags, attemptsDiags...)
+	if !attemptsDiags.HasErrors() {
+		retry.Attempts = attempts
+	}
+
+	interval, intervalDiags := decodeRetryInterval(raw.Interval)
+
+	diags = append(diags, intervalDiags...)
+	if !intervalDiags.HasErrors() {
+		retry.Interval = interval
+	}
+
+	return retry, diags
+}
+
+func decodeRetryAttempts(expression hcl.Expression) (int, hcl.Diagnostics) {
+	if expression == nil {
+		return 1, nil
+	}
+
+	value, diags := expression.Value(nil)
+	if diags.HasErrors() {
+		return 1, diags
+	}
+
+	attempts, err := numberToInt(value)
+	if err != nil {
+		rangeValue := expression.Range()
+
+		return 1, hcl.Diagnostics{diagError("Invalid retry attempts", err.Error(), &rangeValue)}
+	}
+
+	if attempts < 1 {
+		rangeValue := expression.Range()
+
+		return 1, hcl.Diagnostics{diagError("Invalid retry attempts", "retry.attempts must be greater than or equal to 1.", &rangeValue)}
+	}
+
+	return attempts, nil
+}
+
+func decodeRetryInterval(expression hcl.Expression) (time.Duration, hcl.Diagnostics) {
+	if expression == nil {
+		return 0, nil
+	}
+
+	value, diags := expression.Value(nil)
+	if diags.HasErrors() {
+		return 0, diags
+	}
+
+	interval, err := stringToDuration(value)
+	if err != nil {
+		rangeValue := expression.Range()
+
+		return 0, hcl.Diagnostics{diagError("Invalid retry interval", err.Error(), &rangeValue)}
+	}
+
+	return interval, nil
+}
+
+func numberToInt(value cty.Value) (int, error) {
+	if value.Type() != cty.Number {
+		return 0, fmt.Errorf("retry.attempts must be a number")
+	}
+
+	attempts, accuracy := value.AsBigFloat().Int64()
+	if accuracy != 0 {
+		return 0, fmt.Errorf("retry.attempts must be an integer")
+	}
+
+	return int(attempts), nil
+}
+
+func stringToDuration(value cty.Value) (time.Duration, error) {
+	if value.Type() != cty.String {
+		return 0, fmt.Errorf("retry.interval must be a duration string")
+	}
+
+	interval, err := time.ParseDuration(value.AsString())
+	if err != nil {
+		return 0, fmt.Errorf("retry.interval must be a valid duration: %w", err)
+	}
+
+	return interval, nil
 }
 
 func bodyToNamedExprMap(path string, body hcl.Body) (map[string]model.Expression, hcl.Diagnostics) {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/function/stdlib"
@@ -89,10 +90,70 @@ func oneOfFunc() function.Function {
 	})
 }
 
+func regexFindFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{
+			{Name: "value", Type: cty.DynamicPseudoType},
+			{Name: "pattern", Type: cty.String},
+		},
+		VarParam: &function.Parameter{
+			Name: "group",
+			Type: cty.Number,
+		},
+		Type: function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			groupIndex := 0
+
+			if len(args) > 2 {
+				parsedGroup, err := ctyNumberToInt(args[2])
+				if err != nil {
+					return cty.NilVal, err
+				}
+
+				groupIndex = parsedGroup
+			}
+
+			pattern := args[1].AsString()
+
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				return cty.NilVal, fmt.Errorf("regex_find pattern is invalid: %w", err)
+			}
+
+			value := diagnostic.ScalarString(args[0])
+
+			matches := re.FindStringSubmatch(value)
+			if matches == nil {
+				return cty.NilVal, fmt.Errorf("regex_find found no match")
+			}
+
+			if groupIndex < 0 || groupIndex >= len(matches) {
+				return cty.NilVal, fmt.Errorf("regex_find group %d is out of range", groupIndex)
+			}
+
+			return cty.StringVal(matches[groupIndex]), nil
+		},
+	})
+}
+
+func ctyNumberToInt(value cty.Value) (int, error) {
+	if value.Type() != cty.Number {
+		return 0, fmt.Errorf("number value expected")
+	}
+
+	parsed, accuracy := value.AsBigFloat().Int64()
+	if accuracy != 0 {
+		return 0, fmt.Errorf("integer value expected")
+	}
+
+	return int(parsed), nil
+}
+
 func baseFunctions() map[string]function.Function {
 	return map[string]function.Function{
 		"env":        envFunc(),
 		"jsonencode": stdlib.JSONEncodeFunc,
+		"regex_find": regexFindFunc(),
 		"contains":   matcherSingleArg("contains"),
 		"matches":    matchesFunc(),
 		"exists":     matcherNoArg("exists"),

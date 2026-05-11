@@ -42,8 +42,14 @@ type stepBlock struct {
 	Expect    *expectBlock   `hcl:"expect,block"`
 	Response  *expectBlock   `hcl:"response,block"`
 	Capture   *captureBlock  `hcl:"capture,block"`
+	Retry     *retryBlock    `hcl:"retry,block"`
 	CallName  hcl.Expression `hcl:"name,optional"`
 	Inputs    hcl.Expression `hcl:"inputs,optional"`
+}
+
+type retryBlock struct {
+	Attempts hcl.Expression `hcl:"attempts,optional"`
+	Interval hcl.Expression `hcl:"interval,optional"`
 }
 
 type requestBlock struct {
@@ -60,6 +66,7 @@ type expectBlock struct {
 	Status  hcl.Expression `hcl:"status,optional"`
 	Headers hcl.Expression `hcl:"headers,optional"`
 	JSON    hcl.Expression `hcl:"json,optional"`
+	Body    hcl.Expression `hcl:"body,optional"`
 	Strict  hcl.Expression `hcl:"strict,optional"`
 }
 
