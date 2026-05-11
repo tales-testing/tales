@@ -55,6 +55,15 @@ func TestRegexFindGroupOutOfRangeError(t *testing.T) {
 	}
 }
 
+func TestRegexFindRejectsMultipleGroupIndices(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`regex_find("Your code is A1B2C3", "code is ([A-Z0-9]{6})", 1, 2)`)
+	if err == nil || !strings.Contains(err.Error(), "at most one capture group index") {
+		t.Fatalf("expected multiple group index error, got %v", err)
+	}
+}
+
 func TestRegexFindConvertsNonStringInput(t *testing.T) {
 	t.Parallel()
 

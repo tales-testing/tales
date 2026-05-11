@@ -362,7 +362,12 @@ func retryOptions(step *model.Step) model.Retry {
 		return model.Retry{Attempts: 1}
 	}
 
-	return *step.Retry
+	retry := *step.Retry
+	if retry.Attempts < 1 {
+		retry.Attempts = 1
+	}
+
+	return retry
 }
 
 func sleepWithContext(ctx context.Context, duration time.Duration) bool {

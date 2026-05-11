@@ -120,6 +120,26 @@ func TestRetryStepFailsAfterAllAttemptsWithLastError(t *testing.T) {
 	}
 }
 
+func TestRetryInvalidProgrammaticAttemptsStillRunsOnce(t *testing.T) {
+	t.Parallel()
+
+	providerImpl := &retryProvider{calls: map[string]int{}, passAfter: map[string]int{"main": 1}}
+	result := runRetryScenario(t, providerImpl, retryStep("main", 0, 0))
+	step := result.Scenarios[0].Steps[0]
+
+	if step.Status != report.StatusPass {
+		t.Fatalf("step should pass, got %s", step.Status)
+	}
+
+	if step.Attempts != 1 {
+		t.Fatalf("attempts=%d", step.Attempts)
+	}
+
+	if providerImpl.callCount("main") != 1 {
+		t.Fatalf("provider calls=%d", providerImpl.callCount("main"))
+	}
+}
+
 func TestRetryCaptureUsesEventualSuccess(t *testing.T) {
 	t.Parallel()
 

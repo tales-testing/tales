@@ -75,7 +75,7 @@ func encodeStepEvent(encoder *json.Encoder, seed int64, phase string, step *Step
 		stepEvent["status_code"] = step.StatusCode
 	}
 
-	if step.Attempts > 0 {
+	if step.Attempts > 1 {
 		stepEvent["attempts"] = step.Attempts
 	}
 

@@ -102,6 +102,10 @@ func regexFindFunc() function.Function {
 		},
 		Type: function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			if len(args) > 3 {
+				return cty.NilVal, fmt.Errorf("regex_find accepts at most one capture group index")
+			}
+
 			groupIndex := 0
 
 			if len(args) > 2 {
