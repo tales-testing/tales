@@ -8,6 +8,7 @@ BUILD_READY := .build-ready
 UNIT_PKGS := ./internal/... ./cmd/tales
 
 .PHONY: build tales-bin mock-bin
+.PHONY: build tales-bin mock-bin install
 build: tales-bin mock-bin
 
 $(BUILD_READY):
@@ -20,6 +21,13 @@ tales-bin: | $(BUILD_READY)
 mock-bin: | $(BUILD_READY)
 	@go build -o $(MOCK_BIN) ./e2e/mockserver
 
+install: tales-bin
+	@echo "Installation de $(TALES_BIN) dans $(GOBIN) ou $(GOPATH)/bin"
+	@if [ -n "$(GOBIN)" ]; then \
+		install -m 755 $(TALES_BIN) "$(GOBIN)/tales"; \
+	  else \
+		install -m 755 $(TALES_BIN) "$(shell go env GOPATH)/bin/tales"; \
+	  fi
 .PHONY: test
 test:
 	@go test -race -count=1 $(UNIT_PKGS)
