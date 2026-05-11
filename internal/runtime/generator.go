@@ -180,6 +180,8 @@ func runMACAddressGenerator(params map[string]cty.Value, rnd generatorRandom) (s
 	}
 
 	switch {
+	case lowercase && uppercase:
+		return "", fmt.Errorf("mac_address generator lowercase and uppercase cannot both be true")
 	case lowercase:
 		opts = append(opts, faker.WithMACLowercase())
 	case uppercase:
@@ -312,9 +314,9 @@ func parseGender(value string) (faker.Gender, error) {
 	switch strings.ToLower(value) {
 	case "", "any":
 		return faker.GenderAny, nil
-	case "male", "man":
+	case "male":
 		return faker.GenderMale, nil
-	case "female", "woman":
+	case "female":
 		return faker.GenderFemale, nil
 	default:
 		return faker.GenderAny, fmt.Errorf("person generator gender must be one of: any, male, female")

@@ -237,6 +237,18 @@ func TestMACAddressGeneratorUsesDeterministicFaker(t *testing.T) {
 	}
 }
 
+func TestMACAddressGeneratorRejectsConflictingCase(t *testing.T) {
+	t.Parallel()
+
+	_, err := runGenerator("mac_address", map[string]cty.Value{
+		"lowercase": cty.BoolVal(true),
+		"uppercase": cty.BoolVal(true),
+	}, newGeneratorRandom(1234, "scenario", "step", "request.json", "device_mac"))
+	if err == nil || !strings.Contains(err.Error(), "lowercase and uppercase cannot both be true") {
+		t.Fatalf("expected conflict error, got %v", err)
+	}
+}
+
 func TestBytesGeneratorUsesDeterministicFaker(t *testing.T) {
 	t.Parallel()
 

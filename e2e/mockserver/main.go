@@ -331,24 +331,31 @@ func decodeCredentialPayload(req *http.Request) (*credentialPayload, error) {
 		return nil, fmt.Errorf("decode credential payload: %w", err)
 	}
 
-	return &credentialPayload{
-		email:  stringField(data, "email"),
-		secret: stringField(data, "password"),
-	}, nil
+	email, err := requiredStringField(data, "email")
+	if err != nil {
+		return nil, err
+	}
+
+	secret, err := requiredStringField(data, "password")
+	if err != nil {
+		return nil, err
+	}
+
+	return &credentialPayload{email: email, secret: secret}, nil
 }
 
-func stringField(data map[string]interface{}, key string) string {
+func requiredStringField(data map[string]interface{}, key string) (string, error) {
 	value, ok := data[key]
 	if !ok || value == nil {
-		return ""
+		return "", fmt.Errorf("credential payload field %q is required", key)
 	}
 
 	text, ok := value.(string)
 	if !ok {
-		return ""
+		return "", fmt.Errorf("credential payload field %q must be a string", key)
 	}
 
-	return text
+	return text, nil
 }
 
 func (s *serverState) authenticate(req *http.Request) (string, bool) {
