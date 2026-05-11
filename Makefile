@@ -4,10 +4,13 @@ BUILD_DIR ?= build
 TALES_BIN := $(BUILD_DIR)/tales
 MOCK_BIN := $(BUILD_DIR)/mockserver
 BUILD_READY := .build-ready
+GO_GOBIN := $(shell go env GOBIN)
+GO_GOPATH := $(shell go env GOPATH)
+INSTALL_DIR ?= $(if $(GOBIN),$(GOBIN),$(if $(GO_GOBIN),$(GO_GOBIN),$(GO_GOPATH)/bin))
 
 UNIT_PKGS := ./internal/... ./cmd/tales
 
-.PHONY: build tales-bin mock-bin
+.PHONY: build tales-bin mock-bin install
 build: tales-bin mock-bin
 
 $(BUILD_READY):
@@ -15,11 +18,16 @@ $(BUILD_READY):
 	@touch $(BUILD_READY)
 
 tales-bin: | $(BUILD_READY)
+	@echo "Building $(TALES_BIN)..."
 	@go build -o $(TALES_BIN) ./cmd/tales
 
 mock-bin: | $(BUILD_READY)
 	@go build -o $(MOCK_BIN) ./e2e/mockserver
 
+install: tales-bin
+	@mkdir -p "$(INSTALL_DIR)"
+	@install -m 755 "$(TALES_BIN)" "$(INSTALL_DIR)/tales"
+	@echo "Installed $(TALES_BIN) to $(INSTALL_DIR)/tales"
 .PHONY: test
 test:
 	@go test -race -count=1 $(UNIT_PKGS)
