@@ -121,3 +121,25 @@ func TestMaskBodyFormEncodedSecrets(t *testing.T) {
 		t.Fatalf("unexpected masked form body: %v", masked)
 	}
 }
+
+func TestSanitizeMapMasksAuthPassword(t *testing.T) {
+	t.Parallel()
+
+	sanitized := SanitizeMap(map[string]interface{}{
+		"auth": map[string]interface{}{
+			"basic": map[string]interface{}{
+				"username": "admin",
+				"password": "secret",
+			},
+		},
+	})
+
+	auth := sanitized["auth"].(map[string]interface{})
+	basic := auth["basic"].(map[string]interface{})
+	if basic["username"] != "admin" {
+		t.Fatalf("username should remain visible: %#v", basic)
+	}
+	if basic["password"] != "***" {
+		t.Fatalf("password should be masked: %#v", basic)
+	}
+}

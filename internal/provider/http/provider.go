@@ -438,6 +438,10 @@ func buildOutput(
 		output.Request["body"] = bodyVal
 	}
 
+	if authVal, ok := request["auth"]; ok {
+		output.Request["auth"] = authVal
+	}
+
 	return output, nil
 }
 

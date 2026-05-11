@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/hyperxlab/tales/internal/provider"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -205,6 +206,20 @@ func TestHTTPProviderBasicAuth(t *testing.T) {
 	}
 	if headers["Authorization"].AsString() != "Basic ***" {
 		t.Fatalf("authorization should be report-safe, got %q", headers["Authorization"].AsString())
+	}
+
+	auth := out.Request["auth"].AsValueMap()["basic"].AsValueMap()
+	if auth["username"].AsString() != "admin" {
+		t.Fatalf("auth username not preserved")
+	}
+	if auth["password"].AsString() != "secret" {
+		t.Fatalf("auth password not preserved for request expressions")
+	}
+
+	sanitized := diagnostic.FromCTYMap(out.Request)
+	basic := sanitized["auth"].(map[string]interface{})["basic"].(map[string]interface{})
+	if basic["password"] != "***" {
+		t.Fatalf("auth password should be masked in diagnostics: %#v", basic)
 	}
 }
 

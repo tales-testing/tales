@@ -70,6 +70,11 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 			collect(step.Request.Body.Raw)
 		}
 
+		if step.Request.Auth != nil && step.Request.Auth.Basic != nil {
+			collect(step.Request.Auth.Basic.Username)
+			collect(step.Request.Auth.Basic.Password)
+		}
+
 		collect(step.Request.Timeout)
 	}
 
