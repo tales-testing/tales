@@ -69,6 +69,27 @@ e2e: build
 	done; \
 	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 4 --report-junit $(BUILD_DIR)/reports/e2e.junit.xml --report-jsonl $(BUILD_DIR)/reports/e2e.jsonl ./e2e/pass
 
+.PHONY: e2e-ios
+e2e-ios:
+	@if [ "$$(uname -s)" != "Darwin" ]; then \
+		echo "make e2e-ios is macOS only (got $$(uname -s)); skipping."; \
+		exit 0; \
+	fi
+	@if [ -z "$${IOS_APP_PATH:-}" ] || [ -z "$${IOS_BUNDLE_ID:-}" ]; then \
+		echo "Set IOS_APP_PATH=./build/MyApp.app and IOS_BUNDLE_ID=com.example.MyApp to run make e2e-ios."; \
+		echo "Optional: IOS_DEVICE_NAME (default 'iPhone 17 Pro'), IOS_DRIVER_HOST, IOS_DRIVER_PORT."; \
+		exit 0; \
+	fi
+	@$(MAKE) tales-bin
+	@xcodebuild -project drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj \
+		-scheme TalesAppleDriverUITests \
+		-destination "platform=iOS Simulator,name=$${IOS_DEVICE_NAME:-iPhone 17 Pro}" \
+		-derivedDataPath build/ios-driver-derived \
+		build-for-testing
+	@echo "Driver built. Start it manually with:"
+	@echo "  xcodebuild -project drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj -scheme TalesAppleDriverUITests -destination 'platform=iOS Simulator,name=$${IOS_DEVICE_NAME:-iPhone 17 Pro}' test-without-building"
+	@echo "Then in another shell, run: $(TALES_BIN) test ./e2e/ios --seed 1234"
+
 .PHONY: e2e-failure
 e2e-failure: build
 	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
