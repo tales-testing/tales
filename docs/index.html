@@ -198,16 +198,51 @@ Summary: 3 scenarios passed, 9 steps passed, seed 1234</code></pre>
 
           <div class="code-browser" id="quick-start">
             <div class="code-tabs" role="tablist" aria-label="Code examples">
-              <button class="code-tab is-active" type="button" role="tab" aria-selected="true" data-code-tab="scenario">
+              <button
+                class="code-tab is-active"
+                id="scenario-tab"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="scenario-panel"
+                tabindex="0"
+                data-code-tab="scenario"
+              >
                 Scenario
               </button>
-              <button class="code-tab" type="button" role="tab" aria-selected="false" data-code-tab="cli">CLI</button>
-              <button class="code-tab" type="button" role="tab" aria-selected="false" data-code-tab="reports">
+              <button
+                class="code-tab"
+                id="cli-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="cli-panel"
+                tabindex="-1"
+                data-code-tab="cli"
+              >
+                CLI
+              </button>
+              <button
+                class="code-tab"
+                id="reports-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="reports-panel"
+                tabindex="-1"
+                data-code-tab="reports"
+              >
                 Reports
               </button>
             </div>
 
-            <div class="code-panel is-active" role="tabpanel" data-code-panel="scenario">
+            <div
+              class="code-panel is-active"
+              id="scenario-panel"
+              role="tabpanel"
+              aria-labelledby="scenario-tab"
+              data-code-panel="scenario"
+            >
               <div class="code-panel-header">
                 <span>tests/blog.tales</span>
                 <button class="copy-button" type="button" data-copy-target="scenario-code">Copy</button>
@@ -253,7 +288,14 @@ scenario "Create a blog post" {
 }</code></pre>
             </div>
 
-            <div class="code-panel" role="tabpanel" data-code-panel="cli" hidden>
+            <div
+              class="code-panel"
+              id="cli-panel"
+              role="tabpanel"
+              aria-labelledby="cli-tab"
+              data-code-panel="cli"
+              hidden
+            >
               <div class="code-panel-header">
                 <span>Terminal</span>
                 <button class="copy-button" type="button" data-copy-target="cli-code">Copy</button>
@@ -273,7 +315,14 @@ tales test ./e2e/pass \
   --report-jsonl build/reports/e2e.jsonl</code></pre>
             </div>
 
-            <div class="code-panel" role="tabpanel" data-code-panel="reports" hidden>
+            <div
+              class="code-panel"
+              id="reports-panel"
+              role="tabpanel"
+              aria-labelledby="reports-tab"
+              data-code-panel="reports"
+              hidden
+            >
               <div class="code-panel-header">
                 <span>Reports</span>
                 <button class="copy-button" type="button" data-copy-target="reports-code">Copy</button>
