@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(gh pr *)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
