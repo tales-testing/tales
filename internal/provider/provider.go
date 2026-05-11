@@ -15,6 +15,7 @@ type Input struct {
 	Config   map[string]cty.Value
 	Request  map[string]cty.Value
 	Expect   map[string]cty.Value
+	Mobile   *MobileExecution
 	Timeout  time.Duration
 }
 
