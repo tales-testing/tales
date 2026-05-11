@@ -14,6 +14,7 @@ type Step struct {
 	Expect    *Expect
 	Capture   map[string]Expression
 	Keyword   *KeywordCall
+	Mobile    *MobileStep
 	Retry     *Retry
 }
 
