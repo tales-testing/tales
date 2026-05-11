@@ -3,7 +3,7 @@ module github.com/hyperxlab/tales
 go 1.26
 
 require (
-	github.com/euskadi31/go-faker v0.0.0-20260511143341-1cfc79bce3ed
+	github.com/euskadi31/go-faker v0.0.0-20260511152406-a1e9cfca0915
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/hcl/v2 v2.7.0
 	github.com/mattn/go-isatty v0.0.20

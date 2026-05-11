@@ -1,12 +1,17 @@
 package runtime
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	randv2 "math/rand/v2"
+	"strings"
 
 	faker "github.com/euskadi31/go-faker"
 	"github.com/zclconf/go-cty/cty"
 )
+
+const defaultBytesLength = 16
 
 func runGenerator(generatorType string, params map[string]cty.Value, rnd generatorRandom) (cty.Value, error) {
 	switch generatorType {
@@ -24,6 +29,41 @@ func runGenerator(generatorType string, params map[string]cty.Value, rnd generat
 		}
 
 		return cty.StringVal(password), nil
+	case "timezone":
+		return cty.StringVal(rnd.faker().Timezone()), nil
+	case "locale":
+		locale, err := runLocaleGenerator(params, rnd)
+		if err != nil {
+			return cty.NilVal, err
+		}
+
+		return cty.StringVal(locale), nil
+	case "person":
+		person, err := runPersonGenerator(params, rnd)
+		if err != nil {
+			return cty.NilVal, err
+		}
+
+		return cty.ObjectVal(map[string]cty.Value{
+			"first_name": cty.StringVal(person.FirstName),
+			"last_name":  cty.StringVal(person.LastName),
+			"gender":     cty.StringVal(person.Gender),
+			"name":       cty.StringVal(person.String()),
+		}), nil
+	case "mac_address":
+		macAddress, err := runMACAddressGenerator(params, rnd)
+		if err != nil {
+			return cty.NilVal, err
+		}
+
+		return cty.StringVal(macAddress), nil
+	case "bytes":
+		bytesValue, err := runBytesGenerator(params, rnd)
+		if err != nil {
+			return cty.NilVal, err
+		}
+
+		return cty.StringVal(bytesValue), nil
 	default:
 		return cty.NilVal, fmt.Errorf("generator type %q is not supported", generatorType)
 	}
@@ -71,6 +111,109 @@ func runPasswordGenerator(params map[string]cty.Value, rnd generatorRandom) (str
 	}
 
 	return password, nil
+}
+
+func runLocaleGenerator(params map[string]cty.Value, rnd generatorRandom) (string, error) {
+	opts := make([]faker.LocaleOption, 0, 3)
+
+	if language, ok, err := optionalGeneratorStringParam(params, "locale", "language"); err != nil {
+		return "", err
+	} else if ok {
+		opts = append(opts, faker.WithLocaleLanguage(language))
+	}
+
+	if country, ok, err := optionalGeneratorStringParam(params, "locale", "country"); err != nil {
+		return "", err
+	} else if ok {
+		opts = append(opts, faker.WithLocaleCountry(country))
+	}
+
+	if separator, ok, err := optionalGeneratorStringParam(params, "locale", "separator"); err != nil {
+		return "", err
+	} else if ok {
+		opts = append(opts, faker.WithLocaleSeparator(separator))
+	}
+
+	return rnd.faker().Locale(opts...), nil
+}
+
+func runPersonGenerator(params map[string]cty.Value, rnd generatorRandom) (faker.PersonInfo, error) {
+	opts := make([]faker.PersonOption, 0, 1)
+
+	if gender, ok, err := optionalGeneratorStringParam(params, "person", "gender"); err != nil {
+		return faker.PersonInfo{}, err
+	} else if ok {
+		parsedGender, err := parseGender(gender)
+		if err != nil {
+			return faker.PersonInfo{}, err
+		}
+
+		opts = append(opts, faker.WithGender(parsedGender))
+	}
+
+	return rnd.faker().Person(opts...), nil
+}
+
+func runMACAddressGenerator(params map[string]cty.Value, rnd generatorRandom) (string, error) {
+	opts := make([]faker.MACAddressOption, 0, 3)
+
+	if prefix, ok, err := optionalGeneratorStringParam(params, "mac_address", "prefix"); err != nil {
+		return "", err
+	} else if ok {
+		opts = append(opts, faker.WithMACPrefix(prefix))
+	}
+
+	if separator, ok, err := optionalGeneratorStringParam(params, "mac_address", "separator"); err != nil {
+		return "", err
+	} else if ok {
+		opts = append(opts, faker.WithMACSeparator(separator))
+	}
+
+	lowercase, err := optionalGeneratorBoolParam(params, "mac_address", "lowercase", false)
+	if err != nil {
+		return "", err
+	}
+
+	uppercase, err := optionalGeneratorBoolParam(params, "mac_address", "uppercase", false)
+	if err != nil {
+		return "", err
+	}
+
+	switch {
+	case lowercase:
+		opts = append(opts, faker.WithMACLowercase())
+	case uppercase:
+		opts = append(opts, faker.WithMACUppercase())
+	}
+
+	return rnd.faker().MACAddress(opts...), nil
+}
+
+func runBytesGenerator(params map[string]cty.Value, rnd generatorRandom) (string, error) {
+	length, err := optionalGeneratorIntParam(params, "bytes", "length", defaultBytesLength)
+	if err != nil {
+		return "", err
+	}
+
+	if length < 0 {
+		return "", fmt.Errorf("bytes generator length must be greater than or equal to 0")
+	}
+
+	encoding, err := optionalGeneratorStringParamWithFallback(params, "bytes", "encoding", "hex")
+	if err != nil {
+		return "", err
+	}
+
+	bytesValue := rnd.faker().Bytes(length)
+
+	switch strings.ToLower(encoding) {
+	case "hex":
+		return hex.EncodeToString(bytesValue), nil
+	case "base64":
+		return base64.StdEncoding.EncodeToString(bytesValue), nil
+	default:
+		return "", fmt.Errorf("bytes generator encoding must be one of: hex, base64")
+	}
 }
 
 func passwordGeneratorOptionsFromParams(params map[string]cty.Value) (faker.PasswordOptions, error) {
@@ -126,6 +269,19 @@ func optionalGeneratorIntParam(params map[string]cty.Value, generatorType string
 	return int(parsed), nil
 }
 
+func optionalGeneratorBoolParam(params map[string]cty.Value, generatorType string, name string, fallback bool) (bool, error) {
+	value, ok := params[name]
+	if !ok || value.IsNull() {
+		return fallback, nil
+	}
+
+	if value.Type() != cty.Bool {
+		return false, fmt.Errorf("%s generator %s must be a bool", generatorType, name)
+	}
+
+	return value.True(), nil
+}
+
 func optionalGeneratorStringParamWithFallback(params map[string]cty.Value, generatorType string, name string, fallback string) (string, error) {
 	value, ok, err := optionalGeneratorStringParam(params, generatorType, name)
 	if err != nil {
@@ -150,4 +306,17 @@ func optionalGeneratorStringParam(params map[string]cty.Value, generatorType str
 	}
 
 	return value.AsString(), true, nil
+}
+
+func parseGender(value string) (faker.Gender, error) {
+	switch strings.ToLower(value) {
+	case "", "any":
+		return faker.GenderAny, nil
+	case "male", "man":
+		return faker.GenderMale, nil
+	case "female", "woman":
+		return faker.GenderFemale, nil
+	default:
+		return faker.GenderAny, fmt.Errorf("person generator gender must be one of: any, male, female")
+	}
 }

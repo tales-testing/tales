@@ -326,15 +326,29 @@ type credentialPayload struct {
 }
 
 func decodeCredentialPayload(req *http.Request) (*credentialPayload, error) {
-	data := map[string]string{}
+	data := map[string]interface{}{}
 	if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("decode credential payload: %w", err)
 	}
 
 	return &credentialPayload{
-		email:  data["email"],
-		secret: data["password"],
+		email:  stringField(data, "email"),
+		secret: stringField(data, "password"),
 	}, nil
+}
+
+func stringField(data map[string]interface{}, key string) string {
+	value, ok := data[key]
+	if !ok || value == nil {
+		return ""
+	}
+
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+
+	return text
 }
 
 func (s *serverState) authenticate(req *http.Request) (string, bool) {

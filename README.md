@@ -71,6 +71,27 @@ generator "password" "user_password" {
   specials    = "!@#$%^&*"
 }
 
+generator "timezone" "user_timezone" {}
+
+generator "locale" "user_locale" {
+  separator = "-"
+}
+
+generator "person" "user_person" {
+  gender = "female"
+}
+
+generator "mac_address" "device_mac" {
+  prefix    = "aa:bb"
+  separator = "-"
+  lowercase = true
+}
+
+generator "bytes" "trace_id" {
+  length   = 8
+  encoding = "hex"
+}
+
 scenario "Create a blog post" {
   tags = ["demo"]
 
@@ -87,6 +108,13 @@ scenario "Create a blog post" {
       json = {
         email    = generate("user_email")
         password = generate("user_password")
+        timezone = generate("user_timezone")
+        locale   = generate("user_locale")
+        person   = generate("user_person")
+        device   = {
+          mac_address = generate("device_mac")
+        }
+        trace_id = generate("trace_id")
       }
     }
 
@@ -211,7 +239,7 @@ Exit codes:
 - `expect` assertions for status/headers/json.
 - `capture` to expose a stable contract for next steps.
 - `result.<step_name>.<field>` for cross-step references.
-- `generator "email"` and `generator "password"` for deterministic test data.
+- `generator "email"`, `generator "password"`, `generator "timezone"`, `generator "locale"`, `generator "person"`, `generator "mac_address"`, and `generator "bytes"` for deterministic test data.
 - `teardown { ... }` for deterministic cleanup.
 - `keyword \"...\" { ... }` for reusable flows.
 
@@ -251,6 +279,8 @@ Running the same suite with the same seed produces the same generated values, ev
 Step retries reuse the same deterministic generation context, so generated values do not change between retry attempts.
 
 Password generators default to a 16-character password with at least one uppercase letter, lowercase letter, digit, and special character. Supported password options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
+Locale generators support `language`, `country`, and `separator`. Timezone generators return IANA tzdb names or aliases.
+Person generators return an object with `first_name`, `last_name`, `gender`, and `name`. MAC address generators support `prefix`, `separator`, `lowercase`, and `uppercase`. Bytes generators return deterministic encoded bytes and support `length` plus `encoding` (`hex` or `base64`).
 
 ## Reports
 

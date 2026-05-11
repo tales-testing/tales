@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	faker "github.com/euskadi31/go-faker"
 	"github.com/hyperxlab/tales/internal/model"
@@ -67,6 +68,234 @@ func TestPasswordGeneratorDefaultConstraints(t *testing.T) {
 	}
 
 	assertPasswordConstraints(t, password, defaults)
+}
+
+func TestTimezoneGeneratorUsesDeterministicFaker(t *testing.T) {
+	t.Parallel()
+
+	parts := []string{"scenario", "step", "request.json", "user_timezone"}
+	first, err := runGenerator("timezone", map[string]cty.Value{}, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate first timezone: %v", err)
+	}
+
+	second, err := runGenerator("timezone", map[string]cty.Value{}, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate second timezone: %v", err)
+	}
+
+	otherSeed, err := runGenerator("timezone", map[string]cty.Value{}, newGeneratorRandom(5678, parts...))
+	if err != nil {
+		t.Fatalf("generate other-seed timezone: %v", err)
+	}
+
+	if first.AsString() != second.AsString() {
+		t.Fatalf("same seed generated different timezones: %q vs %q", first.AsString(), second.AsString())
+	}
+
+	if first.AsString() == otherSeed.AsString() {
+		t.Fatalf("different seed generated same timezone: %q", first.AsString())
+	}
+
+	if _, err := time.LoadLocation(first.AsString()); err != nil {
+		t.Fatalf("timezone should be loadable: %q: %v", first.AsString(), err)
+	}
+}
+
+func TestLocaleGeneratorUsesDeterministicFaker(t *testing.T) {
+	t.Parallel()
+
+	params := map[string]cty.Value{
+		"separator": cty.StringVal("-"),
+	}
+	parts := []string{"scenario", "step", "request.json", "user_locale"}
+	first, err := runGenerator("locale", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate first locale: %v", err)
+	}
+
+	second, err := runGenerator("locale", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate second locale: %v", err)
+	}
+
+	otherSeed, err := runGenerator("locale", params, newGeneratorRandom(5678, parts...))
+	if err != nil {
+		t.Fatalf("generate other-seed locale: %v", err)
+	}
+
+	if first.AsString() != second.AsString() {
+		t.Fatalf("same seed generated different locales: %q vs %q", first.AsString(), second.AsString())
+	}
+
+	if first.AsString() == otherSeed.AsString() {
+		t.Fatalf("different seed generated same locale: %q", first.AsString())
+	}
+
+	if !regexp.MustCompile(`^[a-z]{2}-[A-Z]{2}$`).MatchString(first.AsString()) {
+		t.Fatalf("locale should use configured separator and casing: %q", first.AsString())
+	}
+}
+
+func TestLocaleGeneratorFixedOptions(t *testing.T) {
+	t.Parallel()
+
+	value, err := runGenerator("locale", map[string]cty.Value{
+		"language":  cty.StringVal("EN"),
+		"country":   cty.StringVal("fr"),
+		"separator": cty.StringVal("_"),
+	}, newGeneratorRandom(1234, "scenario", "step", "request.json", "user_locale"))
+	if err != nil {
+		t.Fatalf("generate locale: %v", err)
+	}
+
+	if value.AsString() != "en_FR" {
+		t.Fatalf("locale=%q", value.AsString())
+	}
+}
+
+func TestPersonGeneratorUsesDeterministicFaker(t *testing.T) {
+	t.Parallel()
+
+	params := map[string]cty.Value{"gender": cty.StringVal("female")}
+	parts := []string{"scenario", "step", "request.json", "user_person"}
+	first, err := runGenerator("person", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate first person: %v", err)
+	}
+
+	second, err := runGenerator("person", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate second person: %v", err)
+	}
+
+	otherSeed, err := runGenerator("person", params, newGeneratorRandom(5678, parts...))
+	if err != nil {
+		t.Fatalf("generate other-seed person: %v", err)
+	}
+
+	if !first.RawEquals(second) {
+		t.Fatalf("same seed generated different people: %#v vs %#v", first, second)
+	}
+
+	if first.RawEquals(otherSeed) {
+		t.Fatalf("different seed generated same person: %#v", first)
+	}
+
+	if first.GetAttr("gender").AsString() != "Female" {
+		t.Fatalf("gender=%q", first.GetAttr("gender").AsString())
+	}
+
+	if first.GetAttr("first_name").AsString() == "" || first.GetAttr("last_name").AsString() == "" || first.GetAttr("name").AsString() == "" {
+		t.Fatalf("person should include first_name, last_name and name: %#v", first)
+	}
+}
+
+func TestPersonGeneratorInvalidGender(t *testing.T) {
+	t.Parallel()
+
+	_, err := runGenerator("person", map[string]cty.Value{"gender": cty.StringVal("robot")}, newGeneratorRandom(1234, "scenario", "step", "request.json", "person"))
+	if err == nil || !strings.Contains(err.Error(), "gender must be one of") {
+		t.Fatalf("expected invalid gender error, got %v", err)
+	}
+}
+
+func TestMACAddressGeneratorUsesDeterministicFaker(t *testing.T) {
+	t.Parallel()
+
+	params := map[string]cty.Value{
+		"prefix":    cty.StringVal("aa:bb"),
+		"separator": cty.StringVal("-"),
+		"lowercase": cty.BoolVal(true),
+	}
+	parts := []string{"scenario", "step", "request.json", "device_mac"}
+	first, err := runGenerator("mac_address", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate first mac address: %v", err)
+	}
+
+	second, err := runGenerator("mac_address", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate second mac address: %v", err)
+	}
+
+	otherSeed, err := runGenerator("mac_address", params, newGeneratorRandom(5678, parts...))
+	if err != nil {
+		t.Fatalf("generate other-seed mac address: %v", err)
+	}
+
+	if first.AsString() != second.AsString() {
+		t.Fatalf("same seed generated different mac addresses: %q vs %q", first.AsString(), second.AsString())
+	}
+
+	if first.AsString() == otherSeed.AsString() {
+		t.Fatalf("different seed generated same mac address: %q", first.AsString())
+	}
+
+	if !regexp.MustCompile(`^aa-bb-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}-[0-9a-f]{2}$`).MatchString(first.AsString()) {
+		t.Fatalf("mac address should use configured prefix, separator and casing: %q", first.AsString())
+	}
+}
+
+func TestBytesGeneratorUsesDeterministicFaker(t *testing.T) {
+	t.Parallel()
+
+	params := map[string]cty.Value{
+		"length":   cty.NumberIntVal(8),
+		"encoding": cty.StringVal("hex"),
+	}
+	parts := []string{"scenario", "step", "request.json", "trace_bytes"}
+	first, err := runGenerator("bytes", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate first bytes: %v", err)
+	}
+
+	second, err := runGenerator("bytes", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate second bytes: %v", err)
+	}
+
+	otherSeed, err := runGenerator("bytes", params, newGeneratorRandom(5678, parts...))
+	if err != nil {
+		t.Fatalf("generate other-seed bytes: %v", err)
+	}
+
+	if first.AsString() != second.AsString() {
+		t.Fatalf("same seed generated different bytes: %q vs %q", first.AsString(), second.AsString())
+	}
+
+	if first.AsString() == otherSeed.AsString() {
+		t.Fatalf("different seed generated same bytes: %q", first.AsString())
+	}
+
+	if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(first.AsString()) {
+		t.Fatalf("bytes should be hex encoded: %q", first.AsString())
+	}
+}
+
+func TestBytesGeneratorBase64Encoding(t *testing.T) {
+	t.Parallel()
+
+	value, err := runGenerator("bytes", map[string]cty.Value{
+		"length":   cty.NumberIntVal(6),
+		"encoding": cty.StringVal("base64"),
+	}, newGeneratorRandom(1234, "scenario", "step", "request.json", "trace_bytes"))
+	if err != nil {
+		t.Fatalf("generate bytes: %v", err)
+	}
+
+	if !regexp.MustCompile(`^[A-Za-z0-9+/]{8}$`).MatchString(value.AsString()) {
+		t.Fatalf("bytes should be base64 encoded: %q", value.AsString())
+	}
+}
+
+func TestBytesGeneratorInvalidConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := runGenerator("bytes", map[string]cty.Value{"encoding": cty.StringVal("raw")}, newGeneratorRandom(1234, "scenario", "step", "request.json", "trace_bytes"))
+	if err == nil || !strings.Contains(err.Error(), "encoding must be one of") {
+		t.Fatalf("expected invalid encoding error, got %v", err)
+	}
 }
 
 func TestPasswordGeneratorCustomConstraints(t *testing.T) {
