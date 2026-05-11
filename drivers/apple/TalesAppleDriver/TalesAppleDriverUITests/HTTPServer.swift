@@ -21,12 +21,10 @@ final class TalesHTTPServer {
     func start() throws {
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
-        if let host = NWEndpoint.Host?(self.host) {
-            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
-                host: host,
-                port: NWEndpoint.Port(integerLiteral: UInt16(self.port))
-            )
-        }
+        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
+            host: NWEndpoint.Host(self.host),
+            port: NWEndpoint.Port(integerLiteral: UInt16(self.port))
+        )
 
         let listener = try NWListener(using: parameters, on: NWEndpoint.Port(integerLiteral: UInt16(self.port)))
         listener.newConnectionHandler = { [weak self] connection in
