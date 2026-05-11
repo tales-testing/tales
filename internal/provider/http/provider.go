@@ -53,7 +53,7 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 
 	basicAuth, err := resolveBasicAuth(input.Request, headers)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve basic auth: %w", err)
 	}
 
 	body, err := resolveBody(input.Request, headers)
@@ -210,6 +210,10 @@ func resolveBasicAuth(request map[string]cty.Value, headers map[string]string) (
 		return nil, nil
 	}
 
+	if !authValue.IsKnown() {
+		return nil, fmt.Errorf("request.auth must be known")
+	}
+
 	if !authValue.Type().IsObjectType() && !authValue.Type().IsMapType() {
 		return nil, fmt.Errorf("request.auth must be object")
 	}
@@ -219,6 +223,10 @@ func resolveBasicAuth(request map[string]cty.Value, headers map[string]string) (
 	basicValue, ok := authMap["basic"]
 	if !ok || basicValue.IsNull() {
 		return nil, nil
+	}
+
+	if !basicValue.IsKnown() {
+		return nil, fmt.Errorf("request.auth.basic must be known")
 	}
 
 	if hasAuthorizationHeader(headers) {
@@ -256,8 +264,16 @@ func hasAuthorizationHeader(headers map[string]string) bool {
 
 func authFieldString(values map[string]cty.Value, key string) (string, error) {
 	value, ok := values[key]
-	if !ok || value.IsNull() {
-		return "", nil
+	if !ok {
+		return "", fmt.Errorf("request.auth.basic.%s is required", key)
+	}
+
+	if !value.IsKnown() {
+		return "", fmt.Errorf("request.auth.basic.%s must be known", key)
+	}
+
+	if value.IsNull() {
+		return "", fmt.Errorf("request.auth.basic.%s must not be null", key)
 	}
 
 	if value.Type() != cty.String {
@@ -268,30 +284,111 @@ func authFieldString(values map[string]cty.Value, key string) (string, error) {
 }
 
 func resolveBody(request map[string]cty.Value, headers map[string]string) ([]byte, error) {
+	bodyValue, ok := request["body"]
+	if !ok || bodyValue.IsNull() {
+		return nil, nil
+	}
+
+	if !bodyValue.IsKnown() {
+		return nil, fmt.Errorf("request.body must be known")
+	}
+
+	if !bodyValue.Type().IsObjectType() && !bodyValue.Type().IsMapType() {
+		return nil, fmt.Errorf("request.body must be object")
+	}
+
+	bodyMap := bodyValue.AsValueMap()
+
+	return resolveBodyMap(bodyMap, headers)
+}
+
+func resolveBodyMap(bodyMap map[string]cty.Value, headers map[string]string) ([]byte, error) {
 	var body []byte
 
-	if jsonVal, ok := request["json"]; ok && !jsonVal.IsNull() {
+	setFields := 0
+	if jsonVal, ok := bodyMap["json"]; ok && !jsonVal.IsNull() {
+		setFields++
+
 		encoded, err := ctyjson.Marshal(jsonVal, jsonVal.Type())
 		if err != nil {
-			return nil, fmt.Errorf("marshal request.json: %w", err)
+			return nil, fmt.Errorf("marshal request.body.json: %w", err)
 		}
 
 		body = encoded
 
-		if _, exists := headers["Content-Type"]; !exists {
-			headers["Content-Type"] = "application/json"
-		}
+		setDefaultHeader(headers, "Content-Type", "application/json")
 	}
 
-	if bodyVal, ok := request["body"]; ok && !bodyVal.IsNull() {
-		if bodyVal.Type() != cty.String {
-			return nil, fmt.Errorf("request.body must be a string")
+	if formVal, ok := bodyMap["form"]; ok && !formVal.IsNull() {
+		setFields++
+
+		encoded, err := encodeFormBody(formVal)
+		if err != nil {
+			return nil, err
 		}
 
-		body = []byte(bodyVal.AsString())
+		body = encoded
+
+		setDefaultHeader(headers, "Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	if rawVal, ok := bodyMap["raw"]; ok && !rawVal.IsNull() {
+		setFields++
+
+		encoded, err := encodeRawBody(rawVal)
+		if err != nil {
+			return nil, err
+		}
+
+		body = encoded
+	}
+
+	if setFields == 0 {
+		return nil, fmt.Errorf("request.body must define one of json, form, or raw")
+	}
+
+	if setFields > 1 {
+		return nil, fmt.Errorf("request.body must define exactly one of json, form, or raw")
 	}
 
 	return body, nil
+}
+
+func encodeFormBody(formVal cty.Value) ([]byte, error) {
+	form, err := ctyMapString(formVal)
+	if err != nil {
+		return nil, fmt.Errorf("request.body.form: %w", err)
+	}
+
+	values := url.Values{}
+
+	for key, value := range form {
+		values.Set(key, value)
+	}
+
+	return []byte(values.Encode()), nil
+}
+
+func encodeRawBody(rawVal cty.Value) ([]byte, error) {
+	if !rawVal.IsKnown() {
+		return nil, fmt.Errorf("request.body.raw must be known")
+	}
+
+	if rawVal.Type() != cty.String {
+		return nil, fmt.Errorf("request.body.raw must be a string")
+	}
+
+	return []byte(rawVal.AsString()), nil
+}
+
+func setDefaultHeader(headers map[string]string, name, value string) {
+	for key := range headers {
+		if strings.EqualFold(key, name) {
+			return
+		}
+	}
+
+	headers[name] = value
 }
 
 func cloneHeaders(headers map[string]string) map[string]string {
@@ -328,7 +425,6 @@ func buildOutput(
 			"method":  cty.StringVal(method),
 			"url":     cty.StringVal(requestURL),
 			"headers": toStringMapValue(headers),
-			"body":    cty.StringVal(string(body)),
 		},
 		Response: map[string]cty.Value{
 			"status":  cty.NumberIntVal(int64(resp.StatusCode)),
@@ -338,8 +434,8 @@ func buildOutput(
 		},
 	}
 
-	if jsonVal, ok := request["json"]; ok {
-		output.Request["json"] = jsonVal
+	if bodyVal, ok := request["body"]; ok {
+		output.Request["body"] = bodyVal
 	}
 
 	return output, nil
@@ -381,6 +477,14 @@ func toStringMapValue(values map[string]string) cty.Value {
 }
 
 func ctyMapString(value cty.Value) (map[string]string, error) {
+	if !value.IsKnown() {
+		return nil, fmt.Errorf("value must be known")
+	}
+
+	if value.IsNull() {
+		return nil, fmt.Errorf("value must not be null")
+	}
+
 	if !value.Type().IsObjectType() && !value.Type().IsMapType() {
 		return nil, fmt.Errorf("value must be object")
 	}
@@ -388,6 +492,14 @@ func ctyMapString(value cty.Value) (map[string]string, error) {
 	mapped := map[string]string{}
 
 	for key, val := range value.AsValueMap() {
+		if !val.IsKnown() {
+			return nil, fmt.Errorf("key %q must be known", key)
+		}
+
+		if val.IsNull() {
+			return nil, fmt.Errorf("key %q must not be null", key)
+		}
+
 		if val.Type() != cty.String {
 			return nil, fmt.Errorf("key %q must be string", key)
 		}

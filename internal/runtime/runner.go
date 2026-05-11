@@ -472,11 +472,7 @@ func evaluateRequest(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioNa
 		return nil, 0, fmt.Errorf("request.query: %w", err)
 	}
 
-	if err := setExpr("json", step.Request.JSON); err != nil {
-		return nil, 0, fmt.Errorf("request.json: %w", err)
-	}
-
-	if err := setExpr("body", step.Request.Body); err != nil {
+	if err := evaluateRequestBody(evaluator, scope, scenarioName, step, values); err != nil {
 		return nil, 0, fmt.Errorf("request.body: %w", err)
 	}
 
@@ -507,6 +503,47 @@ func evaluateRequest(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioNa
 	return values, timeout, nil
 }
 
+func evaluateRequestBody(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, values map[string]cty.Value) error {
+	if step.Request.Body == nil {
+		return nil
+	}
+
+	body := map[string]cty.Value{}
+
+	setBodyExpr := func(name string, expression model.Expression) error {
+		if expression.Empty() {
+			return nil
+		}
+
+		value, err := evaluator.Eval(expression, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "request.body." + name})
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+
+		body[name] = value
+
+		return nil
+	}
+
+	if err := setBodyExpr("json", step.Request.Body.JSON); err != nil {
+		return err
+	}
+
+	if err := setBodyExpr("form", step.Request.Body.Form); err != nil {
+		return err
+	}
+
+	if err := setBodyExpr("raw", step.Request.Body.Raw); err != nil {
+		return err
+	}
+
+	if len(body) > 0 {
+		values["body"] = cty.ObjectVal(body)
+	}
+
+	return nil
+}
+
 func evaluateRequestAuth(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, values map[string]cty.Value) error {
 	if step.Request.Auth == nil || step.Request.Auth.Basic == nil {
 		return nil
@@ -517,31 +554,43 @@ func evaluateRequestAuth(evaluator *lang.Evaluator, scope lang.ScopeData, scenar
 		return fmt.Errorf("basic.username: %w", err)
 	}
 
+	if err := validateBasicAuthString("username", usernameValue); err != nil {
+		return err
+	}
+
 	passwordValue, err := evaluator.Eval(step.Request.Auth.Basic.Password, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "request.auth.basic.password"})
 	if err != nil {
 		return fmt.Errorf("basic.password: %w", err)
 	}
 
+	if err := validateBasicAuthString("password", passwordValue); err != nil {
+		return err
+	}
+
 	values["auth"] = cty.ObjectVal(map[string]cty.Value{
 		"basic": cty.ObjectVal(map[string]cty.Value{
-			"username": cty.StringVal(authString(usernameValue)),
-			"password": cty.StringVal(authString(passwordValue)),
+			"username": usernameValue,
+			"password": passwordValue,
 		}),
 	})
 
 	return nil
 }
 
-func authString(value cty.Value) string {
-	if !value.IsKnown() || value.IsNull() {
-		return ""
+func validateBasicAuthString(name string, value cty.Value) error {
+	if !value.IsKnown() {
+		return fmt.Errorf("basic.%s must be a known string", name)
 	}
 
-	if value.Type() == cty.String {
-		return value.AsString()
+	if value.IsNull() {
+		return fmt.Errorf("basic.%s must not be null", name)
 	}
 
-	return diagnostic.ScalarString(value)
+	if value.Type() != cty.String {
+		return fmt.Errorf("basic.%s must be a string, got %s", name, value.Type().FriendlyName())
+	}
+
+	return nil
 }
 
 func evaluateExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, output *provider.Output) error {

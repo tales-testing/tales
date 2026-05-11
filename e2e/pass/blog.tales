@@ -22,9 +22,11 @@ scenario "Create a blog post" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = generate("user_email")
-        password = "Passw0rd!"
+      body {
+        json = {
+          email    = generate("user_email")
+          password = "Passw0rd!"
+        }
       }
     }
 
@@ -37,14 +39,14 @@ scenario "Create a blog post" {
 
       json = {
         id    = is_string()
-        email = request.json.email
+        email = request.body.json.email
       }
     }
 
     capture {
       id       = response.json.id
       email    = response.json.email
-      password = request.json.password
+      password = request.body.json.password
     }
   }
 
@@ -58,9 +60,11 @@ scenario "Create a blog post" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = result.create_user.email
-        password = result.create_user.password
+      body {
+        json = {
+          email    = result.create_user.email
+          password = result.create_user.password
+        }
       }
     }
 
@@ -92,10 +96,12 @@ scenario "Create a blog post" {
         Authorization = "Bearer ${result.auth_user.token}"
       }
 
-      json = {
-        title   = "my first blog post"
-        content = "Hello World"
-        tags    = ["foo"]
+      body {
+        json = {
+          title   = "my first blog post"
+          content = "Hello World"
+          tags    = ["foo"]
+        }
       }
     }
 
@@ -108,8 +114,8 @@ scenario "Create a blog post" {
 
       json = {
         id      = is_string()
-        title   = request.json.title
-        content = request.json.content
+        title   = request.body.json.title
+        content = request.body.json.content
       }
     }
 

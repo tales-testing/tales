@@ -164,6 +164,74 @@ scenario "basic auth" {
 	}
 }
 
+func TestLoadPathRequestForm(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "form" {
+  step "http" "submit" {
+    request {
+      method = "POST"
+      url = "http://example.test"
+      body {
+        form = {
+          value = "a&b=c"
+        }
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "form.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	suite, diags := LoadPath(dir)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	body := suite.Scenarios[0].Steps[0].Request.Body
+	if body == nil || body.Form.Empty() {
+		t.Fatalf("request.body.form was not decoded")
+	}
+}
+
+func TestLoadPathRequestBodyRejectsMultipleModes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+scenario "form conflict" {
+  step "http" "submit" {
+    request {
+      method = "POST"
+      url = "http://example.test"
+      body {
+        form = {
+          value = "a&b=c"
+        }
+        raw = "value=a%26b%3Dc"
+      }
+    }
+  }
+}
+`
+	path := filepath.Join(dir, "form.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := LoadPath(dir)
+	if !diags.HasErrors() {
+		t.Fatalf("expected diagnostics")
+	}
+}
+
 func TestLoadPathBasicAuthMissingUsername(t *testing.T) {
 	t.Parallel()
 

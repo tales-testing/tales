@@ -112,3 +112,12 @@ func TestMaskJSONNestedAndArrays(t *testing.T) {
 		t.Fatalf("non-sensitive fields should be preserved: %#v", second)
 	}
 }
+
+func TestMaskBodyFormEncodedSecrets(t *testing.T) {
+	t.Parallel()
+
+	masked := MaskBody("grant_type=password&password=pa%2Bss+%25%23&username=user%40example.com")
+	if masked != "grant_type=password&password=***&username=user%40example.com" {
+		t.Fatalf("unexpected masked form body: %v", masked)
+	}
+}

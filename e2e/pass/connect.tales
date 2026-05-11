@@ -23,9 +23,11 @@ scenario "ConnectRPC JSON over HTTP" {
         Connect-Protocol-Version = "1"
       }
 
-      json = {
-        email    = generate("connect_email")
-        password = "Passw0rd!"
+      body {
+        json = {
+          email    = generate("connect_email")
+          password = "Passw0rd!"
+        }
       }
     }
 
@@ -38,14 +40,14 @@ scenario "ConnectRPC JSON over HTTP" {
 
       json = {
         id    = is_string()
-        email = request.json.email
+        email = request.body.json.email
       }
     }
 
     capture {
       id       = response.json.id
-      email    = request.json.email
-      password = request.json.password
+      email    = request.body.json.email
+      password = request.body.json.password
     }
   }
 
@@ -59,9 +61,11 @@ scenario "ConnectRPC JSON over HTTP" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = result.create_user_connect.email
-        password = result.create_user_connect.password
+      body {
+        json = {
+          email    = result.create_user_connect.email
+          password = result.create_user_connect.password
+        }
       }
     }
 

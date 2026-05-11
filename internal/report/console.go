@@ -339,16 +339,46 @@ func printRequest(out io.Writer, request map[string]interface{}) error {
 		return err
 	}
 
-	if jsonValue, ok := request["json"]; ok && jsonValue != nil {
+	if bodyValue, ok := request["body"]; ok && bodyValue != nil {
+		if err := printRequestBody(out, bodyValue); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func printRequestBody(out io.Writer, bodyValue interface{}) error {
+	bodyMap, ok := bodyValue.(map[string]interface{})
+	if !ok {
+		body := diagnostic.ScalarString(bodyValue)
+		if body == "" || body == "null" {
+			return nil
+		}
+
+		if _, err := fmt.Fprintf(out, "      Body:\n%s\n", indentMultiline(body, "        ")); err != nil {
+			return fmt.Errorf("print request body: %w", err)
+		}
+
+		return nil
+	}
+
+	if jsonValue, ok := bodyMap["json"]; ok && jsonValue != nil {
 		if _, err := fmt.Fprintf(out, "      JSON:\n%s\n", indentMultiline(diagnostic.PrettyJSON(jsonValue), "        ")); err != nil {
 			return fmt.Errorf("print request json: %w", err)
 		}
 	}
 
-	body := stringField(request, "body")
-	if body != "" {
-		if _, err := fmt.Fprintf(out, "      Body:\n%s\n", indentMultiline(body, "        ")); err != nil {
-			return fmt.Errorf("print request body: %w", err)
+	if formValue, ok := bodyMap["form"]; ok && formValue != nil {
+		if _, err := fmt.Fprintf(out, "      Form:\n%s\n", indentMultiline(diagnostic.PrettyJSON(formValue), "        ")); err != nil {
+			return fmt.Errorf("print request form: %w", err)
+		}
+	}
+
+	raw := stringField(bodyMap, "raw")
+	if raw != "" {
+		if _, err := fmt.Fprintf(out, "      Body:\n%s\n", indentMultiline(raw, "        ")); err != nil {
+			return fmt.Errorf("print request raw body: %w", err)
 		}
 	}
 

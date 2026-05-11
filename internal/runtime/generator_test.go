@@ -23,7 +23,7 @@ func TestEmailGeneratorUsesDeterministicFaker(t *testing.T) {
 		"prefix": cty.StringVal("test-"),
 		"domain": cty.StringVal("example.test"),
 	}
-	parts := []string{"scenario", "step", "request.json", "user_email"}
+	parts := []string{"scenario", "step", "request.body.json", "user_email"}
 
 	first, err := runGenerator("email", params, newGeneratorRandom(1234, parts...))
 	if err != nil {
@@ -56,7 +56,7 @@ func TestEmailGeneratorUsesDeterministicFaker(t *testing.T) {
 func TestPasswordGeneratorDefaultConstraints(t *testing.T) {
 	t.Parallel()
 
-	value, err := runGenerator("password", map[string]cty.Value{}, newGeneratorRandom(1234, "scenario", "step", "request.json", "password"))
+	value, err := runGenerator("password", map[string]cty.Value{}, newGeneratorRandom(1234, "scenario", "step", "request.body.json", "password"))
 	if err != nil {
 		t.Fatalf("generate password: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestPasswordGeneratorDefaultConstraints(t *testing.T) {
 func TestTimezoneGeneratorUsesDeterministicFaker(t *testing.T) {
 	t.Parallel()
 
-	parts := []string{"scenario", "step", "request.json", "user_timezone"}
+	parts := []string{"scenario", "step", "request.body.json", "user_timezone"}
 	first, err := runGenerator("timezone", map[string]cty.Value{}, newGeneratorRandom(1234, parts...))
 	if err != nil {
 		t.Fatalf("generate first timezone: %v", err)
@@ -108,7 +108,7 @@ func TestLocaleGeneratorUsesDeterministicFaker(t *testing.T) {
 	params := map[string]cty.Value{
 		"separator": cty.StringVal("-"),
 	}
-	parts := []string{"scenario", "step", "request.json", "user_locale"}
+	parts := []string{"scenario", "step", "request.body.json", "user_locale"}
 	first, err := runGenerator("locale", params, newGeneratorRandom(1234, parts...))
 	if err != nil {
 		t.Fatalf("generate first locale: %v", err)
@@ -144,7 +144,7 @@ func TestLocaleGeneratorFixedOptions(t *testing.T) {
 		"language":  cty.StringVal("EN"),
 		"country":   cty.StringVal("fr"),
 		"separator": cty.StringVal("_"),
-	}, newGeneratorRandom(1234, "scenario", "step", "request.json", "user_locale"))
+	}, newGeneratorRandom(1234, "scenario", "step", "request.body.json", "user_locale"))
 	if err != nil {
 		t.Fatalf("generate locale: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestPersonGeneratorUsesDeterministicFaker(t *testing.T) {
 	t.Parallel()
 
 	params := map[string]cty.Value{"gender": cty.StringVal("female")}
-	parts := []string{"scenario", "step", "request.json", "user_person"}
+	parts := []string{"scenario", "step", "request.body.json", "user_person"}
 	first, err := runGenerator("person", params, newGeneratorRandom(1234, parts...))
 	if err != nil {
 		t.Fatalf("generate first person: %v", err)
@@ -194,7 +194,7 @@ func TestPersonGeneratorUsesDeterministicFaker(t *testing.T) {
 func TestPersonGeneratorInvalidGender(t *testing.T) {
 	t.Parallel()
 
-	_, err := runGenerator("person", map[string]cty.Value{"gender": cty.StringVal("robot")}, newGeneratorRandom(1234, "scenario", "step", "request.json", "person"))
+	_, err := runGenerator("person", map[string]cty.Value{"gender": cty.StringVal("robot")}, newGeneratorRandom(1234, "scenario", "step", "request.body.json", "person"))
 	if err == nil || !strings.Contains(err.Error(), "gender must be one of") {
 		t.Fatalf("expected invalid gender error, got %v", err)
 	}
@@ -208,7 +208,7 @@ func TestMACAddressGeneratorUsesDeterministicFaker(t *testing.T) {
 		"separator": cty.StringVal("-"),
 		"lowercase": cty.BoolVal(true),
 	}
-	parts := []string{"scenario", "step", "request.json", "device_mac"}
+	parts := []string{"scenario", "step", "request.body.json", "device_mac"}
 	first, err := runGenerator("mac_address", params, newGeneratorRandom(1234, parts...))
 	if err != nil {
 		t.Fatalf("generate first mac address: %v", err)
@@ -243,7 +243,7 @@ func TestMACAddressGeneratorRejectsConflictingCase(t *testing.T) {
 	_, err := runGenerator("mac_address", map[string]cty.Value{
 		"lowercase": cty.BoolVal(true),
 		"uppercase": cty.BoolVal(true),
-	}, newGeneratorRandom(1234, "scenario", "step", "request.json", "device_mac"))
+	}, newGeneratorRandom(1234, "scenario", "step", "request.body.json", "device_mac"))
 	if err == nil || !strings.Contains(err.Error(), "lowercase and uppercase cannot both be true") {
 		t.Fatalf("expected conflict error, got %v", err)
 	}
@@ -256,7 +256,7 @@ func TestBytesGeneratorUsesDeterministicFaker(t *testing.T) {
 		"length":   cty.NumberIntVal(8),
 		"encoding": cty.StringVal("hex"),
 	}
-	parts := []string{"scenario", "step", "request.json", "trace_bytes"}
+	parts := []string{"scenario", "step", "request.body.json", "trace_bytes"}
 	first, err := runGenerator("bytes", params, newGeneratorRandom(1234, parts...))
 	if err != nil {
 		t.Fatalf("generate first bytes: %v", err)
@@ -291,7 +291,7 @@ func TestBytesGeneratorBase64Encoding(t *testing.T) {
 	value, err := runGenerator("bytes", map[string]cty.Value{
 		"length":   cty.NumberIntVal(6),
 		"encoding": cty.StringVal("base64"),
-	}, newGeneratorRandom(1234, "scenario", "step", "request.json", "trace_bytes"))
+	}, newGeneratorRandom(1234, "scenario", "step", "request.body.json", "trace_bytes"))
 	if err != nil {
 		t.Fatalf("generate bytes: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestBytesGeneratorBase64Encoding(t *testing.T) {
 func TestBytesGeneratorInvalidConfig(t *testing.T) {
 	t.Parallel()
 
-	_, err := runGenerator("bytes", map[string]cty.Value{"encoding": cty.StringVal("raw")}, newGeneratorRandom(1234, "scenario", "step", "request.json", "trace_bytes"))
+	_, err := runGenerator("bytes", map[string]cty.Value{"encoding": cty.StringVal("raw")}, newGeneratorRandom(1234, "scenario", "step", "request.body.json", "trace_bytes"))
 	if err == nil || !strings.Contains(err.Error(), "encoding must be one of") {
 		t.Fatalf("expected invalid encoding error, got %v", err)
 	}
@@ -322,7 +322,7 @@ func TestPasswordGeneratorCustomConstraints(t *testing.T) {
 		Specials:   "!@",
 	}
 
-	value, err := runGenerator("password", passwordParams(config), newGeneratorRandom(1234, "scenario", "step", "request.json", "password"))
+	value, err := runGenerator("password", passwordParams(config), newGeneratorRandom(1234, "scenario", "step", "request.body.json", "password"))
 	if err != nil {
 		t.Fatalf("generate password: %v", err)
 	}
@@ -373,7 +373,7 @@ func TestPasswordGeneratorInvalidConfigs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := runGenerator("password", tt.params, newGeneratorRandom(1234, "scenario", "step", "request.json", "password"))
+			_, err := runGenerator("password", tt.params, newGeneratorRandom(1234, "scenario", "step", "request.body.json", "password"))
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("expected %q error, got %v", tt.want, err)
 			}
@@ -384,7 +384,7 @@ func TestPasswordGeneratorInvalidConfigs(t *testing.T) {
 func TestPasswordGeneratorSeedDeterminism(t *testing.T) {
 	t.Parallel()
 
-	parts := []string{"scenario", "step", "request.json", "user_password"}
+	parts := []string{"scenario", "step", "request.body.json", "user_password"}
 	first, err := runGenerator("password", map[string]cty.Value{}, newGeneratorRandom(1234, parts...))
 	if err != nil {
 		t.Fatalf("generate first password: %v", err)
@@ -562,7 +562,12 @@ func runGeneratedPasswordSuite(t *testing.T, parallel int, includeUnrelated bool
 				continue
 			}
 
-			requestJSON, ok := step.Request["json"].(map[string]interface{})
+			requestBody, ok := step.Request["body"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("request body missing for %s: %#v", scenario.Name, step.Request)
+			}
+
+			requestJSON, ok := requestBody["json"].(map[string]interface{})
 			if !ok {
 				t.Fatalf("request json missing for %s: %#v", scenario.Name, step.Request)
 			}
@@ -621,20 +626,25 @@ func generatedPasswordStep(name string) *model.Step {
 		Request: &model.Request{
 			Method: expr(`"POST"`),
 			URL:    expr(`"http://example.test/users"`),
-			JSON: expr(`{
+			Body: bodyJSONExpr(`{
 				email = "user@example.com"
 				password = generate("user_password")
 			}`),
 		},
 		Expect: &model.Expect{Status: expr("200")},
 		Capture: map[string]model.Expression{
-			"password": expr("request.json.password"),
+			"password": expr("request.body.json.password"),
 		},
 	}
 }
 
 func passwordFromRequest(request map[string]cty.Value) string {
-	jsonValue, ok := request["json"]
+	bodyValue, ok := request["body"]
+	if !ok || bodyValue.IsNull() || !bodyValue.Type().IsObjectType() {
+		return ""
+	}
+
+	jsonValue, ok := bodyValue.AsValueMap()["json"]
 	if !ok || jsonValue.IsNull() || !jsonValue.Type().IsObjectType() {
 		return ""
 	}

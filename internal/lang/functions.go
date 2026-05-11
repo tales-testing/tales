@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 
@@ -140,6 +141,16 @@ func regexFindFunc() function.Function {
 	})
 }
 
+func urlEncodeFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType}},
+		Type:   function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			return cty.StringVal(url.QueryEscape(diagnostic.ScalarString(args[0]))), nil
+		},
+	})
+}
+
 func ctyNumberToInt(value cty.Value) (int, error) {
 	if value.Type() != cty.Number {
 		return 0, fmt.Errorf("number value expected")
@@ -158,6 +169,7 @@ func baseFunctions() map[string]function.Function {
 		"env":        envFunc(),
 		"jsonencode": stdlib.JSONEncodeFunc,
 		"regex_find": regexFindFunc(),
+		"url_encode": urlEncodeFunc(),
 		"contains":   matcherSingleArg("contains"),
 		"matches":    matchesFunc(),
 		"exists":     matcherNoArg("exists"),

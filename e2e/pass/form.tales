@@ -1,0 +1,44 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "Form encoded body with special characters" {
+  tags = ["http", "form"]
+
+  step "http" "post_form" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/form-echo"
+
+      body {
+        form = {
+          value    = "a&b=c"
+          plus     = "a+b c"
+          percent  = "x%Q9"
+          fragment = "value#section"
+          password = "pa&ss=+%# word"
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        form = {
+          value    = "a&b=c"
+          plus     = "a+b c"
+          percent  = "x%Q9"
+          fragment = "value#section"
+          password = "pa&ss=+%# word"
+        }
+      }
+    }
+  }
+}

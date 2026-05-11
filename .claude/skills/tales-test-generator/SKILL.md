@@ -68,7 +68,8 @@ Use this skill when asked to:
 - Avoid step name collisions:
   - unique names across scenario steps and teardown steps
   - keyword internal step names must not collide with outer scenario step names
-- Use `request.json` for JSON payloads and `request.body` for non-JSON text payloads.
+- Use `request.body { json = ... }`, `request.body { form = ... }`, or `request.body { raw = ... }` for request bodies.
+- Use `request.body.form` for `application/x-www-form-urlencoded` payloads; Tales URL-encodes form values and sets `Content-Type` when it is absent.
 - `request.url` must be an absolute `http` or `https` URL.
 - Use `request.auth.basic` for HTTP Basic Authentication instead of manually setting an `Authorization` header.
 - Do not combine `headers.Authorization` with `auth.basic`; Tales rejects that conflict.
@@ -83,7 +84,7 @@ Use this skill when asked to:
 - Response headers are accessible by key, for example `response.headers["Content-Type"]`; lower-case lookup such as `response.headers["content-type"]` is supported for HTTP responses.
 - `retry.attempts` must be `>= 1`.
 - `retry.interval` must be a valid Go duration string such as `"100ms"`, `"500ms"`, or `"2s"`.
-- Matchers/functions available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`, `regex_find`.
+- Matchers/functions available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`, `regex_find`, `url_encode`.
 - Use `regex_find(value, pattern)` for full matches and `regex_find(value, pattern, group)` for capture groups.
 - `coalesce(...)` is intentionally not a supported fallback primitive yet because lazy evaluation is required for missing-reference fallbacks.
 

@@ -23,10 +23,16 @@ type Request struct {
 	URL     Expression
 	Headers Expression
 	Query   Expression
-	JSON    Expression
-	Body    Expression
+	Body    *RequestBody
 	Timeout Expression
 	Auth    *RequestAuth
+}
+
+// RequestBody holds one HTTP request body representation.
+type RequestBody struct {
+	JSON Expression
+	Form Expression
+	Raw  Expression
 }
 
 // RequestAuth holds authentication configuration for a request.

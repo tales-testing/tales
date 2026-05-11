@@ -88,7 +88,8 @@ func TestJSONLFailureOutputMasksSensitiveFields(t *testing.T) {
 			t.Fatalf("authorization must be masked: %#v", headers)
 		}
 
-		requestJSON := request["json"].(map[string]interface{})
+		requestBody := request["body"].(map[string]interface{})
+		requestJSON := requestBody["json"].(map[string]interface{})
 		if requestJSON["password"] != "***" {
 			t.Fatalf("password must be masked: %#v", requestJSON)
 		}
@@ -311,9 +312,11 @@ func sampleFailedScenario() *ScenarioResult {
 				"Accept":        "application/json",
 				"Authorization": "Bearer REAL_TOKEN",
 			},
-			"json": map[string]interface{}{
-				"email":    "user@example.com",
-				"password": "Passw0rd!",
+			"body": map[string]interface{}{
+				"json": map[string]interface{}{
+					"email":    "user@example.com",
+					"password": "Passw0rd!",
+				},
 			},
 		},
 		Response: map[string]interface{}{
@@ -363,8 +366,10 @@ func sampleBasicAuthFailedScenario() *ScenarioResult {
 			"headers": map[string]interface{}{
 				"Authorization": rawAuthorization,
 			},
-			"json": map[string]interface{}{
-				"password": "wrong-secret",
+			"body": map[string]interface{}{
+				"json": map[string]interface{}{
+					"password": "wrong-secret",
+				},
 			},
 		},
 		Response: map[string]interface{}{

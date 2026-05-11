@@ -105,16 +105,18 @@ scenario "Create a blog post" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = generate("user_email")
-        password = generate("user_password")
-        timezone = generate("user_timezone")
-        locale   = generate("user_locale")
-        person   = generate("user_person")
-        device   = {
-          mac_address = generate("device_mac")
+      body {
+        json = {
+          email    = generate("user_email")
+          password = generate("user_password")
+          timezone = generate("user_timezone")
+          locale   = generate("user_locale")
+          person   = generate("user_person")
+          device   = {
+            mac_address = generate("device_mac")
+          }
+          trace_id = generate("trace_id")
         }
-        trace_id = generate("trace_id")
       }
     }
 
@@ -122,14 +124,14 @@ scenario "Create a blog post" {
       status = 201
       json = {
         id    = is_string()
-        email = request.json.email
+        email = request.body.json.email
       }
     }
 
     capture {
       id       = response.json.id
       email    = response.json.email
-      password = request.json.password
+      password = request.body.json.password
     }
   }
 
@@ -140,9 +142,11 @@ scenario "Create a blog post" {
       headers = {
         Content-Type = "application/json"
       }
-      json = {
-        email    = result.create_user.email
-        password = result.create_user.password
+      body {
+        json = {
+          email    = result.create_user.email
+          password = result.create_user.password
+        }
       }
     }
 
@@ -234,8 +238,9 @@ Exit codes:
 
 - `scenario "..." { ... }`
 - `step "http" "name" { ... }`
-- `request.json` for JSON body.
-- `request.body` for non-JSON payloads.
+- `request.body { json = ... }` for JSON payloads.
+- `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
+- `request.body { raw = ... }` for raw string payloads.
 - `request.auth.basic` for HTTP Basic Authentication.
 - `expect` assertions for status/headers/json.
 - `capture` to expose a stable contract for next steps.
@@ -249,6 +254,22 @@ Backward-compatible aliases currently accepted:
 - `case` as alias for `step`
 - `response` as alias for `expect`
 
+Request body examples:
+
+```hcl
+request {
+  body {
+    form = {
+      grant_type = "password"
+      username   = result.user.email
+      password   = result.user.password
+    }
+  }
+}
+```
+
+`body.form` values are encoded with `application/x-www-form-urlencoded` semantics, so characters such as `&`, `=`, `+`, `%`, `#`, and spaces are safe in generated values.
+
 ## Built-in Functions and Matchers
 
 General:
@@ -257,6 +278,7 @@ General:
 - `env(name, default)`
 - `generate(name)`
 - `jsonencode(value)`
+- `url_encode(value)`
 
 Matchers:
 

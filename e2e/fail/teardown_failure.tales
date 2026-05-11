@@ -22,9 +22,11 @@ scenario "Teardown runs after failure" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = generate("teardown_email")
-        password = "Passw0rd!"
+      body {
+        json = {
+          email    = generate("teardown_email")
+          password = "Passw0rd!"
+        }
       }
     }
 
@@ -40,8 +42,8 @@ scenario "Teardown runs after failure" {
 
     capture {
       id       = response.json.id
-      email    = request.json.email
-      password = request.json.password
+      email    = request.body.json.email
+      password = request.body.json.password
     }
   }
 
@@ -55,9 +57,11 @@ scenario "Teardown runs after failure" {
         Content-Type = "application/json"
       }
 
-      json = {
-        email    = result.create_user.email
-        password = result.create_user.password
+      body {
+        json = {
+          email    = result.create_user.email
+          password = result.create_user.password
+        }
       }
     }
 
@@ -87,9 +91,11 @@ scenario "Teardown runs after failure" {
         Authorization = "Bearer ${result.auth_user.token}"
       }
 
-      json = {
-        email    = result.create_user.email
-        password = result.create_user.password
+      body {
+        json = {
+          email    = result.create_user.email
+          password = result.create_user.password
+        }
       }
     }
 

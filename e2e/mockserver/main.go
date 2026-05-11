@@ -68,6 +68,7 @@ func main() {
 	r.HandleFunc("/users/{id}", state.deleteUser).Methods(http.MethodDelete)
 	r.HandleFunc("/auth", state.auth).Methods(http.MethodPost)
 	r.HandleFunc("/basic-auth", state.basicAuth).Methods(http.MethodGet)
+	r.HandleFunc("/form-echo", state.formEcho).Methods(http.MethodPost)
 	r.HandleFunc("/mail/messages", state.mailMessages).Methods(http.MethodGet)
 	r.HandleFunc("/verify-email", state.verifyEmail).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
@@ -173,6 +174,24 @@ func (s *serverState) basicAuth(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "unauthorized"})
+}
+
+func (s *serverState) formEcho(w http.ResponseWriter, req *http.Request) {
+	if err := req.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": err.Error()})
+
+		return
+	}
+
+	form := map[string]interface{}{}
+
+	for key, values := range req.PostForm {
+		if len(values) > 0 {
+			form[key] = values[0]
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"form": form})
 }
 
 func (s *serverState) mailMessages(w http.ResponseWriter, req *http.Request) {
