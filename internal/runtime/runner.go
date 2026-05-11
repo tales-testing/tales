@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -126,9 +125,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 			return cty.NilVal, err
 		}
 
-		rnd := NewDeterministicRand(seed, scenario.Name, meta.Step, name, meta.ExprPath)
-
-		return runGenerator(gen.Type, params, rnd)
+		return runGenerator(gen.Type, params, newGeneratorRandom(seed, scenario.Name, meta.Step, name, meta.ExprPath))
 	})
 
 	layers, orderErr := buildLayers(scenario.Steps)
@@ -1094,39 +1091,4 @@ func filterScenarios(scenarios []*model.Scenario, tags []string, scenarioName st
 	}
 
 	return out
-}
-
-func runGenerator(generatorType string, params map[string]cty.Value, rnd seededRandom) (cty.Value, error) {
-	switch generatorType {
-	case "email":
-		prefix := ""
-		if v, ok := params["prefix"]; ok && v.Type() == cty.String {
-			prefix = v.AsString()
-		}
-
-		domain := "example.com"
-		if v, ok := params["domain"]; ok && v.Type() == cty.String {
-			domain = v.AsString()
-		}
-
-		return cty.StringVal(prefix + randomString(rnd, 10) + "@" + domain), nil
-	default:
-		return cty.NilVal, fmt.Errorf("generator type %q is not supported", generatorType)
-	}
-}
-
-type seededRandom interface {
-	Intn(n int) int
-}
-
-func randomString(rnd seededRandom, size int) string {
-	letters := "abcdefghijklmnopqrstuvwxyz0123456789"
-	buf := strings.Builder{}
-	buf.Grow(size)
-
-	for i := 0; i < size; i++ {
-		buf.WriteByte(letters[rnd.Intn(len(letters))])
-	}
-
-	return buf.String()
 }
