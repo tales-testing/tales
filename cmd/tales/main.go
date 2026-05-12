@@ -20,6 +20,7 @@ func main() {
 		Commands: []*urfavecli.Command{
 			cli.NewTestCommand(),
 			cli.NewValidateCommand(),
+			cli.NewDoctorCommand(),
 		},
 		Action: urfavecli.ShowAppHelp,
 	}
