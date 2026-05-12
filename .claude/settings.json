@@ -5,7 +5,8 @@
       "Bash(gh api *)",
       "Bash(git commit -m ' *)",
       "Bash(git add *)",
-      "Bash(xcodebuild *)"
+      "Bash(xcodebuild *)",
+      "Edit(/.claude/skills/tales-test-generator/**)"
     ]
   }
 }
