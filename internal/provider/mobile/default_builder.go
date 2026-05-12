@@ -36,19 +36,19 @@ func appleSessionBuilder() SessionBuilder {
 	}
 
 	return SessionBuilderFunc(func(ctx context.Context, target apple.Target) (*Session, error) {
-		udid, err := lifecycle.EnsureBooted(ctx, target)
+		device, err := lifecycle.EnsureBooted(ctx, target)
 		if err != nil {
 			return nil, fmt.Errorf("ensure booted: %w", err)
 		}
 
-		drv, handle, err := lifecycle.EnsureDriver(ctx, udid, target)
+		drv, handle, err := lifecycle.EnsureDriver(ctx, device.UDID, target)
 		if err != nil {
 			return nil, fmt.Errorf("ensure driver: %w", err)
 		}
 
 		return &Session{
 			Target:       target,
-			UDID:         udid,
+			UDID:         device.UDID,
 			Driver:       drv,
 			DriverHandle: handle,
 			Lifecycle:    lifecycle,
