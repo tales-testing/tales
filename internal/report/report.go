@@ -49,6 +49,28 @@ type StepResult struct {
 	Attempts   int
 	Failure    *ErrorDetail
 	Artifacts  []Artifact
+	Actions    []*ActionResult
+}
+
+// ActionResult describes one UI action executed within a step (mobile today,
+// web later). The visual HTML report, the optional JSONL action events, and
+// future provider-agnostic consumers all read from this typed shape.
+//
+// Secure actions MUST carry Value == "***" — masking happens at the single
+// site where the result is constructed, never at render time.
+type ActionResult struct {
+	Index      int           `json:"index"`
+	Kind       string        `json:"kind"`
+	Label      string        `json:"label"`
+	SelectorID string        `json:"selector_id,omitempty"`
+	Secure     bool          `json:"secure,omitempty"`
+	Value      string        `json:"value,omitempty"`
+	Status     Status        `json:"status"`
+	Duration   time.Duration `json:"-"`
+	Screenshot string        `json:"screenshot,omitempty"`
+	Hierarchy  string        `json:"hierarchy,omitempty"`
+	Error      *ErrorDetail  `json:"error,omitempty"`
+	StartedAt  time.Time     `json:"started_at,omitzero"`
 }
 
 // Artifact references one file produced by a step (mobile screenshots,
