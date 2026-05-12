@@ -37,6 +37,24 @@ func TestParseCaptureMode_Valid(t *testing.T) {
 	}
 }
 
+func TestProviderDefaultCaptureMode(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	if p.captureMode != CaptureFailures {
+		t.Fatalf("default capture mode = %q, want %q", p.captureMode, CaptureFailures)
+	}
+}
+
+func TestWithCaptureModeOverridesDefault(t *testing.T) {
+	t.Parallel()
+
+	p := New(WithCaptureMode(CaptureActions))
+	if p.captureMode != CaptureActions {
+		t.Fatalf("captureMode after WithCaptureMode(CaptureActions) = %q, want %q", p.captureMode, CaptureActions)
+	}
+}
+
 func TestParseCaptureMode_Invalid(t *testing.T) {
 	t.Parallel()
 

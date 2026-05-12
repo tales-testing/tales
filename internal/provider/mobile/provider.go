@@ -51,6 +51,7 @@ type Provider struct {
 	hierarchies map[string]*tree.ViewNode
 
 	artifactsBase string
+	captureMode   CaptureMode
 }
 
 // Option configures the Provider.
@@ -70,6 +71,14 @@ func WithArtifactsBase(dir string) Option {
 	}
 }
 
+// WithCaptureMode overrides the screenshot/hierarchy capture mode. The
+// default is CaptureFailures, which matches the pre-visual-report behavior.
+func WithCaptureMode(mode CaptureMode) Option {
+	return func(p *Provider) {
+		p.captureMode = mode
+	}
+}
+
 // New returns a Provider with a default real-Apple session builder.
 func New(opts ...Option) *Provider {
 	p := &Provider{
@@ -78,6 +87,7 @@ func New(opts ...Option) *Provider {
 		stepLocks:     map[string]*sync.Mutex{},
 		hierarchies:   map[string]*tree.ViewNode{},
 		artifactsBase: defaultArtifactsBase,
+		captureMode:   CaptureFailures,
 	}
 
 	for _, opt := range opts {
