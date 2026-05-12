@@ -147,12 +147,12 @@ func TestEnsureBootedBootsWhenNotBooted(t *testing.T) {
 
 	lc, sim, _ := newLifecycleWithDriver(&fakeDriver{})
 
-	udid, err := lc.EnsureBooted(context.Background(), sampleTarget(false))
+	device, err := lc.EnsureBooted(context.Background(), sampleTarget(false))
 	if err != nil {
 		t.Fatalf("ensure booted: %v", err)
 	}
 
-	if udid == "" {
+	if device.UDID == "" {
 		t.Fatal("expected non-empty UDID")
 	}
 

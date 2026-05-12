@@ -61,11 +61,14 @@ type DriverHandle interface {
 	Stop(ctx context.Context) error
 }
 
-// EnsureBooted finds the simulator and boots it if needed, returning its UDID.
-func (l *Lifecycle) EnsureBooted(ctx context.Context, target Target) (string, error) {
+// EnsureBooted finds the simulator and boots it if needed, returning the
+// resolved Device (UDID, runtime, etc.). The runtime field feeds the
+// embedded-driver cache key so builds remain valid across iOS runtime
+// versions.
+func (l *Lifecycle) EnsureBooted(ctx context.Context, target Target) (Device, error) {
 	device, err := l.Simctl.FindDeviceByName(ctx, target.DeviceName)
 	if err != nil {
-		return "", fmt.Errorf("find simulator %q: %w", target.DeviceName, err)
+		return Device{}, fmt.Errorf("find simulator %q: %w", target.DeviceName, err)
 	}
 
 	if device.Name != "" || device.Runtime != "" {
@@ -74,15 +77,15 @@ func (l *Lifecycle) EnsureBooted(ctx context.Context, target Target) (string, er
 
 	if !device.Booted {
 		if err := l.Simctl.Boot(ctx, device.UDID); err != nil {
-			return "", fmt.Errorf("boot simulator %q: %w", target.DeviceName, err)
+			return Device{}, fmt.Errorf("boot simulator %q: %w", target.DeviceName, err)
 		}
 	}
 
 	if err := l.Simctl.WaitBooted(ctx, device.UDID, 2*time.Minute); err != nil {
-		return "", fmt.Errorf("wait simulator boot %q: %w", target.DeviceName, err)
+		return Device{}, fmt.Errorf("wait simulator boot %q: %w", target.DeviceName, err)
 	}
 
-	return device.UDID, nil
+	return device, nil
 }
 
 // InstallApp installs (or reinstalls) the app on the simulator.
