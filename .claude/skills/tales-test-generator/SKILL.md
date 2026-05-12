@@ -118,8 +118,8 @@ config {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
           external = false
-          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
-          scheme   = "TalesAppleDriverUITests"
+          // Embedded mode (default): omit project/scheme. Tales extracts
+          // the bundled driver from the binary on first run.
         }
       }
     }
@@ -129,8 +129,19 @@ config {
 
 - `platform` only accepts `"ios"` in V1.
 - `app` must be an iOS Simulator `.app` bundle, not a device build.
-- `driver.external = true` lets Tales talk to an already-running driver instead
-  of launching `xcodebuild test-without-building` itself.
+- **Default — embedded mode**: leave `project`, `scheme`, and `source_path`
+  unset. Tales extracts the bundled XCUITest driver to
+  `~/Library/Caches/tales/apple-driver/<key>/`, builds it once with Xcode,
+  and reuses the cached build on every subsequent run. This is the right
+  shape for nearly every user-authored `.tales` file.
+- `driver.external = true` lets Tales talk to an already-running driver
+  instead of launching `xcodebuild` itself. Useful for debugging — Tales
+  only health-checks the URL.
+- `driver.source_path = "..."` is a developer override for iterating on
+  the Swift driver against a local checkout (same build/cache pipeline).
+- `driver.project` + `driver.scheme` is the legacy mode kept for
+  back-compat (`xcodebuild test` against a repository path). Do not use it
+  in new tests.
 
 ### Step shape
 
