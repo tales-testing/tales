@@ -286,7 +286,7 @@ func printArtifacts(out io.Writer, artifacts []Artifact) error {
 	for _, a := range artifacts {
 		label := a.Type
 		if label == "" {
-			label = "artifact"
+			label = artifactFallbackLabel
 		}
 
 		if _, err := fmt.Fprintf(out, "      %s: %s\n", label, a.Path); err != nil {

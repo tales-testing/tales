@@ -15,6 +15,7 @@ type fakeSpawn struct {
 	name    string
 	args    []string
 	logPath string
+	env     map[string]string
 }
 
 type fakeSpawner struct {
@@ -23,8 +24,13 @@ type fakeSpawner struct {
 	err     error
 }
 
-func (f *fakeSpawner) Spawn(_ context.Context, name string, args []string, logPath string) (Process, error) {
-	f.calls = append(f.calls, fakeSpawn{name: name, args: append([]string(nil), args...), logPath: logPath})
+func (f *fakeSpawner) Spawn(_ context.Context, name string, args []string, logPath string, env map[string]string) (Process, error) {
+	envCopy := make(map[string]string, len(env))
+	for key, value := range env {
+		envCopy[key] = value
+	}
+
+	f.calls = append(f.calls, fakeSpawn{name: name, args: append([]string(nil), args...), logPath: logPath, env: envCopy})
 
 	if f.err != nil {
 		return nil, f.err
@@ -144,6 +150,32 @@ func TestStartPassesLogPathToSpawner(t *testing.T) {
 	}
 }
 
+func TestStartPassesEnvironmentToSpawner(t *testing.T) {
+	t.Parallel()
+
+	spawner := &fakeSpawner{}
+	launcher := New(spawner)
+
+	_, err := launcher.Start(context.Background(), Options{
+		Project:       "p.xcodeproj",
+		Scheme:        "S",
+		Destination:   "platform=iOS Simulator,id=ABC",
+		HealthTimeout: time.Second,
+		PollInterval:  time.Millisecond,
+		Env: map[string]string{
+			"TALES_DRIVER_HOST": "127.0.0.1",
+			"TALES_DRIVER_PORT": "9090",
+		},
+	}, &fakePinger{until: 1})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	if got := spawner.calls[0].env["TALES_DRIVER_PORT"]; got != "9090" {
+		t.Fatalf("driver port env=%q", got)
+	}
+}
+
 func TestStartStopsProcessOnHealthTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -250,7 +282,7 @@ func TestExecSpawnerCreatesDriverLog(t *testing.T) {
 	t.Parallel()
 
 	logPath := filepath.Join(t.TempDir(), "driver", "driver.log")
-	process, err := ExecSpawner{}.Spawn(context.Background(), "sh", []string{"-c", "echo stdout; echo stderr >&2; sleep 5"}, logPath)
+	process, err := ExecSpawner{}.Spawn(context.Background(), "sh", []string{"-c", "echo stdout; echo stderr >&2; sleep 5"}, logPath, nil)
 	if err != nil {
 		t.Fatalf("spawn: %v", err)
 	}

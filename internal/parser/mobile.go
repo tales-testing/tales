@@ -79,6 +79,10 @@ func looksLikeMobileStep(rs stepBlock) bool {
 		return true
 	}
 
+	if exprIsSet(rs.Platform) || exprIsSet(rs.Target) {
+		return true
+	}
+
 	if rs.Launch != nil || rs.Terminate != nil || rs.Actions != nil {
 		return true
 	}

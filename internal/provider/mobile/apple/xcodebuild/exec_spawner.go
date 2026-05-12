@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 )
@@ -18,8 +19,9 @@ const gracefulStopTimeout = 5 * time.Second
 type ExecSpawner struct{}
 
 // Spawn starts the command and returns a Process backed by os/exec.
-func (ExecSpawner) Spawn(ctx context.Context, name string, args []string, logPath string) (Process, error) {
+func (ExecSpawner) Spawn(ctx context.Context, name string, args []string, logPath string, env map[string]string) (Process, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = mergedEnv(env)
 
 	var logFile *os.File
 
@@ -47,6 +49,26 @@ func (ExecSpawner) Spawn(ctx context.Context, name string, args []string, logPat
 	}
 
 	return &execProcess{cmd: cmd, logFile: logFile}, nil
+}
+
+func mergedEnv(env map[string]string) []string {
+	out := os.Environ()
+	if len(env) == 0 {
+		return out
+	}
+
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		out = append(out, key+"="+env[key])
+	}
+
+	return out
 }
 
 type execProcess struct {

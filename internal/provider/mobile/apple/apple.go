@@ -165,6 +165,10 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, udid string, target Target
 		Destination: fmt.Sprintf("platform=iOS Simulator,id=%s", udid),
 		HealthURL:   target.Driver.BaseURL() + "/health",
 		LogPath:     logPath,
+		Env: map[string]string{
+			"TALES_DRIVER_HOST": target.Driver.Host,
+			"TALES_DRIVER_PORT": fmt.Sprintf("%d", target.Driver.Port),
+		},
 	}, client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start xcuitest driver: %w", err)

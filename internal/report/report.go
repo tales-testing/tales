@@ -61,6 +61,8 @@ type Artifact struct {
 	Path string `json:"path"`
 }
 
+const artifactFallbackLabel = "artifact"
+
 // ErrorDetail is compact machine+human readable failure details.
 type ErrorDetail struct {
 	Kind    string      `json:"kind"`

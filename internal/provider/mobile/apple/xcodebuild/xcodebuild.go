@@ -20,7 +20,7 @@ const DefaultPollInterval = 500 * time.Millisecond
 // Spawner starts an external command and returns a Process handle. Replace it
 // in tests with a fake spawner.
 type Spawner interface {
-	Spawn(ctx context.Context, name string, args []string, logPath string) (Process, error)
+	Spawn(ctx context.Context, name string, args []string, logPath string, env map[string]string) (Process, error)
 }
 
 // Process represents a running xcodebuild test subprocess.
@@ -46,6 +46,7 @@ type Options struct {
 	PollInterval  time.Duration
 	HealthURL     string
 	LogPath       string
+	Env           map[string]string
 }
 
 // StartError adds driver-log context to startup failures.
@@ -112,7 +113,7 @@ func (l *Launcher) Start(ctx context.Context, opts Options, pinger Pinger) (*Han
 
 	args := BuildArgs(opts)
 
-	process, err := l.spawner.Spawn(ctx, "xcodebuild", args, opts.LogPath)
+	process, err := l.spawner.Spawn(ctx, "xcodebuild", args, opts.LogPath, opts.Env)
 	if err != nil {
 		return nil, wrapStartError(fmt.Errorf("spawn xcodebuild: %w", err), opts.LogPath)
 	}

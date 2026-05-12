@@ -220,6 +220,33 @@ scenario "missing-platform" {
 	}
 }
 
+func TestLoadPathRejectsMobileAttributesOnNonMobileStep(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "bad-provider" {
+  step "http" "looks_mobile" {
+    platform = "ios"
+    target = "iphone"
+    request {
+      method = "GET"
+      url = "http://example.test"
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics for mobile attributes on non-mobile step")
+	}
+
+	if !strings.Contains(diags.Error(), "Mobile fields on non-mobile step") {
+		t.Fatalf("expected mobile-fields diagnostic, got: %s", diags.Error())
+	}
+}
+
 func TestLoadPathMobileRejectsUnknownAction(t *testing.T) {
 	t.Parallel()
 

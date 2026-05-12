@@ -85,6 +85,32 @@ func TestResolveTargetDefaultsDriverHostPort(t *testing.T) {
 	}
 }
 
+func TestResolveTargetSupportsMapTypedConfig(t *testing.T) {
+	t.Parallel()
+
+	config := map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.MapVal(map[string]cty.Value{
+				"iphone": cty.MapVal(map[string]cty.Value{
+					"platform":    cty.StringVal("ios"),
+					"device_name": cty.StringVal("iPhone 17"),
+					"app":         cty.StringVal("./MyApp.app"),
+					"bundle_id":   cty.StringVal("com.example.MyApp"),
+				}),
+			}),
+		}),
+	}
+
+	target, err := ResolveTarget(config, "iphone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.DeviceName != "iPhone 17" || target.BundleID != "com.example.MyApp" {
+		t.Fatalf("unexpected target: %+v", target)
+	}
+}
+
 func TestResolveTargetMissingTarget(t *testing.T) {
 	t.Parallel()
 

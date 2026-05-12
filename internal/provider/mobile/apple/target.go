@@ -104,11 +104,11 @@ func ResolveTarget(config map[string]cty.Value, name string) (Target, error) {
 func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 	driver := DriverConfig{Host: DefaultDriverHost, Port: DefaultDriverPort}
 
-	if !targetVal.Type().HasAttribute("driver") {
+	driverVal, ok := readOptionalAttr(targetVal, "driver")
+	if !ok {
 		return driver, nil
 	}
 
-	driverVal := targetVal.GetAttr("driver")
 	if driverVal.IsNull() {
 		return driver, nil
 	}
@@ -145,23 +145,37 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 }
 
 func readAttr(value cty.Value, name string) (cty.Value, error) {
-	if !value.Type().IsObjectType() {
+	if value.IsNull() || !value.IsKnown() {
 		return cty.NilVal, fmt.Errorf("not an object")
 	}
 
-	if !value.Type().HasAttribute(name) {
-		return cty.NilVal, fmt.Errorf("missing %q", name)
-	}
+	switch {
+	case value.Type().IsObjectType():
+		if !value.Type().HasAttribute(name) {
+			return cty.NilVal, fmt.Errorf("missing %q", name)
+		}
 
-	return value.GetAttr(name), nil
+		return value.GetAttr(name), nil
+	case value.Type().IsMapType():
+		key := cty.StringVal(name)
+
+		has := value.HasIndex(key)
+		if !has.IsKnown() || has.IsNull() || !has.True() {
+			return cty.NilVal, fmt.Errorf("missing %q", name)
+		}
+
+		return value.Index(key), nil
+	default:
+		return cty.NilVal, fmt.Errorf("not an object")
+	}
 }
 
 func readRequiredString(value cty.Value, name string) (string, error) {
-	if !value.Type().HasAttribute(name) {
-		return "", fmt.Errorf("missing %q", name)
+	attr, err := readAttr(value, name)
+	if err != nil {
+		return "", err
 	}
 
-	attr := value.GetAttr(name)
 	if attr.IsNull() {
 		return "", fmt.Errorf("%q is null", name)
 	}
@@ -178,12 +192,21 @@ func readRequiredString(value cty.Value, name string) (string, error) {
 	return str, nil
 }
 
+func readOptionalAttr(value cty.Value, name string) (cty.Value, bool) {
+	attr, err := readAttr(value, name)
+	if err != nil {
+		return cty.NilVal, false
+	}
+
+	return attr, true
+}
+
 func readOptionalString(value cty.Value, name string) (string, bool) {
-	if !value.Type().HasAttribute(name) {
+	attr, ok := readOptionalAttr(value, name)
+	if !ok {
 		return "", false
 	}
 
-	attr := value.GetAttr(name)
 	if attr.IsNull() || attr.Type() != cty.String {
 		return "", false
 	}
@@ -192,11 +215,11 @@ func readOptionalString(value cty.Value, name string) (string, bool) {
 }
 
 func readOptionalInt(value cty.Value, name string) (int, bool, error) {
-	if !value.Type().HasAttribute(name) {
+	attr, ok := readOptionalAttr(value, name)
+	if !ok {
 		return 0, false, nil
 	}
 
-	attr := value.GetAttr(name)
 	if attr.IsNull() {
 		return 0, false, nil
 	}
@@ -214,11 +237,11 @@ func readOptionalInt(value cty.Value, name string) (int, bool, error) {
 }
 
 func readOptionalBool(value cty.Value, name string) (bool, bool, error) {
-	if !value.Type().HasAttribute(name) {
+	attr, ok := readOptionalAttr(value, name)
+	if !ok {
 		return false, false, nil
 	}
 
-	attr := value.GetAttr(name)
 	if attr.IsNull() {
 		return false, false, nil
 	}

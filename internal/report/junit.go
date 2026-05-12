@@ -130,7 +130,12 @@ func renderArtifactsForJUnit(artifacts []Artifact) string {
 	builder.WriteString("artifacts:\n")
 
 	for _, a := range artifacts {
-		_, _ = fmt.Fprintf(&builder, "  %s: %s\n", a.Type, a.Path)
+		label := a.Type
+		if label == "" {
+			label = artifactFallbackLabel
+		}
+
+		_, _ = fmt.Fprintf(&builder, "  %s: %s\n", label, a.Path)
 	}
 
 	return builder.String()

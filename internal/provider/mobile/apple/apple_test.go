@@ -272,6 +272,10 @@ func TestEnsureDriverStartsXcodebuild(t *testing.T) {
 	if xc.opts.HealthURL != "http://127.0.0.1:9080/health" {
 		t.Fatalf("expected health URL in options, got %+v", xc.opts)
 	}
+
+	if xc.opts.Env["TALES_DRIVER_HOST"] != "127.0.0.1" || xc.opts.Env["TALES_DRIVER_PORT"] != "9080" {
+		t.Fatalf("expected driver host/port env, got %+v", xc.opts.Env)
+	}
 }
 
 func TestEnsureDriverRejectsMissingProject(t *testing.T) {
