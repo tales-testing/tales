@@ -1,0 +1,122 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.example.MyApp")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
+          scheme   = "TalesAppleDriverUITests"
+        }
+      }
+    }
+  }
+}
+
+generator "email" "user_email" {
+  prefix = "ios-"
+  domain = "example.com"
+}
+
+generator "password" "user_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+}
+
+scenario "iOS register happy path" {
+  tags = ["ios", "mobile", "smoke"]
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    expect {
+      visible {
+        id      = "welcome.register"
+        timeout = "20s"
+      }
+      text {
+        id    = "welcome.title"
+        value = "MyApp"
+      }
+    }
+  }
+
+  step "mobile" "open_register" {
+    depends_on = ["launch"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap { id = "welcome.register" }
+      wait_visible { id = "register.screen" }
+    }
+    expect {
+      visible  { id = "register.screen" }
+      disabled { id = "register.submit" }
+    }
+  }
+
+  step "mobile" "submit_register" {
+    depends_on = ["open_register"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "register.email"
+        value = generate("user_email")
+      }
+      input_text {
+        id     = "register.password"
+        value  = generate("user_password")
+        secure = true
+      }
+      tap { id = "register.submit" }
+      wait_not_visible {
+        id      = "register.loading"
+        timeout = "5s"
+      }
+      wait_visible {
+        id      = "home.screen"
+        timeout = "10s"
+      }
+    }
+    expect {
+      enabled { id = "home.logout" }
+      value {
+        id    = "register.email"
+        value = contains("@example.com")
+      }
+      text {
+        id    = "home.title"
+        value = "Welcome"
+      }
+    }
+    capture {
+      email = value("register.email")
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}

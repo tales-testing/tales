@@ -22,9 +22,14 @@ Use this skill when asked to:
 1. Read the local DSL source of truth before writing:
 - `README.md`
 - `internal/parser/schema.go`
+- `internal/parser/mobile.go` (mobile DSL surface)
+- `internal/model/mobile.go` (mobile model types)
 - `internal/lang/functions.go`
 - `internal/runtime/runner.go`
-- `e2e/pass/*.tales`
+- `internal/runtime/mobile.go` (mobile execution + capture functions)
+- `docs/mobile/ios.md` (mobile architecture and config)
+- `e2e/pass/*.tales` (HTTP examples)
+- `e2e/ios/pass/*.tales` (mobile examples)
 
 2. Build tests with only supported structures:
 - `version = 1`
@@ -88,6 +93,174 @@ Use this skill when asked to:
 - Use `regex_find(value, pattern)` for full matches and `regex_find(value, pattern, group)` for capture groups.
 - `coalesce(...)` is intentionally not a supported fallback primitive yet because lazy evaluation is required for missing-reference fallbacks.
 
+## Mobile provider (iOS V1)
+
+The `mobile` provider drives iOS Simulator UI through Apple official tooling
+(`xcrun simctl`, `xcodebuild`) and a repository-owned Swift/XCUITest HTTP
+driver. No Appium, no Maestro, no external WebDriverAgent. Full architecture
+lives in [docs/mobile/ios.md](../../../docs/mobile/ios.md).
+
+### Targets configuration
+
+Mobile targets must be declared inside `config.mobile.targets` and referenced
+by name from each mobile step:
+
+```hcl
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
+          scheme   = "TalesAppleDriverUITests"
+        }
+      }
+    }
+  }
+}
+```
+
+- `platform` only accepts `"ios"` in V1.
+- `app` must be an iOS Simulator `.app` bundle, not a device build.
+- `driver.external = true` lets Tales talk to an already-running driver instead
+  of launching `xcodebuild test-without-building` itself.
+
+### Step shape
+
+```hcl
+step "mobile" "<name>" {
+  platform = "ios"
+  target   = "<targets key>"
+
+  launch    { clear_state = true }    # optional, mutually exclusive with terminate
+  terminate {}                         # optional, ends the app session
+
+  actions {
+    # tap | input_text | clear_text | wait_visible | wait_not_visible
+    # decoded in source order — order matters
+  }
+
+  expect {
+    # visible | not_visible | text | value | enabled | disabled
+  }
+
+  capture {
+    # value("id"), text("id"), or request.actions[N].value
+  }
+}
+```
+
+Backward-compatible alias `response` for `expect` works for mobile steps too.
+
+### Supported actions
+
+All five actions accept optional `timeout` and `interval` (Go duration
+strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
+`250ms` polling.
+
+- `tap { id = "..." }`
+- `input_text { id = "..." value = "..." secure = true }` — `secure = true`
+  masks the value in console / JUnit / JSONL reports.
+- `clear_text { id = "..." }`
+- `wait_visible { id = "..." }` — explicit wait until the element is visible.
+- `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
+
+Prefer `wait_visible` / `wait_not_visible` as the canonical way to bridge
+asynchronous UI transitions; never insert sleeps.
+
+### Supported expectations
+
+All expectations accept optional `timeout` and `interval` (defaults `10s` /
+`250ms`).
+
+- `visible    { id = "..." }`
+- `not_visible{ id = "..." }`
+- `text       { id = "..." value = "..." }` — value may be a literal string or a
+  matcher (`contains(...)`, `matches(...)`).
+- `value      { id = "..." value = "..." }` — same matcher support as `text`.
+- `enabled    { id = "..." }`
+- `disabled   { id = "..." }`
+
+### Captures
+
+Inside `capture { ... }` of a mobile step the runtime injects two helper
+functions that close over the recorded UI hierarchy:
+
+- `value("id")` — returns the text/value of an element.
+- `text("id")`  — returns the visible text of an element.
+
+`request.actions[N].value` exposes the evaluated value of action `N` (zero-based),
+useful for re-using a generated email or password downstream:
+
+```hcl
+capture {
+  email = value("register.email")
+}
+```
+
+### Conventions and guardrails
+
+- Selectors are accessibility identifiers only — never visible text.
+- Pin every screen entry with at least one `visible { id = "..." }` to avoid
+  racing UI transitions.
+- Use `wait_visible` / `wait_not_visible` inside `actions` to chain dependent
+  taps and inputs in a single step.
+- For end-of-scenario cleanup, put `terminate {}` inside `teardown` and guard
+  with `when = true` (or `when = can(...)` when the launch step is conditional).
+- Two scenarios cannot target the same mobile `target` in parallel — the
+  runtime serializes them by name. Use distinct targets when parallelism is
+  required.
+- On failure Tales writes
+  `build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-<n>/{screenshot.png,hierarchy.json}`
+  and surfaces them in reports — do not encode these paths into the suite.
+- Validation: prefer `tales test ./suite --seed 1234 --parallel 1` for mobile
+  suites; bump parallelism only when targets are distinct.
+
+### Mobile step skeleton
+
+```hcl
+step "mobile" "submit_register" {
+  depends_on = ["open_register"]
+
+  platform = "ios"
+  target   = "iphone"
+
+  actions {
+    input_text {
+      id    = "register.email"
+      value = generate("ios_email")
+    }
+    input_text {
+      id     = "register.password"
+      value  = generate("ios_password")
+      secure = true
+    }
+    tap { id = "register.submit" }
+    wait_not_visible { id = "register.loading"; timeout = "5s" }
+    wait_visible     { id = "verify.screen";   timeout = "10s" }
+  }
+
+  expect {
+    enabled { id = "verify.submit" }
+    value {
+      id    = "register.email"
+      value = contains("@example.com")
+    }
+  }
+
+  capture {
+    email = value("register.email")
+  }
+}
+```
+
 ## Async polling pattern
 
 For asynchronous API effects such as email verification, prefer an HTTP polling step with `retry` and capture extracted data with `regex_find`:
@@ -130,6 +303,7 @@ When updating existing tests or creating new ones in a changed Tales codebase:
 3. Update generated patterns to the current DSL and runtime behavior.
 4. Re-validate using `tales validate` and `tales test`.
 
-For canonical patterns and a starter template, read:
+For canonical patterns and starter templates, read:
 - [references/validation-checklist.md](references/validation-checklist.md)
 - [references/api-test-template.tales](references/api-test-template.tales)
+- [references/mobile-test-template.tales](references/mobile-test-template.tales)
