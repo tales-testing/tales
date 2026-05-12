@@ -21,8 +21,6 @@ func sampleConfig() map[string]cty.Value {
 						"port":     cty.NumberIntVal(9080),
 						"external": cty.True,
 						"mode":     cty.StringVal("xctest"),
-						"project":  cty.StringVal("drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"),
-						"scheme":   cty.StringVal("TalesAppleDriverUITests"),
 					}),
 				}),
 			}),
@@ -50,8 +48,58 @@ func TestResolveTargetFullyPopulated(t *testing.T) {
 		t.Fatalf("unexpected driver config: %+v", target.Driver)
 	}
 
-	if target.Driver.Scheme != "TalesAppleDriverUITests" {
-		t.Fatalf("expected scheme to be set, got %+v", target.Driver)
+	if target.Driver.Mode != "xctest" {
+		t.Fatalf("expected mode to be set, got %+v", target.Driver)
+	}
+}
+
+func TestResolveTargetRejectsLegacyProject(t *testing.T) {
+	t.Parallel()
+
+	config := map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.ObjectVal(map[string]cty.Value{
+				"iphone": cty.ObjectVal(map[string]cty.Value{
+					"platform":    cty.StringVal("ios"),
+					"device_name": cty.StringVal("iPhone 16"),
+					"app":         cty.StringVal("./MyApp.app"),
+					"bundle_id":   cty.StringVal("com.example.MyApp"),
+					"driver": cty.ObjectVal(map[string]cty.Value{
+						"project": cty.StringVal("drivers/apple/Foo.xcodeproj"),
+					}),
+				}),
+			}),
+		}),
+	}
+
+	_, err := ResolveTarget(config, "iphone")
+	if err == nil || !strings.Contains(err.Error(), `"project" is no longer supported`) {
+		t.Fatalf("expected migration error for driver.project, got %v", err)
+	}
+}
+
+func TestResolveTargetRejectsLegacyScheme(t *testing.T) {
+	t.Parallel()
+
+	config := map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.ObjectVal(map[string]cty.Value{
+				"iphone": cty.ObjectVal(map[string]cty.Value{
+					"platform":    cty.StringVal("ios"),
+					"device_name": cty.StringVal("iPhone 16"),
+					"app":         cty.StringVal("./MyApp.app"),
+					"bundle_id":   cty.StringVal("com.example.MyApp"),
+					"driver": cty.ObjectVal(map[string]cty.Value{
+						"scheme": cty.StringVal("FooUITests"),
+					}),
+				}),
+			}),
+		}),
+	}
+
+	_, err := ResolveTarget(config, "iphone")
+	if err == nil || !strings.Contains(err.Error(), `"scheme" is no longer supported`) {
+		t.Fatalf("expected migration error for driver.scheme, got %v", err)
 	}
 }
 

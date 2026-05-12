@@ -68,47 +68,34 @@ func (p *fakePinger) Health(_ context.Context) error {
 	return errors.New("not ready")
 }
 
-func TestBuildArgsContainsRequiredFlags(t *testing.T) {
-	t.Parallel()
+const sampleXCTestRunPath = "/cache/key123/derived-data/Build/Products/Driver.xctestrun"
 
-	got := BuildArgs(Options{
-		Project:     "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj",
-		Scheme:      "TalesAppleDriverUITests",
-		Destination: "platform=iOS Simulator,id=ABC",
-	})
-
-	want := []string{
-		"test",
-		"-project", "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj",
-		"-scheme", "TalesAppleDriverUITests",
-		"-destination", "platform=iOS Simulator,id=ABC",
+func sampleOptions(overrides ...func(*Options)) Options {
+	opts := Options{
+		XCTestRunPath: sampleXCTestRunPath,
+		Destination:   "platform=iOS Simulator,id=ABC",
+		HealthTimeout: time.Second,
+		PollInterval:  time.Millisecond,
 	}
 
-	if len(got) != len(want) {
-		t.Fatalf("expected %v, got %v", want, got)
+	for _, override := range overrides {
+		override(&opts)
 	}
 
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("arg %d: want %q got %q", i, want[i], got[i])
-		}
-	}
+	return opts
 }
 
-func TestBuildArgsUsesTestWithoutBuildingWhenXCTestRunPathIsSet(t *testing.T) {
+func TestBuildArgsEmitsTestWithoutBuilding(t *testing.T) {
 	t.Parallel()
 
 	got := BuildArgs(Options{
-		XCTestRunPath: "/cache/xyz/derived-data/Build/Products/Driver.xctestrun",
+		XCTestRunPath: sampleXCTestRunPath,
 		Destination:   "platform=iOS Simulator,id=ABC",
-		// Project/Scheme intentionally provided to verify they are ignored
-		Project: "ignored.xcodeproj",
-		Scheme:  "ignored",
 	})
 
 	want := []string{
 		"test-without-building",
-		"-xctestrun", "/cache/xyz/derived-data/Build/Products/Driver.xctestrun",
+		"-xctestrun", sampleXCTestRunPath,
 		"-destination", "platform=iOS Simulator,id=ABC",
 	}
 
@@ -120,31 +107,6 @@ func TestBuildArgsUsesTestWithoutBuildingWhenXCTestRunPathIsSet(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("arg %d: want %q got %q", i, want[i], got[i])
 		}
-	}
-}
-
-func TestStartAcceptsXCTestRunPathWithoutProjectScheme(t *testing.T) {
-	t.Parallel()
-
-	spawner := &fakeSpawner{}
-	launcher := New(spawner)
-
-	_, err := launcher.Start(context.Background(), Options{
-		XCTestRunPath: "/cache/xyz/derived-data/Build/Products/Driver.xctestrun",
-		Destination:   "platform=iOS Simulator,id=ABC",
-		HealthTimeout: time.Second,
-		PollInterval:  time.Millisecond,
-	}, &fakePinger{until: 1})
-	if err != nil {
-		t.Fatalf("expected XCTestRunPath to make Project/Scheme optional, got %v", err)
-	}
-
-	if len(spawner.calls) != 1 {
-		t.Fatalf("expected 1 spawner call, got %d", len(spawner.calls))
-	}
-
-	if spawner.calls[0].args[0] != "test-without-building" {
-		t.Fatalf("expected first arg to be test-without-building, got %q", spawner.calls[0].args[0])
 	}
 }
 
@@ -156,13 +118,10 @@ func TestStartReturnsHandleWhenHealthy(t *testing.T) {
 
 	launcher := New(spawner)
 
-	handle, err := launcher.Start(context.Background(), Options{
-		Project:       "p.xcodeproj",
-		Scheme:        "S",
-		Destination:   "platform=iOS Simulator,id=ABC",
-		HealthTimeout: 2 * time.Second,
-		PollInterval:  5 * time.Millisecond,
-	}, pinger)
+	handle, err := launcher.Start(context.Background(), sampleOptions(func(o *Options) {
+		o.HealthTimeout = 2 * time.Second
+		o.PollInterval = 5 * time.Millisecond
+	}), pinger)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -186,14 +145,9 @@ func TestStartPassesLogPathToSpawner(t *testing.T) {
 	spawner := &fakeSpawner{}
 	launcher := New(spawner)
 
-	_, err := launcher.Start(context.Background(), Options{
-		Project:       "p.xcodeproj",
-		Scheme:        "S",
-		Destination:   "platform=iOS Simulator,id=ABC",
-		LogPath:       "build/artifacts/mobile/driver/iphone/driver.log",
-		HealthTimeout: time.Second,
-		PollInterval:  time.Millisecond,
-	}, &fakePinger{until: 1})
+	_, err := launcher.Start(context.Background(), sampleOptions(func(o *Options) {
+		o.LogPath = "build/artifacts/mobile/driver/iphone/driver.log"
+	}), &fakePinger{until: 1})
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -209,17 +163,12 @@ func TestStartPassesEnvironmentToSpawner(t *testing.T) {
 	spawner := &fakeSpawner{}
 	launcher := New(spawner)
 
-	_, err := launcher.Start(context.Background(), Options{
-		Project:       "p.xcodeproj",
-		Scheme:        "S",
-		Destination:   "platform=iOS Simulator,id=ABC",
-		HealthTimeout: time.Second,
-		PollInterval:  time.Millisecond,
-		Env: map[string]string{
+	_, err := launcher.Start(context.Background(), sampleOptions(func(o *Options) {
+		o.Env = map[string]string{
 			"TALES_DRIVER_HOST": "127.0.0.1",
 			"TALES_DRIVER_PORT": "9090",
-		},
-	}, &fakePinger{until: 1})
+		}
+	}), &fakePinger{until: 1})
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -238,13 +187,10 @@ func TestStartStopsProcessOnHealthTimeout(t *testing.T) {
 
 	launcher := New(spawner)
 
-	_, err := launcher.Start(context.Background(), Options{
-		Project:       "p.xcodeproj",
-		Scheme:        "S",
-		Destination:   "platform=iOS Simulator,id=ABC",
-		HealthTimeout: 30 * time.Millisecond,
-		PollInterval:  5 * time.Millisecond,
-	}, pinger)
+	_, err := launcher.Start(context.Background(), sampleOptions(func(o *Options) {
+		o.HealthTimeout = 30 * time.Millisecond
+		o.PollInterval = 5 * time.Millisecond
+	}), pinger)
 	if err == nil {
 		t.Fatal("expected error on health timeout")
 	}
@@ -263,15 +209,12 @@ func TestStartTimeoutIncludesLogPathAndDoctorHint(t *testing.T) {
 
 	launcher := New(&fakeSpawner{process: &fakeProcess{}})
 
-	_, err := launcher.Start(context.Background(), Options{
-		Project:       "p.xcodeproj",
-		Scheme:        "S",
-		Destination:   "platform=iOS Simulator,id=ABC",
-		HealthURL:     "http://127.0.0.1:9080/health",
-		LogPath:       "build/artifacts/mobile/driver/iphone/driver.log",
-		HealthTimeout: 30 * time.Millisecond,
-		PollInterval:  5 * time.Millisecond,
-	}, &fakePinger{until: 999, err: errors.New("never ready")})
+	_, err := launcher.Start(context.Background(), sampleOptions(func(o *Options) {
+		o.HealthURL = "http://127.0.0.1:9080/health"
+		o.LogPath = "build/artifacts/mobile/driver/iphone/driver.log"
+		o.HealthTimeout = 30 * time.Millisecond
+		o.PollInterval = 5 * time.Millisecond
+	}), &fakePinger{until: 999, err: errors.New("never ready")})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -291,9 +234,8 @@ func TestStartRejectsMissingOptions(t *testing.T) {
 		name string
 		opts Options
 	}{
-		{"missing project", Options{Scheme: "s", Destination: "d"}},
-		{"missing scheme", Options{Project: "p", Destination: "d"}},
-		{"missing destination", Options{Project: "p", Scheme: "s"}},
+		{"missing xctestrun", Options{Destination: "d"}},
+		{"missing destination", Options{XCTestRunPath: sampleXCTestRunPath}},
 	}
 
 	for _, tc := range cases {
@@ -314,9 +256,7 @@ func TestStartPropagatesSpawnError(t *testing.T) {
 
 	launcher := New(&fakeSpawner{err: errors.New("no xcodebuild")})
 
-	_, err := launcher.Start(context.Background(), Options{
-		Project: "p", Scheme: "s", Destination: "d",
-	}, &fakePinger{until: 1})
+	_, err := launcher.Start(context.Background(), sampleOptions(), &fakePinger{until: 1})
 	if err == nil || !strings.Contains(err.Error(), "spawn xcodebuild") {
 		t.Fatalf("expected spawn error, got %v", err)
 	}

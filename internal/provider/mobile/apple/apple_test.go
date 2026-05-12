@@ -145,8 +145,6 @@ func sampleTarget(external bool) Target {
 			Host:     "127.0.0.1",
 			Port:     9080,
 			External: external,
-			Project:  "p.xcodeproj",
-			Scheme:   "S",
 		},
 	}
 }
@@ -255,90 +253,13 @@ func TestEnsureDriverExternalFailsOnHealth(t *testing.T) {
 	}
 }
 
-func TestEnsureDriverStartsXcodebuild(t *testing.T) {
-	t.Parallel()
-
-	drv := &fakeDriver{}
-	lc, _, xc := newLifecycleWithDriver(drv)
-
-	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"},sampleTarget(false))
-	if err != nil {
-		t.Fatalf("ensure driver: %v", err)
-	}
-
-	if handle == nil {
-		t.Fatal("expected non-nil handle when Tales started xcodebuild")
-	}
-
-	if got := xc.calls.Load(); got != 1 {
-		t.Fatalf("expected 1 xcodebuild call, got %d", got)
-	}
-
-	if !strings.Contains(xc.opts.LogPath, "build/artifacts/mobile/driver/iphone/driver.log") {
-		t.Fatalf("expected driver log path in options, got %+v", xc.opts)
-	}
-
-	if xc.opts.HealthURL != "http://127.0.0.1:9080/health" {
-		t.Fatalf("expected health URL in options, got %+v", xc.opts)
-	}
-
-	if xc.opts.Env["TALES_DRIVER_HOST"] != "127.0.0.1" || xc.opts.Env["TALES_DRIVER_PORT"] != "9080" {
-		t.Fatalf("expected driver host/port env, got %+v", xc.opts.Env)
-	}
-}
-
-func TestEnsureDriverRejectsLegacySchemeWithoutProject(t *testing.T) {
-	t.Parallel()
-
-	drv := &fakeDriver{}
-	lc, _, xc := newLifecycleWithDriver(drv)
-
-	target := sampleTarget(false)
-	target.Driver.Project = ""
-	// Scheme still set from sampleTarget; without a project this is an
-	// ambiguous half-configuration that should be rejected up front
-	// instead of silently falling into embedded mode.
-
-	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, target)
-	if err == nil || !strings.Contains(err.Error(), "driver.scheme requires driver.project") {
-		t.Fatalf("expected scheme-without-project error, got %v", err)
-	}
-
-	if got := xc.calls.Load(); got != 0 {
-		t.Fatalf("expected no xcodebuild call when configuration is invalid, got %d", got)
-	}
-}
-
-func TestEnsureDriverLegacyModeRequiresScheme(t *testing.T) {
-	t.Parallel()
-
-	drv := &fakeDriver{}
-	lc, _, xc := newLifecycleWithDriver(drv)
-
-	target := sampleTarget(false)
-	target.Driver.Scheme = ""
-
-	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, target)
-	if err == nil || !strings.Contains(err.Error(), "driver.scheme is required") {
-		t.Fatalf("expected scheme-required error, got %v", err)
-	}
-
-	if got := xc.calls.Load(); got != 0 {
-		t.Fatalf("expected no xcodebuild call when scheme is missing, got %d", got)
-	}
-}
-
 func TestEnsureDriverEmbeddedModeRequiresManager(t *testing.T) {
 	t.Parallel()
 
 	drv := &fakeDriver{}
 	lc, _, xc := newLifecycleWithDriver(drv)
 
-	target := sampleTarget(false)
-	target.Driver.Project = ""
-	target.Driver.Scheme = ""
-
-	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, target)
+	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, sampleTarget(false))
 	if err == nil || !strings.Contains(err.Error(), "embedded driver manager") {
 		t.Fatalf("expected embedded-manager error, got %v", err)
 	}
@@ -383,11 +304,7 @@ func TestEnsureDriverEmbeddedModeStartsTestWithoutBuilding(t *testing.T) {
 	}}
 	lc.Embedded = em
 
-	target := sampleTarget(false)
-	target.Driver.Project = ""
-	target.Driver.Scheme = ""
-
-	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, target)
+	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, sampleTarget(false))
 	if err != nil {
 		t.Fatalf("ensure driver: %v", err)
 	}
@@ -411,6 +328,18 @@ func TestEnsureDriverEmbeddedModeStartsTestWithoutBuilding(t *testing.T) {
 	if !strings.Contains(xc.opts.Destination, "AAA") {
 		t.Fatalf("expected destination to include UDID, got %q", xc.opts.Destination)
 	}
+
+	if !strings.Contains(xc.opts.LogPath, "build/artifacts/mobile/driver/iphone/driver.log") {
+		t.Fatalf("expected driver log path in options, got %+v", xc.opts)
+	}
+
+	if xc.opts.HealthURL != "http://127.0.0.1:9080/health" {
+		t.Fatalf("expected health URL in options, got %+v", xc.opts)
+	}
+
+	if xc.opts.Env["TALES_DRIVER_HOST"] != "127.0.0.1" || xc.opts.Env["TALES_DRIVER_PORT"] != "9080" {
+		t.Fatalf("expected driver host/port env, got %+v", xc.opts.Env)
+	}
 }
 
 func TestEnsureDriverEmbeddedModeRetriesOnHealthFailure(t *testing.T) {
@@ -427,11 +356,7 @@ func TestEnsureDriverEmbeddedModeRetriesOnHealthFailure(t *testing.T) {
 	}}
 	lc.Embedded = em
 
-	target := sampleTarget(false)
-	target.Driver.Project = ""
-	target.Driver.Scheme = ""
-
-	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, target)
+	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, sampleTarget(false))
 	if err != nil {
 		t.Fatalf("ensure driver: %v", err)
 	}
