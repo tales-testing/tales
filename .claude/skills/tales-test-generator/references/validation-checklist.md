@@ -29,7 +29,22 @@ Run this checklist before considering a `.tales` suite done.
 - HTTP response header captures use `response.headers["Header-Name"]`; lower-case lookup should also work for HTTP responses
 - Do not use `coalesce(...)` unless the local runtime explicitly documents lazy fallback support
 
-## 4) Command validation
+## 4) Mobile (iOS) specifics
+
+When the suite contains `step "mobile"` blocks:
+
+- `config.mobile.targets.<name>` is defined and `platform = "ios"`
+- Each mobile step sets `platform = "ios"` and `target = "<targets key>"`
+- Selectors use accessibility identifiers only, never visible text
+- Every screen entry pins state with at least one `visible { id = "..." }` or `wait_visible`
+- UI transitions use `wait_visible` / `wait_not_visible` rather than sleeps
+- Sensitive `input_text` values are flagged with `secure = true`
+- `terminate {}` lives in `teardown` and uses `when = true` (or `when = can(...)` when launch is conditional)
+- Parallel scenarios target distinct mobile targets — the runtime serializes per-target work
+- `text` / `value` expectations use literals or matchers (`contains`, `matches`), not over-specified equality
+- `tales test ./suite --seed 1234 --parallel 1` is the safe default; only raise `--parallel` when targets are distinct
+
+## 5) Command validation
 
 ```bash
 tales validate <path>
