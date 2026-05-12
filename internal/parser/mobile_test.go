@@ -89,11 +89,13 @@ scenario "register" {
     target = "iphone"
     actions {
       tap {
-        id = "welcome.register"
+        id      = "welcome.register"
+        timeout = "5s"
       }
       input_text {
-        id    = "register.email"
-        value = "user@example.com"
+        id      = "register.email"
+        value   = "user@example.com"
+        timeout = "3s"
       }
       input_text {
         id     = "register.password"
@@ -141,6 +143,10 @@ scenario "register" {
 
 	if step.Mobile.Actions[2].Secure.Empty() {
 		t.Fatal("expected secure expression to be captured on the second input_text")
+	}
+
+	if step.Mobile.Actions[0].Timeout.Empty() || step.Mobile.Actions[1].Timeout.Empty() {
+		t.Fatal("expected action timeout expressions to be captured")
 	}
 }
 

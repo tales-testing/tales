@@ -29,12 +29,13 @@ type MobileTerminateExec struct{}
 
 // MobileActionExec is one ordered UI action ready to be executed.
 type MobileActionExec struct {
-	Kind   model.MobileActionKind
-	ID     string
-	Value  string
-	Secure bool
-	File   string
-	Line   int
+	Kind    model.MobileActionKind
+	ID      string
+	Value   string
+	Secure  bool
+	Timeout time.Duration
+	File    string
+	Line    int
 }
 
 // MobileExpectExec groups visibility expectations for the step.

@@ -256,13 +256,17 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 }
 
 func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
+	return r.executeStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, "step")
+}
+
+func (r *Runner) executeStepInPhase(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string) *report.StepResult {
 	retry := retryOptions(step)
 	start := time.Now()
 
 	var lastResult *report.StepResult
 
 	for attempt := 1; attempt <= retry.Attempts; attempt++ {
-		attemptResult := r.executeStepAttempt(ctx, evaluator, suite, scenarioName, config, state, input, step)
+		attemptResult := r.executeStepAttempt(ctx, evaluator, suite, scenarioName, config, state, input, step, phase, attempt)
 		attemptResult.Attempts = attempt
 		lastResult = attemptResult
 
@@ -289,11 +293,11 @@ func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, sui
 		return lastResult
 	}
 
-	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusFail, Attempts: retry.Attempts, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: "runtime", Message: "step was not executed"}}
+	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusFail, Attempts: retry.Attempts, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: "runtime", Message: "step was not executed"}}
 }
 
-func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
-	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusPass}
+func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string, attempt int) *report.StepResult {
+	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusPass}
 	start := time.Now()
 
 	if step.Provider == "keyword" {
@@ -301,7 +305,7 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 	}
 
 	if step.Provider == mobileProviderType {
-		return r.executeMobileStep(ctx, evaluator, scenarioName, config, state, input, step)
+		return r.executeMobileStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
 	}
 
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
@@ -324,7 +328,7 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 		return stepReport
 	}
 
-	output, err := providerImpl.Execute(ctx, provider.Input{Scenario: scenarioName, Step: step, Config: config, Request: requestValues, Timeout: timeout})
+	output, err := providerImpl.Execute(ctx, provider.Input{Scenario: scenarioName, Step: step, Phase: phase, Attempt: attempt, Config: config, Request: requestValues, Timeout: timeout})
 	if err != nil {
 		stepReport.Status = report.StatusFail
 		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: err.Error()}
@@ -405,10 +409,7 @@ func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evalua
 		return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "teardown", Status: report.StatusSkip}
 	}
 
-	result := r.executeStep(ctx, evaluator, suite, scenarioName, config, state, input, step)
-	result.Phase = "teardown"
-
-	return result
+	return r.executeStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, "teardown")
 }
 
 func buildLayers(steps []*model.Step) ([][]string, error) {

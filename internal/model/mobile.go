@@ -32,12 +32,13 @@ type MobileTerminate struct{}
 
 // MobileAction is one ordered UI action inside an actions block.
 type MobileAction struct {
-	Kind   MobileActionKind
-	File   string
-	Line   int
-	ID     Expression
-	Value  Expression
-	Secure Expression
+	Kind    MobileActionKind
+	File    string
+	Line    int
+	ID      Expression
+	Value   Expression
+	Secure  Expression
+	Timeout Expression
 }
 
 // MobileExpect groups visibility expectations for a mobile step.

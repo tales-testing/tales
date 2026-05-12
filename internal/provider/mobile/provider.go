@@ -26,6 +26,9 @@ const expectPollInterval = 250 * time.Millisecond
 // expectDefaultTimeout is used when a visibility block omits `timeout`.
 const expectDefaultTimeout = 10 * time.Second
 
+// actionDefaultTimeout is used when tap/input_text/clear_text omit `timeout`.
+const actionDefaultTimeout = 10 * time.Second
+
 // defaultClearTextErase is the number of characters erased by clear_text when
 // the element's value length is unknown.
 const defaultClearTextErase = 64
@@ -38,6 +41,7 @@ type Provider struct {
 	mu          sync.Mutex
 	sessions    map[string]*Session
 	targetLocks map[string]*sync.Mutex
+	stepLocks   map[string]*sync.Mutex
 	builder     SessionBuilder
 
 	hierarchyMu sync.RWMutex
@@ -68,6 +72,7 @@ func New(opts ...Option) *Provider {
 	p := &Provider{
 		sessions:      map[string]*Session{},
 		targetLocks:   map[string]*sync.Mutex{},
+		stepLocks:     map[string]*sync.Mutex{},
 		hierarchies:   map[string]*tree.ViewNode{},
 		artifactsBase: defaultArtifactsBase,
 	}
@@ -149,6 +154,10 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, fmt.Errorf("resolve target: %w", err)
 	}
 
+	stepLock := p.stepLock(target.Name)
+	stepLock.Lock()
+	defer stepLock.Unlock()
+
 	session, err := p.acquireSession(ctx, target)
 	if err != nil {
 		return nil, fmt.Errorf("acquire session: %w", err)
@@ -222,6 +231,19 @@ func (p *Provider) targetLock(name string) *sync.Mutex {
 	return lock
 }
 
+func (p *Provider) stepLock(name string) *sync.Mutex {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	lock, ok := p.stepLocks[name]
+	if !ok {
+		lock = &sync.Mutex{}
+		p.stepLocks[name] = lock
+	}
+
+	return lock
+}
+
 func (p *Provider) executeMobile(ctx context.Context, input provider.Input, session *Session, output *provider.Output) error {
 	exec := input.Mobile
 
@@ -277,18 +299,9 @@ func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *p
 }
 
 func (p *Provider) handleAction(ctx context.Context, session *Session, action provider.MobileActionExec) error {
-	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID)
+	node, err := p.waitForActionElement(ctx, session, action)
 	if err != nil {
-		return fmt.Errorf("fetch hierarchy: %w", err)
-	}
-
-	node, ok, err := tree.FindByID(hierarchy, action.ID)
-	if err != nil {
-		return fmt.Errorf("find element: %w", err)
-	}
-
-	if !ok {
-		return fmt.Errorf("element not found: id %q", action.ID)
+		return err
 	}
 
 	x, y := tree.Center(node)
@@ -324,6 +337,45 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 	}
 
 	return nil
+}
+
+func (p *Provider) waitForActionElement(ctx context.Context, session *Session, action provider.MobileActionExec) (*tree.ViewNode, error) {
+	timeout := action.Timeout
+	if timeout <= 0 {
+		timeout = actionDefaultTimeout
+	}
+
+	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var lastErr error
+
+	for {
+		hierarchy, err := session.Driver.Hierarchy(deadlineCtx, session.Target.BundleID)
+		if err != nil {
+			lastErr = fmt.Errorf("fetch hierarchy: %w", err)
+		} else {
+			node, ok, findErr := tree.FindByID(hierarchy, action.ID)
+			switch {
+			case findErr != nil:
+				lastErr = fmt.Errorf("find element: %w", findErr)
+			case ok && tree.IsVisible(node):
+				return node, nil
+			default:
+				lastErr = nil
+			}
+		}
+
+		select {
+		case <-deadlineCtx.Done():
+			if lastErr != nil {
+				return nil, fmt.Errorf("element id %q was not visible within %s: %w", action.ID, timeout, lastErr)
+			}
+
+			return nil, fmt.Errorf("element id %q was not visible within %s", action.ID, timeout)
+		case <-time.After(expectPollInterval):
+		}
+	}
 }
 
 func (p *Provider) handleExpect(ctx context.Context, session *Session, expect provider.MobileExpectExec) error {
@@ -403,7 +455,7 @@ func formatVisibilityError(v provider.MobileVisibilityExec, want bool, lastErr e
 }
 
 func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Input, session *Session, output *provider.Output) {
-	dir := artifactDir(p.artifactsBase, input.Scenario, stepName(input))
+	dir := artifactDir(p.artifactsBase, inputFile(input), input.Scenario, stepName(input), inputPhase(input), inputAttempt(input))
 	artifacts := make([]Artifact, 0, 2)
 
 	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID); err == nil {
@@ -468,20 +520,7 @@ func mobileRequestCty(exec *provider.MobileExecution) map[string]cty.Value {
 		actions := make([]cty.Value, 0, len(exec.Actions))
 
 		for _, action := range exec.Actions {
-			entry := map[string]cty.Value{
-				"kind": cty.StringVal(string(action.Kind)),
-				"id":   cty.StringVal(action.ID),
-			}
-
-			if action.Value != "" {
-				if action.Secure {
-					entry["value"] = cty.StringVal("***")
-				} else {
-					entry["value"] = cty.StringVal(action.Value)
-				}
-			}
-
-			actions = append(actions, cty.ObjectVal(entry))
+			actions = append(actions, cty.ObjectVal(mobileActionCty(action)))
 		}
 
 		out["actions"] = cty.TupleVal(actions)
@@ -490,12 +529,58 @@ func mobileRequestCty(exec *provider.MobileExecution) map[string]cty.Value {
 	return out
 }
 
+func mobileActionCty(action provider.MobileActionExec) map[string]cty.Value {
+	entry := map[string]cty.Value{
+		"kind": cty.StringVal(string(action.Kind)),
+		"id":   cty.StringVal(action.ID),
+	}
+	if action.Timeout > 0 {
+		entry["timeout"] = cty.StringVal(action.Timeout.String())
+	}
+
+	if action.Value == "" {
+		return entry
+	}
+
+	if action.Secure {
+		entry["value"] = cty.StringVal("***")
+	} else {
+		entry["value"] = cty.StringVal(action.Value)
+	}
+
+	return entry
+}
+
 func stepName(input provider.Input) string {
 	if input.Step == nil {
 		return unnamedSegment
 	}
 
 	return input.Step.Name
+}
+
+func inputFile(input provider.Input) string {
+	if input.Step == nil {
+		return ""
+	}
+
+	return input.Step.File
+}
+
+func inputPhase(input provider.Input) string {
+	if input.Phase == "" {
+		return "step"
+	}
+
+	return input.Phase
+}
+
+func inputAttempt(input provider.Input) int {
+	if input.Attempt <= 0 {
+		return 1
+	}
+
+	return input.Attempt
 }
 
 // defaultSessionBuilder returns a builder that errors out clearly. Callers

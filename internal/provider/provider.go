@@ -12,6 +12,8 @@ import (
 type Input struct {
 	Scenario string
 	Step     *model.Step
+	Phase    string
+	Attempt  int
 	Config   map[string]cty.Value
 	Request  map[string]cty.Value
 	Expect   map[string]cty.Value

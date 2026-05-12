@@ -18,8 +18,8 @@ import (
 
 const mobileProviderType = "mobile"
 
-func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
-	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusPass}
+func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string, attempt int) *report.StepResult {
+	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusPass}
 	start := time.Now()
 
 	if step.Mobile == nil {
@@ -53,6 +53,8 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	output, err := providerImpl.Execute(ctx, provider.Input{
 		Scenario: scenarioName,
 		Step:     step,
+		Phase:    phase,
+		Attempt:  attempt,
 		Config:   config,
 		Mobile:   exec,
 	})
@@ -74,6 +76,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	stepReport.Response = diagnostic.FromCTYMap(output.Response)
 	stepReport.Artifacts = artifactsFromOutput(output)
 
+	scope.Request = output.Request
 	scope.Response = output.Response
 
 	resultValue := map[string]cty.Value{
@@ -190,6 +193,15 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 
 		exec.ID = id
 
+		if !action.Timeout.Empty() {
+			timeout, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].timeout", i), action.Timeout)
+			if err != nil {
+				return nil, err
+			}
+
+			exec.Timeout = timeout
+		}
+
 		if !action.Value.Empty() {
 			value, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].value", i), action.Value)
 			if err != nil {
@@ -252,27 +264,34 @@ func evalMobileVisibility(evaluator *lang.Evaluator, scope lang.ScopeData, scena
 
 	exec := provider.MobileVisibilityExec{ID: id}
 
-	if v.Timeout.Empty() {
-		return exec, nil
+	if !v.Timeout.Empty() {
+		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".timeout", v.Timeout)
+		if err != nil {
+			return provider.MobileVisibilityExec{}, err
+		}
+
+		exec.Timeout = duration
 	}
 
-	value, err := evaluator.Eval(v.Timeout, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: exprPath + ".timeout"})
+	return exec, nil
+}
+
+func evalDurationAttr(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, exprPath string, expression model.Expression) (time.Duration, error) {
+	value, err := evaluator.Eval(expression, scope, lang.GenerateMeta{Scenario: scenarioName, Step: stepName, ExprPath: exprPath})
 	if err != nil {
-		return provider.MobileVisibilityExec{}, fmt.Errorf("%s.timeout: %w", exprPath, err)
+		return 0, fmt.Errorf("%s: %w", exprPath, err)
 	}
 
 	if value.IsNull() {
-		return exec, nil
+		return 0, nil
 	}
 
 	duration, err := toDuration(value)
 	if err != nil {
-		return provider.MobileVisibilityExec{}, fmt.Errorf("%s.timeout: %w", exprPath, err)
+		return 0, fmt.Errorf("%s: %w", exprPath, err)
 	}
 
-	exec.Timeout = duration
-
-	return exec, nil
+	return duration, nil
 }
 
 func evalStringAttr(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, exprPath string, expression model.Expression) (string, error) {
@@ -318,16 +337,7 @@ func mobileRequestSummary(exec *provider.MobileExecution) map[string]any {
 		actions := make([]map[string]any, 0, len(exec.Actions))
 
 		for _, action := range exec.Actions {
-			entry := map[string]any{"kind": string(action.Kind), "id": action.ID}
-			if action.Value != "" {
-				if action.Secure {
-					entry["value"] = "***"
-				} else {
-					entry["value"] = action.Value
-				}
-			}
-
-			actions = append(actions, entry)
+			actions = append(actions, mobileActionSummary(action))
 		}
 
 		summary["actions"] = actions
@@ -338,6 +348,25 @@ func mobileRequestSummary(exec *provider.MobileExecution) map[string]any {
 	}
 
 	return summary
+}
+
+func mobileActionSummary(action provider.MobileActionExec) map[string]any {
+	entry := map[string]any{"kind": string(action.Kind), "id": action.ID}
+	if action.Timeout > 0 {
+		entry["timeout"] = action.Timeout.String()
+	}
+
+	if action.Value == "" {
+		return entry
+	}
+
+	if action.Secure {
+		entry["value"] = "***"
+	} else {
+		entry["value"] = action.Value
+	}
+
+	return entry
 }
 
 func expectSummary(expect provider.MobileExpectExec) map[string]any {

@@ -14,6 +14,14 @@ CLAUDE_SKILLS_DIR ?= $(HOME)/.claude/skills
 
 UNIT_PKGS := ./internal/... ./cmd/tales
 
+IOS_DEVICE_NAME ?= iPhone 16
+IOS_BUNDLE_ID ?= com.hyperxlab.tales.demo
+IOS_DEMO_PROJECT := e2e/ios/demoapp/TalesDemoApp.xcodeproj
+IOS_DEMO_SCHEME := TalesDemoApp
+IOS_DEMO_DERIVED_DATA := $(BUILD_DIR)/ios/demoapp
+IOS_PASS_SUITE := ./e2e/ios/pass
+IOS_FAIL_SUITE := ./e2e/ios/fail
+
 .PHONY: build tales-bin mock-bin install install-skill
 build: tales-bin mock-bin
 
@@ -69,26 +77,68 @@ e2e: build
 	done; \
 	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 4 --report-junit $(BUILD_DIR)/reports/e2e.junit.xml --report-jsonl $(BUILD_DIR)/reports/e2e.jsonl ./e2e/pass
 
-.PHONY: e2e-ios
-e2e-ios:
+.PHONY: check-ios-host
+check-ios-host:
 	@if [ "$$(uname -s)" != "Darwin" ]; then \
-		echo "make e2e-ios is macOS only (got $$(uname -s)); skipping."; \
-		exit 0; \
+		echo "iOS targets require macOS with Xcode (got $$(uname -s))."; \
+		exit 1; \
 	fi
-	@if [ -z "$${IOS_APP_PATH:-}" ] || [ -z "$${IOS_BUNDLE_ID:-}" ]; then \
-		echo "Set IOS_APP_PATH=./build/MyApp.app and IOS_BUNDLE_ID=com.example.MyApp to run make e2e-ios."; \
-		echo "Optional: IOS_DEVICE_NAME (default 'iPhone 17 Pro'), IOS_DRIVER_HOST, IOS_DRIVER_PORT."; \
-		exit 0; \
-	fi
-	@$(MAKE) tales-bin
-	@xcodebuild -project drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj \
-		-scheme TalesAppleDriverUITests \
-		-destination "platform=iOS Simulator,name=$${IOS_DEVICE_NAME:-iPhone 17 Pro}" \
-		-derivedDataPath build/ios-driver-derived \
-		build-for-testing
-	@echo "Driver built. Start it manually with:"
-	@echo "  xcodebuild -project drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj -scheme TalesAppleDriverUITests -destination 'platform=iOS Simulator,name=$${IOS_DEVICE_NAME:-iPhone 17 Pro}' test-without-building"
-	@echo "Then in another shell, run: $(TALES_BIN) test ./e2e/ios --seed 1234"
+	@command -v xcodebuild >/dev/null 2>&1 || { echo "xcodebuild is required for iOS targets."; exit 1; }
+	@command -v xcrun >/dev/null 2>&1 || { echo "xcrun is required for iOS targets."; exit 1; }
+
+.PHONY: build-ios-demo
+build-ios-demo: check-ios-host | $(BUILD_READY)
+	@mkdir -p $(BUILD_DIR)/ios
+	@echo "Building iOS demo app for simulator..."
+	@xcodebuild \
+		-quiet \
+		-project $(IOS_DEMO_PROJECT) \
+		-scheme $(IOS_DEMO_SCHEME) \
+		-configuration Debug \
+		-sdk iphonesimulator \
+		-destination "generic/platform=iOS Simulator" \
+		-derivedDataPath $(IOS_DEMO_DERIVED_DATA) \
+		CODE_SIGNING_ALLOWED=NO \
+		build
+	@app_path=$$(find "$(IOS_DEMO_DERIVED_DATA)" -name 'TalesDemoApp.app' -type d | head -n 1); \
+	if [ -z "$$app_path" ]; then echo "TalesDemoApp.app was not produced under $(IOS_DEMO_DERIVED_DATA)."; exit 1; fi; \
+	echo "Built $$app_path"
+
+.PHONY: e2e-ios
+e2e-ios: tales-bin build-ios-demo
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/artifacts
+	@set -euo pipefail; \
+	app_path=$$(find "$(IOS_DEMO_DERIVED_DATA)" -name 'TalesDemoApp.app' -type d | head -n 1); \
+	if [ -z "$$app_path" ]; then echo "TalesDemoApp.app was not produced under $(IOS_DEMO_DERIVED_DATA)."; exit 1; fi; \
+	IOS_APP_PATH="$$app_path" \
+	IOS_BUNDLE_ID="$(IOS_BUNDLE_ID)" \
+	IOS_DEVICE_NAME="$(IOS_DEVICE_NAME)" \
+	$(TALES_BIN) test --seed 1234 --parallel 1 \
+		--report-junit $(BUILD_DIR)/reports/e2e-ios.junit.xml \
+		--report-jsonl $(BUILD_DIR)/reports/e2e-ios.jsonl \
+		$(IOS_PASS_SUITE)
+
+.PHONY: e2e-ios-failure
+e2e-ios-failure: tales-bin build-ios-demo
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/artifacts
+	@rm -rf $(BUILD_DIR)/artifacts/mobile
+	@set -euo pipefail; \
+	app_path=$$(find "$(IOS_DEMO_DERIVED_DATA)" -name 'TalesDemoApp.app' -type d | head -n 1); \
+	if [ -z "$$app_path" ]; then echo "TalesDemoApp.app was not produced under $(IOS_DEMO_DERIVED_DATA)."; exit 1; fi; \
+	set +e; \
+	IOS_APP_PATH="$$app_path" \
+	IOS_BUNDLE_ID="$(IOS_BUNDLE_ID)" \
+	IOS_DEVICE_NAME="$(IOS_DEVICE_NAME)" \
+	$(TALES_BIN) test --seed 1234 --parallel 1 \
+		--report-junit $(BUILD_DIR)/reports/e2e-ios-failure.junit.xml \
+		--report-jsonl $(BUILD_DIR)/reports/e2e-ios-failure.jsonl \
+		$(IOS_FAIL_SUITE); \
+	exit_code=$$?; \
+	set -e; \
+	test $$exit_code -eq 1; \
+	test -n "$$(find $(BUILD_DIR)/artifacts/mobile -name screenshot.png -type f | head -n 1)" || { echo "missing iOS screenshot artifact"; exit 1; }; \
+	test -n "$$(find $(BUILD_DIR)/artifacts/mobile -name hierarchy.json -type f | head -n 1)" || { echo "missing iOS hierarchy artifact"; exit 1; }; \
+	grep -q '"artifacts"' $(BUILD_DIR)/reports/e2e-ios-failure.jsonl || { echo "iOS failure JSONL does not include artifact paths"; exit 1; }
 
 .PHONY: e2e-failure
 e2e-failure: build

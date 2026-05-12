@@ -14,6 +14,8 @@ const mobileProviderType = "mobile"
 // supportedMobilePlatform is the only platform accepted by V1.
 const supportedMobilePlatform = "ios"
 
+const mobileTimeoutAttr = "timeout"
+
 // decodeMobileStep builds a model.MobileStep from a parsed step block when any
 // mobile-specific attribute or block is present. It returns nil when the step
 // is not a mobile step.
@@ -211,20 +213,29 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 	idExpr, idDiags := requireActionAttr(block, "tap", "id")
 	diags = append(diags, idDiags...)
 
+	timeoutExpr := hcl.Expression(nil)
+
 	for name, attr := range block.Body.Attributes {
 		if name == "id" {
 			continue
 		}
 
+		if name == mobileTimeoutAttr {
+			timeoutExpr = attr.Expr
+
+			continue
+		}
+
 		attrRange := attr.Range()
-		diags = append(diags, diagError("Unknown tap attribute", fmt.Sprintf("tap attribute %q is not supported; only id is allowed.", name), &attrRange))
+		diags = append(diags, diagError("Unknown tap attribute", fmt.Sprintf("tap attribute %q is not supported; allowed: id, timeout.", name), &attrRange))
 	}
 
 	action := &model.MobileAction{
-		Kind: model.MobileActionTap,
-		File: path,
-		Line: block.DefRange().Start.Line,
-		ID:   expr(path, idExpr),
+		Kind:    model.MobileActionTap,
+		File:    path,
+		Line:    block.DefRange().Start.Line,
+		ID:      expr(path, idExpr),
+		Timeout: expr(path, timeoutExpr),
 	}
 
 	return action, diags
@@ -239,7 +250,10 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 	valueExpr, valueDiags := requireActionAttr(block, "input_text", "value")
 	diags = append(diags, valueDiags...)
 
-	var secureExpr hcl.Expression
+	var (
+		secureExpr  hcl.Expression
+		timeoutExpr hcl.Expression
+	)
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
@@ -247,19 +261,22 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			continue
 		case "secure":
 			secureExpr = attr.Expr
+		case mobileTimeoutAttr:
+			timeoutExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown input_text attribute", fmt.Sprintf("input_text attribute %q is not supported; allowed: id, value, secure.", name), &attrRange))
+			diags = append(diags, diagError("Unknown input_text attribute", fmt.Sprintf("input_text attribute %q is not supported; allowed: id, value, secure, timeout.", name), &attrRange))
 		}
 	}
 
 	action := &model.MobileAction{
-		Kind:   model.MobileActionInputText,
-		File:   path,
-		Line:   block.DefRange().Start.Line,
-		ID:     expr(path, idExpr),
-		Value:  expr(path, valueExpr),
-		Secure: expr(path, secureExpr),
+		Kind:    model.MobileActionInputText,
+		File:    path,
+		Line:    block.DefRange().Start.Line,
+		ID:      expr(path, idExpr),
+		Value:   expr(path, valueExpr),
+		Secure:  expr(path, secureExpr),
+		Timeout: expr(path, timeoutExpr),
 	}
 
 	return action, diags
@@ -271,20 +288,29 @@ func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 	idExpr, idDiags := requireActionAttr(block, "clear_text", "id")
 	diags = append(diags, idDiags...)
 
+	timeoutExpr := hcl.Expression(nil)
+
 	for name, attr := range block.Body.Attributes {
 		if name == "id" {
 			continue
 		}
 
+		if name == mobileTimeoutAttr {
+			timeoutExpr = attr.Expr
+
+			continue
+		}
+
 		attrRange := attr.Range()
-		diags = append(diags, diagError("Unknown clear_text attribute", fmt.Sprintf("clear_text attribute %q is not supported; only id is allowed.", name), &attrRange))
+		diags = append(diags, diagError("Unknown clear_text attribute", fmt.Sprintf("clear_text attribute %q is not supported; allowed: id, timeout.", name), &attrRange))
 	}
 
 	action := &model.MobileAction{
-		Kind: model.MobileActionClearText,
-		File: path,
-		Line: block.DefRange().Start.Line,
-		ID:   expr(path, idExpr),
+		Kind:    model.MobileActionClearText,
+		File:    path,
+		Line:    block.DefRange().Start.Line,
+		ID:      expr(path, idExpr),
+		Timeout: expr(path, timeoutExpr),
 	}
 
 	return action, diags

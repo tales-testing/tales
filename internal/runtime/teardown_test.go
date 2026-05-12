@@ -16,10 +16,20 @@ import (
 type fakeProvider struct {
 	mu      sync.Mutex
 	calls   []string
+	closes  int
 	failFor map[string]bool
 }
 
 func (p *fakeProvider) Type() string { return "http" }
+
+func (p *fakeProvider) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.closes++
+
+	return nil
+}
 
 func (p *fakeProvider) Execute(ctx context.Context, input provider.Input) (*provider.Output, error) {
 	_ = ctx
@@ -42,6 +52,13 @@ func (p *fakeProvider) Execute(ctx context.Context, input provider.Input) (*prov
 			}),
 		},
 	}, nil
+}
+
+func (p *fakeProvider) closeCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.closes
 }
 
 func expr(src string) model.Expression {
@@ -90,6 +107,50 @@ func TestTeardownRunsAfterSuccess(t *testing.T) {
 	}
 	if len(result.Scenarios[0].Teardown) != 1 || result.Scenarios[0].Teardown[0].Status != "pass" {
 		t.Fatalf("teardown should run and pass")
+	}
+}
+
+func TestRunnerClosesProvidersAfterSuccess(t *testing.T) {
+	t.Parallel()
+
+	fp := &fakeProvider{failFor: map[string]bool{}}
+	runner := NewRunner(provider.NewRegistry(fp))
+	suite := &model.Suite{Scenarios: []*model.Scenario{{
+		Name:  "s",
+		File:  "x.tales",
+		Steps: []*model.Step{newHTTPStep("main")},
+	}}}
+
+	if _, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if got := fp.closeCount(); got != 1 {
+		t.Fatalf("expected provider close after success, got %d", got)
+	}
+}
+
+func TestRunnerClosesProvidersAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	fp := &fakeProvider{failFor: map[string]bool{"main": true}}
+	runner := NewRunner(provider.NewRegistry(fp))
+	suite := &model.Suite{Scenarios: []*model.Scenario{{
+		Name:  "s",
+		File:  "x.tales",
+		Steps: []*model.Step{newHTTPStep("main")},
+	}}}
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+	if err != nil {
+		t.Fatalf("run should return a suite result, got fatal error: %v", err)
+	}
+	if !result.Failed() {
+		t.Fatal("expected scenario failure")
+	}
+
+	if got := fp.closeCount(); got != 1 {
+		t.Fatalf("expected provider close after failure, got %d", got)
 	}
 }
 

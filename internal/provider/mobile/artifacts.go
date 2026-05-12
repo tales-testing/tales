@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,8 @@ const artifactKindHierarchy = "hierarchy"
 // defaultArtifactsBase is the prefix used when callers do not override it.
 const defaultArtifactsBase = "build/artifacts"
 
+const artifactDefaultPhase = "step"
+
 var unsafePath = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
 // unnamedSegment is the placeholder used when a scenario or step name is empty.
@@ -47,14 +50,38 @@ func safePathSegment(in string) string {
 	return out
 }
 
-// artifactDir returns the directory artifacts for the given scenario/step go
-// under `<base>/<scenario>/<step>/`.
-func artifactDir(base, scenario, step string) string {
+// artifactDir returns a stable, collision-resistant artifact directory.
+func artifactDir(base, file, scenario, step, phase string, attempt int) string {
 	if base == "" {
 		base = defaultArtifactsBase
 	}
 
-	return filepath.Join(base, safePathSegment(scenario), safePathSegment(step))
+	if phase == "" {
+		phase = artifactDefaultPhase
+	}
+
+	if attempt <= 0 {
+		attempt = 1
+	}
+
+	return filepath.Join(
+		base,
+		"mobile",
+		fmt.Sprintf("%s-%s", safePathSegment(scenario), artifactHash(file, scenario)),
+		safePathSegment(step),
+		safePathSegment(phase),
+		fmt.Sprintf("attempt-%d", attempt),
+	)
+}
+
+func artifactHash(parts ...string) string {
+	h := fnv.New64a()
+	for _, part := range parts {
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(part))
+	}
+
+	return fmt.Sprintf("%08x", h.Sum64())[:8]
 }
 
 // writeScreenshot writes PNG bytes to <dir>/screenshot.png and returns its

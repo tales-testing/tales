@@ -1,0 +1,60 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 16")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
+          scheme   = "TalesAppleDriverUITests"
+        }
+      }
+    }
+  }
+}
+
+scenario "iOS failure produces artifacts" {
+  tags = ["ios", "mobile", "failure"]
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    expect {
+      visible {
+        id      = "welcome.register"
+        timeout = "20s"
+      }
+    }
+  }
+
+  step "mobile" "missing_element" {
+    depends_on = ["launch"]
+
+    platform = "ios"
+    target   = "iphone"
+    expect {
+      visible {
+        id      = "element.that.does.not.exist"
+        timeout = "1s"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}

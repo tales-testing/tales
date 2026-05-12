@@ -17,23 +17,37 @@ import (
 )
 
 type fakeDriverAll struct {
-	mu             sync.Mutex
-	hierarchies    []*tree.ViewNode
-	hierarchyErr   error
-	taps           []struct{ x, y float64 }
-	tapErr         error
-	inputs         []string
-	erases         []int
-	screenshotPNG  []byte
-	screenshotErr  error
-	healthErr      error
-	hierarchyCalls atomic.Int32
+	mu              sync.Mutex
+	hierarchies     []*tree.ViewNode
+	hierarchyErr    error
+	taps            []struct{ x, y float64 }
+	tapErr          error
+	inputs          []string
+	erases          []int
+	screenshotPNG   []byte
+	screenshotErr   error
+	healthErr       error
+	hierarchyDelay  time.Duration
+	activeHierarchy atomic.Int32
+	maxHierarchy    atomic.Int32
+	hierarchyCalls  atomic.Int32
 }
 
 func (f *fakeDriverAll) Health(_ context.Context) error { return f.healthErr }
 
 func (f *fakeDriverAll) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
 	f.hierarchyCalls.Add(1)
+	if f.hierarchyDelay > 0 {
+		active := f.activeHierarchy.Add(1)
+		for {
+			maxSeen := f.maxHierarchy.Load()
+			if active <= maxSeen || f.maxHierarchy.CompareAndSwap(maxSeen, active) {
+				break
+			}
+		}
+		time.Sleep(f.hierarchyDelay)
+		f.activeHierarchy.Add(-1)
+	}
 
 	if f.hierarchyErr != nil {
 		return nil, f.hierarchyErr
@@ -112,7 +126,7 @@ func (n *noopSimctl) FindDeviceByName(_ context.Context, _ string) (apple.Device
 	return apple.Device{UDID: "UDID"}, nil
 }
 
-func (n *noopSimctl) Boot(_ context.Context, _ string) error    { return nil }
+func (n *noopSimctl) Boot(_ context.Context, _ string) error       { return nil }
 func (*noopSimctl) Install(_ context.Context, _, _ string) error   { return nil }
 func (*noopSimctl) Uninstall(_ context.Context, _, _ string) error { return nil }
 func (*noopSimctl) Launch(_ context.Context, _, _ string) error    { return nil }
@@ -313,6 +327,59 @@ func TestExecuteExpectVisibleSucceeds(t *testing.T) {
 	}
 }
 
+func TestExecuteActionWaitsUntilElementIsVisible(t *testing.T) {
+	t.Parallel()
+
+	missing := &tree.ViewNode{ID: "root", Visible: true}
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{missing, newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("tap"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, ID: "welcome.register", Timeout: time.Second},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if got := drv.hierarchyCalls.Load(); got < 2 {
+		t.Fatalf("expected polling to fetch hierarchy at least twice, got %d", got)
+	}
+}
+
+func TestExecuteActionTimesOutWhenElementNeverAppears(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{{ID: "root", Visible: true}}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("tap"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, ID: "welcome.register", Timeout: 30 * time.Millisecond},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "was not visible within") {
+		t.Fatalf("expected action timeout, got %v", err)
+	}
+}
+
 func TestExecuteExpectVisibleTimesOut(t *testing.T) {
 	t.Parallel()
 
@@ -342,6 +409,35 @@ func TestExecuteExpectVisibleTimesOut(t *testing.T) {
 	}
 }
 
+func TestExecuteExpectVisiblePollsUntilVisible(t *testing.T) {
+	t.Parallel()
+
+	hidden := newButtonNode()
+	hidden.Children[0].Visible = false
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{hidden, newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("ev"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Visible: []provider.MobileVisibilityExec{
+					{ID: "welcome.register", Timeout: time.Second},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected visible after polling, got %v", err)
+	}
+}
+
 func TestExecuteExpectNotVisibleWhenMissing(t *testing.T) {
 	t.Parallel()
 
@@ -365,6 +461,61 @@ func TestExecuteExpectNotVisibleWhenMissing(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("expected not_visible to pass when missing, got %v", err)
+	}
+}
+
+func TestExecuteExpectNotVisibleWhenHidden(t *testing.T) {
+	t.Parallel()
+
+	hidden := newButtonNode()
+	hidden.Children[0].Visible = false
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{hidden}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("nv"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				NotVisible: []provider.MobileVisibilityExec{
+					{ID: "welcome.register", Timeout: time.Second},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected not_visible to pass when hidden, got %v", err)
+	}
+}
+
+func TestExecuteExpectNotVisibleTimesOutWhileVisible(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("nv"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				NotVisible: []provider.MobileVisibilityExec{
+					{ID: "welcome.register", Timeout: 30 * time.Millisecond},
+				},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected not_visible timeout, got %v", err)
 	}
 }
 
@@ -448,7 +599,7 @@ func TestExecuteWritesArtifactsOnFailure(t *testing.T) {
 			Platform:   "ios",
 			TargetName: "iphone",
 			Actions: []provider.MobileActionExec{
-				{Kind: model.MobileActionTap, ID: "does.not.exist"},
+				{Kind: model.MobileActionTap, ID: "does.not.exist", Timeout: 30 * time.Millisecond},
 			},
 		},
 	})
@@ -463,6 +614,54 @@ func TestExecuteWritesArtifactsOnFailure(t *testing.T) {
 	artifacts, ok := out.Response["artifacts"]
 	if !ok || artifacts.LengthInt() == 0 {
 		t.Fatalf("expected artifacts in response, got %+v", out.Response)
+	}
+}
+
+func TestExecuteSerializesStepsForSameTarget(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{
+		hierarchies:    []*tree.ViewNode{newButtonNode()},
+		hierarchyDelay: 80 * time.Millisecond,
+	}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	run := func(done chan<- error) {
+		_, err := p.Execute(context.Background(), provider.Input{
+			Scenario: "demo",
+			Step:     newStep("ev"),
+			Config:   sampleConfigCty(),
+			Mobile: &provider.MobileExecution{
+				Platform:   "ios",
+				TargetName: "iphone",
+				Expect: provider.MobileExpectExec{
+					Visible: []provider.MobileVisibilityExec{
+						{ID: "welcome.register", Timeout: time.Second},
+					},
+				},
+			},
+		})
+		done <- err
+	}
+
+	done := make(chan error, 2)
+	go run(done)
+	go run(done)
+
+	for range 2 {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for mobile executions")
+		}
+	}
+
+	if got := drv.maxHierarchy.Load(); got != 1 {
+		t.Fatalf("expected same-target steps to be serialized, max concurrent hierarchy calls=%d", got)
 	}
 }
 

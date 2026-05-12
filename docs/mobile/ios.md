@@ -1,72 +1,150 @@
 # Mobile / iOS driver
 
-Tales V1 supports a single mobile platform: iOS, automated through Apple's
-own `xcrun simctl` lifecycle tools and an in-simulator XCUITest runner that
-exposes a small HTTP/JSON API. This document describes the architecture, the
-DSL surface, how to run it locally, and the V1 limitations.
+Tales V1 supports iOS automation through Apple official tooling and a
+repository-owned Swift/XCUITest HTTP driver. There is no Appium server, no
+Maestro runtime, no IDB requirement, and no external WebDriverAgent dependency.
 
-## Architecture overview
+## Architecture
 
-```
+```text
 .tales scenario
-   │
-   │  step "mobile" "..."
-   ▼
-internal/runtime/mobile.go ── evaluates platform/target/actions/expect/capture
-   │
-   ▼
-internal/provider/mobile (Go)
-   ├─ session per target (cached, reused between steps)
-   │
-   ├─ internal/provider/mobile/apple
-   │    ├─ simctl  → xcrun simctl (boot, install, launch, terminate, screenshot)
-   │    └─ xcodebuild → xcrun xcodebuild test (TalesAppleDriverUITests)
-   │
-   └─ internal/provider/mobile/driver (HTTP/JSON)
-        │
-        ▼
-   drivers/apple/TalesAppleDriver (Swift, runs INSIDE the simulator)
-        │
-        ▼
-   XCUIApplication(bundleIdentifier: <SUT>)
+  -> step "mobile"
+  -> internal/runtime/mobile.go
+  -> internal/provider/mobile (Go)
+  -> xcrun simctl + xcodebuild
+  -> drivers/apple/TalesAppleDriver (Swift/XCUITest HTTP driver)
+  -> XCUIApplication(bundleIdentifier: <SUT>)
 ```
 
-The Go side never touches XCUITest directly. The Swift driver runs as a UI
-test inside the simulator and exposes a small HTTP server that Tales talks
-to through `internal/provider/mobile/driver`. The Go side owns the iOS app
-lifecycle (boot, install, launch, terminate) through `xcrun simctl` because
-that is more deterministic than driving the simulator through XCUITest.
+The Go provider owns simulator lifecycle, app installation/launch/termination,
+step serialization per mobile target, implicit waits, and artifact collection.
+The Swift driver is maintained in this repository and exposes a small HTTP/JSON
+surface for hierarchy, tap, input text, clear text, and screenshot operations.
 
-## Dependency policy
+## Dependency Policy
 
-- **No Appium.** Tales never spawns or links Appium servers.
-- **No Maestro at runtime.** Tales does not shell out to `maestro`. The
-  TalesAppleDriver Swift target is inspired by Maestro's general approach
-  (a UI test bundle hosting a local HTTP server) but ships with no Maestro
-  code.
-- **Apple tools only.** Lifecycle and UI automation rely exclusively on
-  `xcrun`, `simctl`, `xcodebuild`, and `XCTest` / `XCUITest`.
-- **HTTP/JSON for V1.** The driver client is HTTP/JSON. The Go-side
-  `driver.Driver` interface is intentionally transport-agnostic so a gRPC
-  client can be added later without touching the mobile provider.
-- **Zero external Swift dependencies.** The driver uses only
-  `Foundation`, `XCTest`, and `Network.framework`.
+Allowed runtime dependencies:
 
-## Supported DSL (V1)
+- `xcrun`
+- `xcrun simctl`
+- `xcodebuild`
+- `XCTest` / `XCUITest`
+- Swift code owned by this repository
+
+Explicitly not used:
+
+- Appium
+- Maestro runtime or CLI
+- IDB as a required runtime dependency
+- external WebDriverAgent
+- Selenium
+- Playwright for mobile automation
+- third-party mobile automation runtimes
+
+Maestro-style architecture can be useful inspiration, but Tales does not vendor
+or execute Maestro code.
+
+## Demo App
+
+The demo app lives under:
+
+```text
+e2e/ios/demoapp/
+```
+
+It is a minimal SwiftUI app with bundle id:
+
+```text
+com.hyperxlab.tales.demo
+```
+
+Screens:
+
+- Welcome: `welcome.title`, `welcome.register`
+- Register: `register.screen`, `register.email`, `register.password`, `register.submit`, `register.error`
+- Verification: `verify.screen`, `verify.code`, `verify.submit`, `verify.error`
+- Home: `home.screen`, `home.title`, `home.email`
+
+The verification code is intentionally hardcoded to `A1B2C3` so the mobile e2e
+flow is deterministic.
+
+## Make Targets
+
+Normal CI targets remain platform-neutral:
+
+```bash
+make test
+make lint
+make e2e
+make e2e-failure
+```
+
+macOS/Xcode-only targets:
+
+```bash
+make build-ios-demo
+make e2e-ios
+make e2e-ios-failure
+```
+
+`make build-ios-demo`:
+
+- requires macOS
+- requires `xcodebuild` and `xcrun`
+- builds `e2e/ios/demoapp/TalesDemoApp.xcodeproj`
+- writes derived data under `build/ios/demoapp`
+- produces `TalesDemoApp.app` for iOS Simulator
+
+`make e2e-ios`:
+
+- builds the Tales binary
+- builds the demo app
+- sets `IOS_APP_PATH`, `IOS_BUNDLE_ID`, and `IOS_DEVICE_NAME`
+- runs `tales test ./e2e/ios/pass --seed 1234 --parallel 1`
+- writes reports under `build/reports`
+- writes mobile artifacts under `build/artifacts`
+
+`make e2e-ios-failure` runs the failing iOS suite, expects exit code `1`, and
+verifies that screenshot and hierarchy artifacts exist and are referenced in the
+JSONL report.
+
+Useful overrides:
+
+```bash
+IOS_DEVICE_NAME="iPhone 16" make e2e-ios
+IOS_DEVICE_NAME="iPhone 16 Pro" make e2e-ios-failure
+```
+
+## Build Requirements
+
+The application under test must be built for iOS Simulator. A physical-device
+`.app` bundle will not install into the simulator.
+
+Tales V1 only auto-builds the repository demo app via `make build-ios-demo`.
+User applications should be built by the owning project and passed through:
+
+```bash
+IOS_APP_PATH=/path/to/MyApp.app \
+IOS_BUNDLE_ID=com.example.MyApp \
+IOS_DEVICE_NAME="iPhone 16" \
+  ./build/tales test ./my/mobile/suite --seed 1234
+```
+
+## DSL Example
 
 ```hcl
 config {
   mobile = {
     targets = {
       iphone = {
-        platform    = "ios"                # required, "ios" only
-        device_name = "iPhone 17 Pro"      # required, matches `xcrun simctl list devices`
-        app         = "./build/MyApp.app"  # required, path to a .app bundle
-        bundle_id   = "com.example.MyApp"  # required
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 16")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
         driver = {
-          host     = "127.0.0.1"
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
-          external = true                  # optional; default: false (Tales starts the driver)
+          external = false
           project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
           scheme   = "TalesAppleDriverUITests"
         }
@@ -75,166 +153,110 @@ config {
   }
 }
 
-scenario "register" {
+scenario "iOS register demo app" {
   step "mobile" "launch" {
     platform = "ios"
     target   = "iphone"
-    launch { clear_state = true }          # optional
+    launch { clear_state = true }
     expect {
       visible { id = "welcome.register"; timeout = "20s" }
     }
   }
 
-  step "mobile" "register" {
+  step "mobile" "open_register" {
     platform = "ios"
     target   = "iphone"
     actions {
-      tap        { id = "welcome.register" }
-      input_text { id = "register.email";    value = generate("user_email") }
-      input_text { id = "register.password"; value = generate("user_password"); secure = true }
-      clear_text { id = "register.email" }
-      tap        { id = "register.submit" }
+      tap { id = "welcome.register" }
     }
     expect {
-      visible     { id = "register.verification_code"; timeout = "10s" }
-      not_visible { id = "login.error";                timeout = "5s"  }
-    }
-    capture {
-      email = value("register.email")
-      title = text("home.title")
-    }
-  }
-
-  teardown {
-    step "mobile" "terminate" {
-      platform = "ios"
-      target   = "iphone"
-      terminate {}
+      visible { id = "register.screen"; timeout = "10s" }
     }
   }
 }
 ```
 
-- `id` is the element's `accessibilityIdentifier` exposed by the SUT.
-- `value("id")` returns `XCUIElement.value`; `text("id")` falls back to the
-  element label when the text is empty.
-- `secure = true` masks the input value in console / JSONL / JUnit reports.
+Supported V1 actions:
 
-## Unsupported in V1
+- `tap { id = "..." }`
+- `input_text { id = "..." value = "..." secure = true }`
+- `clear_text { id = "..." }`
 
-- Android (the parser rejects `platform = "android"` with a clean error).
-- gRPC transport.
-- Appium or Maestro integration.
-- Real device support beyond what `simctl` happens to allow.
-- Selectors other than accessibility id (text, XPath, predicates, image,
-  OCR).
-- Gestures beyond tap / input_text / clear_text (swipe, long-press, pinch).
-- Video recording, performance metrics, push notifications, permissions
-  automation.
+Actions have an implicit wait of `10s` with `250ms` polling. Each action may
+also set `timeout = "2s"`.
 
-The roadmap reserves `platform = "android"` for a follow-up branch that
-will plug a UIAutomator backend behind the same `driver.Driver` interface.
+Supported V1 expectations:
 
-## Accessibility identifier requirement
+- `visible { id = "..." timeout = "10s" }`
+- `not_visible { id = "..." timeout = "10s" }`
 
-The mobile provider looks up elements exclusively by their
-`accessibilityIdentifier`. The application under test MUST expose stable
-identifiers on every interactive element. In SwiftUI:
+Expectations default to `10s` with `250ms` polling.
 
-```swift
-Button("Create account") { /* ... */ }
-    .accessibilityIdentifier("welcome.register")
-```
+Supported V1 captures:
 
-In UIKit:
+- `value("id")`
+- `text("id")`
+- `request.actions[N].value` for evaluated action values
+
+Secure input values are masked in user-facing reports.
+
+## Accessibility Identifiers
+
+Tales selectors are accessibility identifiers only. Do not rely on visible text
+as a selector.
+
+SwiftUI example:
 
 ```swift
-button.accessibilityIdentifier = "welcome.register"
+TextField("Email", text: $email)
+    .accessibilityIdentifier("register.email")
+
+SecureField("Password", text: $password)
+    .accessibilityIdentifier("register.password")
+
+Button("Register") {
+    submit()
+}
+.accessibilityIdentifier("register.submit")
 ```
 
-Without a stable identifier Tales fails the step with a clear
-`element not found: id "<id>"` error and writes a hierarchy artifact for
-inspection.
+Every element used by Tales should have a stable identifier. Duplicate IDs are
+reported as errors instead of guessed.
 
-## Running locally
+## Concurrency
 
-### Prerequisites
+The provider serializes mobile step execution per target name. Two scenarios
+using the same target, for example `iphone`, cannot clear state or terminate the
+app while each other is tapping or asserting. Different targets may still run in
+parallel when configured separately.
 
-- macOS with Xcode (tested with Xcode 26.4 and iOS 26.4 SDK).
-- A booted (or at least available) iOS Simulator.
-- A `.app` bundle of the SUT compiled for the simulator.
+## Failure Artifacts
 
-### Manual driver run
+On mobile step failure Tales writes:
 
-```bash
-# 1. Build the driver bundle once
-xcodebuild \
-  -project drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj \
-  -scheme TalesAppleDriverUITests \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  build-for-testing
-
-# 2. Boot the simulator
-xcrun simctl boot "iPhone 17 Pro" || true
-
-# 3. Start the driver and keep the test process alive
-xcodebuild \
-  -project drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj \
-  -scheme TalesAppleDriverUITests \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  test-without-building
-
-# 4. In another shell, run Tales with the sample suite
-IOS_APP_PATH=./build/MyApp.app \
-IOS_BUNDLE_ID=com.example.MyApp \
-IOS_DEVICE_NAME='iPhone 17 Pro' \
-  tales test ./e2e/ios --seed 1234
+```text
+build/artifacts/mobile/<scenario>-<file-hash>/<step>/<phase>/attempt-<n>/screenshot.png
+build/artifacts/mobile/<scenario>-<file-hash>/<step>/<phase>/attempt-<n>/hierarchy.json
 ```
 
-### Make target
-
-`make e2e-ios` does step (1) for you when run on macOS with
-`IOS_APP_PATH` / `IOS_BUNDLE_ID` set. It prints the exact commands for
-steps (3) and (4).
-
-### External driver mode
-
-Setting `driver.external = true` tells Tales NOT to start the driver via
-`xcodebuild`; it only waits for `/health` to answer on the configured host
-and port. Use this when you are iterating on the Swift handlers (run the
-driver from Xcode manually and let Tales reconnect on every run).
-
-## Known limitations
-
-- **Approximate visibility.** `visible` is approximated by
-  `(frame.width > 0 && frame.height > 0) || isSelected || hasFocus`. An
-  element overlapped by another view may still report visible.
-- **Coordinate convention.** Taps use screen-space coordinates relative to
-  the active window. Multi-window setups (e.g. iPad Slide Over) may need
-  manual coordinate adjustments.
-- **clear_text fallback.** When the element's `value` is empty the
-  provider erases `64` characters by default, sufficient for most fields
-  but not for arbitrary text views.
-- **No retry on transient driver disconnects.** The HTTP client has a
-  10-second per-request timeout but does not reconnect on lost TCP
-  sessions. Tales relies on the standard step-level `retry { attempts =
-  N }` block for resilience.
-- **The driver UI test bundle ships with no team / "Sign to Run Locally".**
-  Update `DEVELOPMENT_TEAM` in `project.pbxproj` if you need code signing
-  for a real device.
+The file hash prevents collisions when two files contain scenarios with the same
+name. Paths are included in console, JUnit, and JSONL reports when available.
 
 ## Troubleshooting
 
-- **`element not found: id "X"`.** Either the SUT does not expose the
-  accessibility identifier on that element, or the screen has not finished
-  rendering. Use `expect { visible { id = "X"; timeout = "10s" } }` before
-  acting on it.
-- **`multiple elements share the same id`.** Two elements expose the same
-  `accessibilityIdentifier`. Make them unique on the SUT side; Tales never
-  guesses which one to interact with.
-- **`driver /health returned status "..."`.** The Swift driver has not
-  finished booting yet. Increase `HealthTimeout` (currently 60s default,
-  configurable through `xcodebuild.Options`).
-- **Driver process leaks.** Tales calls `Provider.Close()` at suite end to
-  stop the xcodebuild process. If you still see leaks, check that the
-  scenario has at least one `step "mobile"` so the provider is exercised.
+- Simulator not found: verify `IOS_DEVICE_NAME` with `xcrun simctl list devices`.
+- App path missing: run `make build-ios-demo` or set `IOS_APP_PATH` to a simulator `.app` bundle.
+- Device build installed into simulator: rebuild the app with `-sdk iphonesimulator`.
+- Bundle ID mismatch: check `IOS_BUNDLE_ID` matches the app's `PRODUCT_BUNDLE_IDENTIFIER`.
+- Driver health timeout: ensure Xcode can run `TalesAppleDriverUITests` on the selected simulator.
+- Element not found: verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
+- No screenshot: check simulator permissions and fallback `xcrun simctl io screenshot` availability.
+- Port conflict: set `IOS_DRIVER_HOST` or update the target driver port in the `.tales` file.
+
+## Known Limitations
+
+- iOS only; Android is intentionally not implemented in this branch.
+- No OCR, image matching, XPath, predicates, swipes, or long press yet.
+- No cloud device support.
+- Real-device signing is best effort and not a V1 target.
+- The driver transport is HTTP/JSON for now.
