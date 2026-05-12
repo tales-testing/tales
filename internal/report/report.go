@@ -48,7 +48,20 @@ type StepResult struct {
 	StatusCode int
 	Attempts   int
 	Failure    *ErrorDetail
+	Artifacts  []Artifact
 }
+
+// Artifact references one file produced by a step (mobile screenshots,
+// hierarchy dumps, ...). Path is the value produced by the provider — usually
+// relative to the working directory when the default artifacts base is used,
+// but can be absolute when callers override the base directory (for example,
+// tests using a temp dir).
+type Artifact struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+const artifactFallbackLabel = "artifact"
 
 // ErrorDetail is compact machine+human readable failure details.
 type ErrorDetail struct {

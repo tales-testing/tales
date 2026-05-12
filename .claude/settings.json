@@ -3,7 +3,9 @@
     "allow": [
       "Bash(gh pr *)",
       "Bash(gh api *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git add *)",
+      "Bash(xcodebuild *)"
     ]
   }
 }

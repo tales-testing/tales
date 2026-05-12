@@ -269,6 +269,31 @@ func printStep(out io.Writer, label string, width int, step *StepResult, painter
 		}
 	}
 
+	if len(step.Artifacts) > 0 {
+		if err := printArtifacts(out, step.Artifacts); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func printArtifacts(out io.Writer, artifacts []Artifact) error {
+	if _, err := fmt.Fprintln(out, "    artifacts:"); err != nil {
+		return fmt.Errorf("print artifacts header: %w", err)
+	}
+
+	for _, a := range artifacts {
+		label := a.Type
+		if label == "" {
+			label = artifactFallbackLabel
+		}
+
+		if _, err := fmt.Fprintf(out, "      %s: %s\n", label, a.Path); err != nil {
+			return fmt.Errorf("print artifact %s: %w", a.Type, err)
+		}
+	}
+
 	return nil
 }
 

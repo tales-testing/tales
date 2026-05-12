@@ -113,11 +113,32 @@ func buildJUnitFailure(seed int64, scenario *ScenarioResult) (string, string) {
 	if failedStep != nil {
 		body.WriteString(renderRequestForJUnit(failedStep.Request))
 		body.WriteString(renderResponseForJUnit(failedStep.Response, failedStep.StatusCode))
+		body.WriteString(renderArtifactsForJUnit(failedStep.Artifacts))
 	}
 
 	_, _ = fmt.Fprintf(&body, "replay: tales test --seed %d --scenario %q %s\n", seed, scenario.Name, scenario.File)
 
 	return message, body.String()
+}
+
+func renderArtifactsForJUnit(artifacts []Artifact) string {
+	if len(artifacts) == 0 {
+		return ""
+	}
+
+	builder := strings.Builder{}
+	builder.WriteString("artifacts:\n")
+
+	for _, a := range artifacts {
+		label := a.Type
+		if label == "" {
+			label = artifactFallbackLabel
+		}
+
+		_, _ = fmt.Fprintf(&builder, "  %s: %s\n", label, a.Path)
+	}
+
+	return builder.String()
 }
 
 func findFirstFailedStep(scenario *ScenarioResult) *StepResult {

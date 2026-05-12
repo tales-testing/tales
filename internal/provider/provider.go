@@ -12,8 +12,12 @@ import (
 type Input struct {
 	Scenario string
 	Step     *model.Step
+	Phase    string
+	Attempt  int
+	Config   map[string]cty.Value
 	Request  map[string]cty.Value
 	Expect   map[string]cty.Value
+	Mobile   *MobileExecution
 	Timeout  time.Duration
 }
 
@@ -51,4 +55,14 @@ func (r *Registry) Get(providerType string) (Provider, bool) {
 	p, ok := r.items[providerType]
 
 	return p, ok
+}
+
+// All returns every registered provider. The order is not stable.
+func (r *Registry) All() []Provider {
+	out := make([]Provider, 0, len(r.items))
+	for _, p := range r.items {
+		out = append(out, p)
+	}
+
+	return out
 }

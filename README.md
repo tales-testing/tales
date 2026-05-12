@@ -11,8 +11,10 @@ Scenarios are written in declarative HCL2 files with the `.tales` extension.
 - Deterministic seeded data generation.
 - Scenario and step execution with dependency-aware scheduling.
 - Built-in HTTP provider (including ConnectRPC JSON over HTTP).
+- Native iOS UI automation via XCUITest (`step "mobile"`), no Appium / no
+  Maestro at runtime; see [docs/mobile/ios.md](docs/mobile/ios.md).
 - Human-readable console output.
-- JUnit XML and JSONL reports.
+- JUnit XML and JSONL reports with artifact paths (screenshots, UI hierarchy).
 
 ## Current Status
 

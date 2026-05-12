@@ -1,0 +1,143 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
+          scheme   = "TalesAppleDriverUITests"
+        }
+      }
+    }
+  }
+}
+
+generator "email" "ios_email" {
+  prefix = "ios-"
+  domain = "example.com"
+}
+
+generator "password" "ios_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+}
+
+scenario "iOS register demo app" {
+  tags = ["ios", "mobile", "demo"]
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    expect {
+      visible {
+        id      = "welcome.register"
+        timeout = "20s"
+      }
+    }
+  }
+
+  step "mobile" "open_register" {
+    depends_on = ["launch"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "welcome.register"
+      }
+    }
+    expect {
+      visible {
+        id      = "register.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  step "mobile" "submit_register" {
+    depends_on = ["open_register"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "register.email"
+        value = generate("ios_email")
+      }
+      input_text {
+        id     = "register.password"
+        value  = generate("ios_password")
+        secure = true
+      }
+      tap {
+        id = "register.submit"
+      }
+    }
+    expect {
+      visible {
+        id      = "verify.screen"
+        timeout = "10s"
+      }
+      visible {
+        id      = "verify.code"
+        timeout = "10s"
+      }
+    }
+    capture {
+      email = request.actions[0].value
+    }
+  }
+
+  step "mobile" "verify_account" {
+    depends_on = ["submit_register"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "verify.code"
+        value = "A1B2C3"
+      }
+      tap {
+        id = "verify.submit"
+      }
+    }
+    expect {
+      visible {
+        id      = "home.screen"
+        timeout = "10s"
+      }
+      visible {
+        id      = "home.title"
+        timeout = "10s"
+      }
+    }
+    capture {
+      title = text("home.title")
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}

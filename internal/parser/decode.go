@@ -173,6 +173,13 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 			}
 		}
 
+		mobileStep, mobileDiags := decodeMobileStepIfNeeded(path, rs, step.Name)
+		diags = append(diags, mobileDiags...)
+
+		if mobileStep != nil {
+			step.Mobile = mobileStep
+		}
+
 		if step.Provider == "" {
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
@@ -185,6 +192,22 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 	}
 
 	return steps, diags
+}
+
+func decodeMobileStepIfNeeded(path string, rs stepBlock, stepName string) (*model.MobileStep, hcl.Diagnostics) {
+	if rs.Provider == mobileProviderType {
+		return decodeMobileStep(path, rs)
+	}
+
+	if !looksLikeMobileStep(rs) {
+		return nil, nil
+	}
+
+	return nil, hcl.Diagnostics{diagError(
+		"Mobile fields on non-mobile step",
+		fmt.Sprintf("Step %q uses mobile-only fields (platform, target, launch, terminate, actions, visible/not_visible) but its provider is %q; use provider \"mobile\".", stepName, rs.Provider),
+		nil,
+	)}
 }
 
 func decodeRequestBody(path string, raw []bodyBlock) (*model.RequestBody, hcl.Diagnostics) {

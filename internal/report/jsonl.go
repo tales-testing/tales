@@ -91,6 +91,10 @@ func encodeStepEvent(encoder *json.Encoder, seed int64, phase string, step *Step
 		stepEvent["response"] = diagnostic.SanitizeMap(step.Response)
 	}
 
+	if len(step.Artifacts) > 0 {
+		stepEvent["artifacts"] = step.Artifacts
+	}
+
 	if err := encoder.Encode(stepEvent); err != nil {
 		return fmt.Errorf("encode %s step event %q: %w", phase, step.Name, err)
 	}

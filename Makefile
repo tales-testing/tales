@@ -14,6 +14,17 @@ CLAUDE_SKILLS_DIR ?= $(HOME)/.claude/skills
 
 UNIT_PKGS := ./internal/... ./cmd/tales
 
+IOS_DEVICE_NAME ?= iPhone 17
+IOS_BUNDLE_ID ?= com.hyperxlab.tales.demo
+IOS_DRIVER_HOST ?= 127.0.0.1
+IOS_DRIVER_PORT ?= 9080
+IOS_DEMO_PROJECT := e2e/ios/demoapp/TalesDemoApp.xcodeproj
+IOS_DEMO_SCHEME := TalesDemoApp
+IOS_DEMO_DERIVED_DATA := $(BUILD_DIR)/ios/demoapp
+IOS_DEMO_APP_PATH_FILE := $(IOS_DEMO_DERIVED_DATA)/app_path.txt
+IOS_PASS_SUITE := ./e2e/ios/pass
+IOS_FAIL_SUITE := ./e2e/ios/fail
+
 .PHONY: build tales-bin mock-bin install install-skill
 build: tales-bin mock-bin
 
@@ -68,6 +79,116 @@ e2e: build
 	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
 	done; \
 	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 4 --report-junit $(BUILD_DIR)/reports/e2e.junit.xml --report-jsonl $(BUILD_DIR)/reports/e2e.jsonl ./e2e/pass
+
+.PHONY: check-ios-host
+check-ios-host:
+	@if [ "$$(uname -s)" != "Darwin" ]; then \
+		echo "iOS targets require macOS with Xcode (got $$(uname -s))."; \
+		exit 1; \
+	fi
+	@command -v xcodebuild >/dev/null 2>&1 || { echo "xcodebuild is required for iOS targets."; exit 1; }
+	@command -v xcrun >/dev/null 2>&1 || { echo "xcrun is required for iOS targets."; exit 1; }
+
+.PHONY: doctor-ios
+doctor-ios:
+	@set +e; \
+	echo "== System =="; \
+	sw_vers 2>&1; \
+	uname -a 2>&1; \
+	echo; \
+	echo "== Xcode =="; \
+	xcodebuild -version 2>&1; \
+	xcode-select -p 2>&1; \
+	echo; \
+	echo "== simctl =="; \
+	xcrun simctl list runtimes 2>&1; \
+	xcrun simctl list devicetypes 2>&1; \
+	xcrun simctl list devices 2>&1; \
+	echo; \
+	echo "== Environment =="; \
+	echo "IOS_DEVICE_NAME=$${IOS_DEVICE_NAME:-$(IOS_DEVICE_NAME)}"; \
+	echo "IOS_APP_PATH=$${IOS_APP_PATH:-}"; \
+	echo "IOS_BUNDLE_ID=$${IOS_BUNDLE_ID:-$(IOS_BUNDLE_ID)}"; \
+	echo "IOS_DRIVER_HOST=$${IOS_DRIVER_HOST:-$(IOS_DRIVER_HOST)}"; \
+	echo "IOS_DRIVER_PORT=$${IOS_DRIVER_PORT:-$(IOS_DRIVER_PORT)}"; \
+	echo; \
+	echo "If CoreSimulator reports a stale service after an Xcode upgrade, try:"; \
+	echo "  sudo xcodebuild -runFirstLaunch"; \
+	echo "  xcrun simctl shutdown all"; \
+	echo "  killall -9 com.apple.CoreSimulator.CoreSimulatorService || true"; \
+	echo "  xcrun simctl list devices"
+
+.PHONY: build-ios-demo
+build-ios-demo: check-ios-host | $(BUILD_READY)
+	@mkdir -p $(BUILD_DIR)/ios
+	@echo "Building iOS demo app for simulator..."
+	@xcodebuild \
+		-quiet \
+		-project $(IOS_DEMO_PROJECT) \
+		-scheme $(IOS_DEMO_SCHEME) \
+		-configuration Debug \
+		-sdk iphonesimulator \
+		-derivedDataPath $(IOS_DEMO_DERIVED_DATA) \
+		CODE_SIGNING_ALLOWED=NO \
+		build
+	@app_path=$$(find "$(IOS_DEMO_DERIVED_DATA)" -name 'TalesDemoApp.app' -type d | head -n 1); \
+	if [ -z "$$app_path" ]; then echo "TalesDemoApp.app was not produced under $(IOS_DEMO_DERIVED_DATA)."; exit 1; fi; \
+	echo "$$app_path" > "$(IOS_DEMO_APP_PATH_FILE)"; \
+	echo "Built $$app_path"
+
+.PHONY: e2e-ios
+e2e-ios: tales-bin build-ios-demo
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/artifacts
+	@set -euo pipefail; \
+	app_path=$$(cat "$(IOS_DEMO_APP_PATH_FILE)" 2>/dev/null || true); \
+	if [ -z "$$app_path" ]; then echo "TalesDemoApp.app was not produced under $(IOS_DEMO_DERIVED_DATA)."; exit 1; fi; \
+	echo "iOS e2e configuration:"; \
+	echo "  device:       $(IOS_DEVICE_NAME)"; \
+	echo "  app:          $$app_path"; \
+	echo "  bundle id:    $(IOS_BUNDLE_ID)"; \
+	echo "  driver:       $(IOS_DRIVER_HOST):$(IOS_DRIVER_PORT)"; \
+	echo "  JSONL report: $(BUILD_DIR)/reports/e2e-ios.jsonl"; \
+	echo "  JUnit report: $(BUILD_DIR)/reports/e2e-ios.junit.xml"; \
+	echo "  artifacts:    $(BUILD_DIR)/artifacts/mobile"; \
+	IOS_APP_PATH="$$app_path" \
+	IOS_BUNDLE_ID="$(IOS_BUNDLE_ID)" \
+	IOS_DEVICE_NAME="$(IOS_DEVICE_NAME)" \
+	IOS_DRIVER_HOST="$(IOS_DRIVER_HOST)" \
+	IOS_DRIVER_PORT="$(IOS_DRIVER_PORT)" \
+	$(TALES_BIN) test --seed 1234 --parallel 1 \
+		--report-junit $(BUILD_DIR)/reports/e2e-ios.junit.xml \
+		--report-jsonl $(BUILD_DIR)/reports/e2e-ios.jsonl \
+		$(IOS_PASS_SUITE) || { status=$$?; echo "iOS e2e failed. Run \`make doctor-ios\` for diagnostics."; exit $$status; }
+
+.PHONY: e2e-ios-failure
+e2e-ios-failure: tales-bin build-ios-demo
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/artifacts
+	@rm -rf $(BUILD_DIR)/artifacts/mobile
+	@set -euo pipefail; \
+	app_path=$$(cat "$(IOS_DEMO_APP_PATH_FILE)" 2>/dev/null || true); \
+	if [ -z "$$app_path" ]; then echo "TalesDemoApp.app was not produced under $(IOS_DEMO_DERIVED_DATA)."; exit 1; fi; \
+	echo "iOS failure e2e configuration:"; \
+	echo "  device:       $(IOS_DEVICE_NAME)"; \
+	echo "  app:          $$app_path"; \
+	echo "  bundle id:    $(IOS_BUNDLE_ID)"; \
+	echo "  driver:       $(IOS_DRIVER_HOST):$(IOS_DRIVER_PORT)"; \
+	echo "  JSONL report: $(BUILD_DIR)/reports/e2e-ios-failure.jsonl"; \
+	echo "  JUnit report: $(BUILD_DIR)/reports/e2e-ios-failure.junit.xml"; \
+	echo "  artifacts:    $(BUILD_DIR)/artifacts/mobile"; \
+	set +e; \
+	IOS_APP_PATH="$$app_path" \
+	IOS_BUNDLE_ID="$(IOS_BUNDLE_ID)" \
+	IOS_DEVICE_NAME="$(IOS_DEVICE_NAME)" \
+	IOS_DRIVER_HOST="$(IOS_DRIVER_HOST)" \
+	IOS_DRIVER_PORT="$(IOS_DRIVER_PORT)" \
+	$(TALES_BIN) test --seed 1234 --parallel 1 \
+		--report-junit $(BUILD_DIR)/reports/e2e-ios-failure.junit.xml \
+		--report-jsonl $(BUILD_DIR)/reports/e2e-ios-failure.jsonl \
+		$(IOS_FAIL_SUITE); \
+	exit_code=$$?; \
+	set -e; \
+	if [ $$exit_code -ne 1 ]; then echo "expected Tales to exit 1, got $$exit_code"; exit 1; fi; \
+	scripts/verify-ios-failure.sh "$(BUILD_DIR)/reports/e2e-ios-failure.jsonl" "$(BUILD_DIR)/artifacts/mobile" || { echo "iOS failure verification failed. Run \`make doctor-ios\` for diagnostics."; exit 1; }
 
 .PHONY: e2e-failure
 e2e-failure: build

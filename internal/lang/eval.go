@@ -42,6 +42,13 @@ func NewEvaluator(generate GenerateFunc) *Evaluator {
 
 // Eval evaluates expression using scope data.
 func (e *Evaluator) Eval(expression model.Expression, scope ScopeData, meta GenerateMeta) (cty.Value, error) {
+	return e.EvalWithExtras(expression, scope, meta, nil)
+}
+
+// EvalWithExtras evaluates expression with the standard scope and an
+// additional, caller-provided set of functions merged into the EvalContext.
+// Caller-provided functions override any built-in of the same name.
+func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData, meta GenerateMeta, extras map[string]function.Function) (cty.Value, error) {
 	if expression.Empty() {
 		return cty.NullVal(cty.DynamicPseudoType), nil
 	}
@@ -72,6 +79,10 @@ func (e *Evaluator) Eval(expression model.Expression, scope ScopeData, meta Gene
 			return e.generate(args[0].AsString(), meta)
 		},
 	})
+
+	for name, fn := range extras {
+		ctx.Functions[name] = fn
+	}
 
 	val, diags := expression.Expr.Value(ctx)
 	if diags.HasErrors() {
