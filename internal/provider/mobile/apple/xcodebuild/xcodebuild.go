@@ -36,10 +36,16 @@ type Pinger interface {
 }
 
 // Options drive a single xcodebuild test invocation.
+//
+// When XCTestRunPath is set, Tales invokes `xcodebuild test-without-building
+// -xctestrun <path>` — the legacy Project/Scheme combination is ignored.
+// Otherwise the legacy `xcodebuild test -project ... -scheme ...` form is
+// used. Destination is always required.
 type Options struct {
 	UDID          string
 	Project       string
 	Scheme        string
+	XCTestRunPath string
 	Destination   string
 	ExtraArgs     []string
 	HealthTimeout time.Duration
@@ -140,31 +146,45 @@ func wrapStartError(err error, logPath string) error {
 // BuildArgs produces the xcodebuild argv for the given options. Exported for
 // test inspection.
 func BuildArgs(opts Options) []string {
-	args := make([]string, 0, 7+len(opts.ExtraArgs))
+	if opts.XCTestRunPath != "" {
+		args := make([]string, 0, 5+len(opts.ExtraArgs))
+		args = append(args,
+			"test-without-building",
+			"-xctestrun", opts.XCTestRunPath,
+			"-destination", opts.Destination,
+		)
+		args = append(args, opts.ExtraArgs...)
 
+		return args
+	}
+
+	args := make([]string, 0, 7+len(opts.ExtraArgs))
 	args = append(args,
 		"test",
 		"-project", opts.Project,
 		"-scheme", opts.Scheme,
 		"-destination", opts.Destination,
 	)
-
 	args = append(args, opts.ExtraArgs...)
 
 	return args
 }
 
 func validateOptions(opts Options) error {
+	if opts.Destination == "" {
+		return errors.New("xcodebuild: destination is required")
+	}
+
+	if opts.XCTestRunPath != "" {
+		return nil
+	}
+
 	if opts.Project == "" {
-		return errors.New("xcodebuild: project is required")
+		return errors.New("xcodebuild: project is required (or set XCTestRunPath)")
 	}
 
 	if opts.Scheme == "" {
-		return errors.New("xcodebuild: scheme is required")
-	}
-
-	if opts.Destination == "" {
-		return errors.New("xcodebuild: destination is required")
+		return errors.New("xcodebuild: scheme is required (or set XCTestRunPath)")
 	}
 
 	return nil

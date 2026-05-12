@@ -95,6 +95,59 @@ func TestBuildArgsContainsRequiredFlags(t *testing.T) {
 	}
 }
 
+func TestBuildArgsUsesTestWithoutBuildingWhenXCTestRunPathIsSet(t *testing.T) {
+	t.Parallel()
+
+	got := BuildArgs(Options{
+		XCTestRunPath: "/cache/xyz/derived-data/Build/Products/Driver.xctestrun",
+		Destination:   "platform=iOS Simulator,id=ABC",
+		// Project/Scheme intentionally provided to verify they are ignored
+		Project: "ignored.xcodeproj",
+		Scheme:  "ignored",
+	})
+
+	want := []string{
+		"test-without-building",
+		"-xctestrun", "/cache/xyz/derived-data/Build/Products/Driver.xctestrun",
+		"-destination", "platform=iOS Simulator,id=ABC",
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("arg %d: want %q got %q", i, want[i], got[i])
+		}
+	}
+}
+
+func TestStartAcceptsXCTestRunPathWithoutProjectScheme(t *testing.T) {
+	t.Parallel()
+
+	spawner := &fakeSpawner{}
+	launcher := New(spawner)
+
+	_, err := launcher.Start(context.Background(), Options{
+		XCTestRunPath: "/cache/xyz/derived-data/Build/Products/Driver.xctestrun",
+		Destination:   "platform=iOS Simulator,id=ABC",
+		HealthTimeout: time.Second,
+		PollInterval:  time.Millisecond,
+	}, &fakePinger{until: 1})
+	if err != nil {
+		t.Fatalf("expected XCTestRunPath to make Project/Scheme optional, got %v", err)
+	}
+
+	if len(spawner.calls) != 1 {
+		t.Fatalf("expected 1 spawner call, got %d", len(spawner.calls))
+	}
+
+	if spawner.calls[0].args[0] != "test-without-building" {
+		t.Fatalf("expected first arg to be test-without-building, got %q", spawner.calls[0].args[0])
+	}
+}
+
 func TestStartReturnsHandleWhenHealthy(t *testing.T) {
 	t.Parallel()
 
