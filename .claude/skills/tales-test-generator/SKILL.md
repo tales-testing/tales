@@ -139,9 +139,14 @@ config {
   only health-checks the URL.
 - `driver.source_path = "..."` is a developer override for iterating on
   the Swift driver against a local checkout (same build/cache pipeline).
-- `driver.project` + `driver.scheme` is the legacy mode kept for
-  back-compat (`xcodebuild test` against a repository path). Do not use it
-  in new tests.
+- The legacy `driver.project` + `driver.scheme` fields are no longer
+  supported. A `.tales` file mentioning them fails parsing with a
+  migration message pointing at embedded mode or `source_path`.
+
+**Debugging tip**: run `tales doctor` to inspect the embedded driver
+cache, the running binary's source hash, and the host Xcode / simctl
+state in one place. `tales doctor --json` makes the output scriptable
+from CI.
 
 ### Step shape
 

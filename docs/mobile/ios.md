@@ -225,10 +225,14 @@ The `driver` block selects one of three execution modes:
 
 | Configuration                                         | Mode                                                  |
 | ----------------------------------------------------- | ----------------------------------------------------- |
-| `external = false`, no `project`, no `source_path`    | **Embedded** (default). Extract + build + cache.      |
-| `external = false`, `source_path = "..."`             | **Developer override**. Same pipeline, local source.  |
-| `external = false`, `project = "..."`, `scheme = ...` | **Legacy**. `xcodebuild test` against a repo path.    |
-| `external = true`                                     | **External**. Health-check only; never spawn or kill. |
+| `external = false`, no `source_path`      | **Embedded** (default). Extract + build + cache.      |
+| `external = false`, `source_path = "..."` | **Developer override**. Same pipeline, local source.  |
+| `external = true`                         | **External**. Health-check only; never spawn or kill. |
+
+> **Note**: the legacy `driver.project` + `driver.scheme` mode is no longer
+> supported. A `.tales` file mentioning either field now fails parsing with
+> a clear migration message. Omit both for embedded mode, or set
+> `source_path` for a local Swift checkout.
 
 ### Embedded mode (default)
 
@@ -307,6 +311,45 @@ rm -rf "$TALES_DRIVER_CACHE_DIR"
 
 Wipe the cache after a major Xcode upgrade, when you suspect a corrupted build,
 or before single-binary smoke testing.
+
+### Inspecting the cache
+
+Run `tales doctor` for a one-screen view of everything that influences the
+embedded driver pipeline:
+
+```bash
+tales doctor          # human-readable text
+tales doctor --json   # machine-readable JSON, suitable for CI assertions
+```
+
+The output covers:
+
+- Tales build info (version, go runtime, platform).
+- Embedded driver: source hash (16-hex prefix used in the cache key), file
+  count, total uncompressed bytes.
+- Driver cache: base directory and one block per entry with extract / build
+  markers, the cached `.xctestrun` path, the recorded Xcode / SDK / iOS
+  runtime / macOS / created-at metadata, on-disk size, and a marker telling
+  you whether the entry was built from the source the running binary embeds
+  (`✓ matches embedded` vs `⚠ source-hash mismatch — rebuilt on next run`).
+- Xcode introspection (`xcodebuild -version`, `xcrun --show-sdk-version`,
+  `xcode-select -p`, `sw_vers`).
+- Available simulator runtimes and devices.
+- Hints (cache wipe, env override, stale CoreSimulator recovery).
+
+Missing Xcode or unavailable simctl is reported as a degraded section, not as
+an error: `tales doctor` is the tool you reach for when things are broken.
+
+For CI, prefer `--json`:
+
+```bash
+tales doctor --json | jq .embedded_driver.source_hash_short
+tales doctor --json | jq '.cache.entries[] | select(.built == false)'
+```
+
+`make doctor-ios` remains as a shell-only fallback for sysadmins that have
+not built the Tales binary yet (it covers the same Xcode / simctl ground but
+not the Tales cache state).
 
 ## Log paths
 
