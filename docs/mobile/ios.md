@@ -4,6 +4,13 @@ Tales V1 supports iOS automation through Apple official tooling and a
 repository-owned Swift/XCUITest HTTP driver. There is no Appium server, no
 Maestro runtime, no IDB requirement, and no external WebDriverAgent dependency.
 
+**Single-binary distribution.** The Swift driver source is embedded into the
+`tales` binary at build time via `go:embed`. On the first iOS test run, Tales
+extracts the driver to a per-user cache, builds it once with Xcode, and reuses
+the cached build on subsequent runs. A released `tales` binary therefore runs
+iOS tests on any macOS host with Xcode and a Simulator runtime installed —
+the Tales repository does not need to be checked out next to it.
+
 ## Architecture
 
 ```text
@@ -12,14 +19,17 @@ Maestro runtime, no IDB requirement, and no external WebDriverAgent dependency.
   -> internal/runtime/mobile.go
   -> internal/provider/mobile (Go)
   -> xcrun simctl + xcodebuild
-  -> drivers/apple/TalesAppleDriver (Swift/XCUITest HTTP driver)
+  -> embedded XCUITest driver (extracted from the binary on first use)
   -> XCUIApplication(bundleIdentifier: <SUT>)
 ```
 
 The Go provider owns simulator lifecycle, app installation/launch/termination,
 step serialization per mobile target, implicit waits, and artifact collection.
-The Swift driver is maintained in this repository and exposes a small HTTP/JSON
-surface for hierarchy, tap, input text, clear text, and screenshot operations.
+The Swift driver is maintained in this repository under
+`drivers/apple/TalesAppleDriver/` and exposes a small HTTP/JSON surface for
+hierarchy, tap, input text, clear text, and screenshot operations. The
+embedded copy is materialized to disk and built on demand — see
+[Embedded driver cache](#embedded-driver-cache) below.
 
 ## Dependency Policy
 
@@ -154,8 +164,8 @@ config {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
           external = false
-          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
-          scheme   = "TalesAppleDriverUITests"
+          // Embedded mode is the default: project/scheme omitted.
+          // The driver is extracted from the tales binary and built once.
         }
       }
     }
@@ -208,6 +218,104 @@ Supported V1 captures:
 - `request.actions[N].value` for evaluated action values
 
 Secure input values are masked in user-facing reports.
+
+## Driver modes
+
+The `driver` block selects one of three execution modes:
+
+| Configuration                                         | Mode                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------- |
+| `external = false`, no `project`, no `source_path`    | **Embedded** (default). Extract + build + cache.      |
+| `external = false`, `source_path = "..."`             | **Developer override**. Same pipeline, local source.  |
+| `external = false`, `project = "..."`, `scheme = ...` | **Legacy**. `xcodebuild test` against a repo path.    |
+| `external = true`                                     | **External**. Health-check only; never spawn or kill. |
+
+### Embedded mode (default)
+
+No extra fields are required. Tales:
+
+1. Hashes the embedded driver source and assembles a cache key from
+   `<source-hash>-xcode-<version>-sdk-<version>-dev-<DEVELOPER_DIR>-ios-<runtime>-mac-<major>`.
+2. Extracts the source into `<cache>/source/` atomically (rename-after-write).
+3. Runs `xcodebuild build-for-testing` once, capturing output to
+   `<cache>/logs/build.log` and writing a `build.ok` marker on success.
+4. Launches the driver via `xcodebuild test-without-building -xctestrun ...`
+   on every subsequent session.
+5. Self-heals once on `/health` failure: invalidates `build.ok` and rebuilds
+   from scratch before failing the test.
+
+### Developer override
+
+When iterating on the Swift driver, point `source_path` at a local checkout:
+
+```hcl
+driver = {
+  external    = false
+  source_path = "/path/to/drivers/apple/TalesAppleDriver"
+}
+```
+
+The cache key still includes the source hash, so edits invalidate the cache
+automatically.
+
+### External mode (debugging)
+
+When you launch `xcodebuild test` yourself (for example to attach a debugger
+or capture detailed logs), point Tales at the existing endpoint:
+
+```hcl
+driver = {
+  external = true
+  host     = "127.0.0.1"
+  port     = 9080
+}
+```
+
+Tales only health-checks the URL; it never spawns or kills an external driver.
+
+## Embedded driver cache
+
+### Location
+
+- Default: `~/Library/Caches/tales/apple-driver/<cache-key>/` on macOS.
+- Override: set `TALES_DRIVER_CACHE_DIR` to a directory of your choice (used as
+  the final base, no extra suffix). Useful in CI to share or pin a cache.
+
+### Layout
+
+```text
+~/Library/Caches/tales/apple-driver/<cache-key>/
+  source/                     extracted Swift driver source
+    TalesAppleDriver.xcodeproj/
+    ...
+  derived-data/               xcodebuild -derivedDataPath
+  logs/
+    build.log                 build-for-testing stdout+stderr
+  extract.ok                  marker, written after a successful extract
+  build.ok                    marker, contains the cached .xctestrun path
+  metadata.json               source_hash, xcode_version, ios_runtime, ...
+  .lock                       cross-process flock to serialize parallel tales
+```
+
+### Wiping the cache
+
+```bash
+make clean-ios-driver-cache
+# or, for a custom base:
+rm -rf "$TALES_DRIVER_CACHE_DIR"
+```
+
+Wipe the cache after a major Xcode upgrade, when you suspect a corrupted build,
+or before single-binary smoke testing.
+
+## Log paths
+
+| Stream                   | Path                                                                |
+| ------------------------ | ------------------------------------------------------------------- |
+| Embedded driver build    | `<cache>/logs/build.log`                                            |
+| Runtime driver process   | `build/artifacts/mobile/driver/<target>/driver.log`                 |
+| Failure-step screenshots | `build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-N/screenshot.png` |
+| Failure-step hierarchy   | `build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-N/hierarchy.json` |
 
 ## Simulator Selection
 
@@ -282,14 +390,26 @@ path and suggests `make doctor-ios`.
 - App path missing: run `make build-ios-demo` or set `IOS_APP_PATH` to a simulator `.app` bundle.
 - Device build installed into simulator: rebuild the app with `-sdk iphonesimulator`.
 - Bundle ID mismatch: check `IOS_BUNDLE_ID` matches the app's `PRODUCT_BUNDLE_IDENTIFIER`.
-- Driver health timeout: ensure Xcode can run `TalesAppleDriverUITests` on the selected simulator.
+- Driver build failure: read `<cache>/logs/build.log` (path printed in the
+  error). Common causes: SDK no longer installed, signing config drift, stale
+  derived data. `make clean-ios-driver-cache` then retry.
+- Driver health timeout: Tales auto-retries once with a rebuilt cache. If it
+  still fails, inspect the runtime log at
+  `build/artifacts/mobile/driver/<target>/driver.log`.
 - Stale CoreSimulator after Xcode upgrade: run `sudo xcodebuild -runFirstLaunch`,
   then `xcrun simctl shutdown all`, then
   `killall -9 com.apple.CoreSimulator.CoreSimulatorService || true`, then
-  `xcrun simctl list devices`.
+  `xcrun simctl list devices`. Optionally `make clean-ios-driver-cache` to
+  force a fresh driver build against the upgraded toolchain.
+- Cache invalidation: the cache key already includes Xcode version, SDK
+  version, `DEVELOPER_DIR`, iOS runtime, and macOS major. Manually wipe if
+  in doubt: `make clean-ios-driver-cache`.
 - Element not found: verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
 - No screenshot: check simulator permissions and fallback `xcrun simctl io screenshot` availability.
-- Port conflict: set `IOS_DRIVER_HOST` or update the target driver port in the `.tales` file.
+- Port conflict: set `IOS_DRIVER_HOST` or update the target driver port in
+  the `.tales` file. Tales also calls `simctl terminate <runner>` on session
+  close as belt-and-suspenders, but a manually started XCUITest runner on
+  the same port will still collide.
 
 ## Known Limitations
 

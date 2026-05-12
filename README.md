@@ -12,7 +12,10 @@ Scenarios are written in declarative HCL2 files with the `.tales` extension.
 - Scenario and step execution with dependency-aware scheduling.
 - Built-in HTTP provider (including ConnectRPC JSON over HTTP).
 - Native iOS UI automation via XCUITest (`step "mobile"`), no Appium / no
-  Maestro at runtime; see [docs/mobile/ios.md](docs/mobile/ios.md).
+  Maestro at runtime. The XCUITest driver is **embedded** in the `tales`
+  binary and built on first use into `~/Library/Caches/tales/apple-driver/`,
+  so a released binary runs iOS tests on any macOS+Xcode host without the
+  repository on disk. See [docs/mobile/ios.md](docs/mobile/ios.md).
 - Human-readable console output.
 - JUnit XML and JSONL reports with artifact paths (screenshots, UI hierarchy).
 
