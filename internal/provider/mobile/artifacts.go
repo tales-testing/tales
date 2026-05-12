@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -38,7 +39,12 @@ func safePathSegment(in string) string {
 		return unnamedSegment
 	}
 
-	return strings.Trim(unsafePath.ReplaceAllString(s, "_"), "_")
+	out := strings.Trim(unsafePath.ReplaceAllString(s, "_"), "_")
+	if out == "" {
+		return unnamedSegment
+	}
+
+	return out
 }
 
 // artifactDir returns the directory artifacts for the given scenario/step go
@@ -66,6 +72,28 @@ func writeScreenshot(dir string, png []byte) (Artifact, error) {
 
 	if err := os.WriteFile(path, png, 0o600); err != nil {
 		return Artifact{}, fmt.Errorf("write screenshot: %w", err)
+	}
+
+	return Artifact{Type: artifactKindScreenshot, Path: path}, nil
+}
+
+// writeScreenshotFallback uses the Apple lifecycle (simctl io screenshot) to
+// capture a PNG directly to <dir>/screenshot.png when the driver-side
+// screenshot endpoint is unavailable. Returns an Artifact pointing at the
+// written file. The session's Lifecycle must be set for this to succeed.
+func writeScreenshotFallback(ctx context.Context, dir string, session *Session) (Artifact, error) {
+	if session == nil || session.Lifecycle == nil || session.UDID == "" {
+		return Artifact{}, fmt.Errorf("screenshot fallback: session not ready")
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return Artifact{}, fmt.Errorf("create artifact dir: %w", err)
+	}
+
+	path := filepath.Join(dir, "screenshot.png")
+
+	if err := session.Lifecycle.ScreenshotFallback(ctx, session.UDID, path); err != nil {
+		return Artifact{}, fmt.Errorf("screenshot fallback: %w", err)
 	}
 
 	return Artifact{Type: artifactKindScreenshot, Path: path}, nil

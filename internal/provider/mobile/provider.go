@@ -422,6 +422,8 @@ func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Inp
 		if a, werr := writeScreenshot(dir, png); werr == nil {
 			artifacts = append(artifacts, a)
 		}
+	} else if a, werr := writeScreenshotFallback(ctx, dir, session); werr == nil {
+		artifacts = append(artifacts, a)
 	}
 
 	if len(artifacts) == 0 {
