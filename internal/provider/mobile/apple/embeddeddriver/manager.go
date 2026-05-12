@@ -90,7 +90,7 @@ func (m *Manager) Prepare(ctx context.Context, sourcePathOverride, iosRuntime st
 		return Prepared{}, err
 	}
 
-	_ = m.writeMetadata(paths, metadata{
+	_ = m.writeMetadata(paths, Metadata{
 		SourceHash:   sourceHash,
 		CacheKey:     key,
 		XcodeVersion: xcodeVersion,
@@ -193,7 +193,9 @@ func (m *Manager) ensureBuilt(ctx context.Context, paths Paths) (string, error) 
 	return xctestrun, nil
 }
 
-type metadata struct {
+// Metadata is the on-disk representation of a cache entry's inputs. It
+// is written next to build.ok and read back by tales doctor.
+type Metadata struct {
 	SourceHash   string `json:"source_hash"`
 	CacheKey     string `json:"cache_key"`
 	XcodeVersion string `json:"xcode_version"`
@@ -204,7 +206,7 @@ type metadata struct {
 	CreatedAt    string `json:"created_at"`
 }
 
-func (m *Manager) writeMetadata(paths Paths, meta metadata) error {
+func (m *Manager) writeMetadata(paths Paths, meta Metadata) error {
 	now := time.Now
 	if m.Now != nil {
 		now = m.Now
