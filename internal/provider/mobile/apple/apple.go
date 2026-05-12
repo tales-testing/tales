@@ -128,6 +128,14 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, udid string, target Target
 		return client, nil, nil
 	}
 
+	if target.Driver.Project == "" {
+		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.project is required when driver.external is false", target.Name)
+	}
+
+	if target.Driver.Scheme == "" {
+		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.scheme is required when driver.external is false", target.Name)
+	}
+
 	handle, err := l.Xcodebuild.Start(ctx, xcodebuild.Options{
 		UDID:        udid,
 		Project:     target.Driver.Project,

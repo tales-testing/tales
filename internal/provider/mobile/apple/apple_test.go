@@ -247,3 +247,41 @@ func TestEnsureDriverStartsXcodebuild(t *testing.T) {
 		t.Fatalf("expected 1 xcodebuild call, got %d", got)
 	}
 }
+
+func TestEnsureDriverRejectsMissingProject(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriver{}
+	lc, _, xc := newLifecycleWithDriver(drv)
+
+	target := sampleTarget(false)
+	target.Driver.Project = ""
+
+	_, _, err := lc.EnsureDriver(context.Background(), "AAA", target)
+	if err == nil || !strings.Contains(err.Error(), "config.mobile.targets.iphone.driver.project") {
+		t.Fatalf("expected error pointing at the project config key, got %v", err)
+	}
+
+	if got := xc.calls.Load(); got != 0 {
+		t.Fatalf("expected no xcodebuild call when project is missing, got %d", got)
+	}
+}
+
+func TestEnsureDriverRejectsMissingScheme(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriver{}
+	lc, _, xc := newLifecycleWithDriver(drv)
+
+	target := sampleTarget(false)
+	target.Driver.Scheme = ""
+
+	_, _, err := lc.EnsureDriver(context.Background(), "AAA", target)
+	if err == nil || !strings.Contains(err.Error(), "config.mobile.targets.iphone.driver.scheme") {
+		t.Fatalf("expected error pointing at the scheme config key, got %v", err)
+	}
+
+	if got := xc.calls.Load(); got != 0 {
+		t.Fatalf("expected no xcodebuild call when scheme is missing, got %d", got)
+	}
+}
