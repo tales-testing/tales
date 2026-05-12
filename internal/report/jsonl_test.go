@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -149,7 +148,7 @@ func TestWriteJSONLIncludesAttemptsForRetriedSteps(t *testing.T) {
 	t.Fatalf("step event not found")
 }
 
-func TestWriteJSONLIncludesSanitizedMobileActions(t *testing.T) {
+func TestWriteJSONLHoistsMobileActionsAndPreservesUpstreamMask(t *testing.T) {
 	t.Parallel()
 
 	file := t.TempDir() + "/events.jsonl"
@@ -166,9 +165,10 @@ func TestWriteJSONLIncludesSanitizedMobileActions(t *testing.T) {
 				Provider: "mobile",
 				Status:   StatusPass,
 				Request: map[string]interface{}{
-					"actions": []map[string]any{
-						{"kind": "input_text", "id": "register.email", "value": "ios-user@example.com"},
-						{"kind": "input_text", "id": "register.password", "value": "***"},
+					"actions": []any{
+						map[string]any{"kind": "input_text", "id": "register.email", "value": "ios-user@example.com"},
+						map[string]any{"kind": "input_text", "id": "register.password", "value": "***"},
+						map[string]any{"kind": "input_text", "id": "register.token", "token": "Secret123"},
 					},
 				},
 			}},
@@ -179,20 +179,58 @@ func TestWriteJSONLIncludesSanitizedMobileActions(t *testing.T) {
 		t.Fatalf("write jsonl: %v", err)
 	}
 
-	content, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatalf("read jsonl: %v", err)
+	var step map[string]any
+
+	for _, event := range readJSONLEvents(t, file) {
+		if event["type"] == "step" && event["step"] == "submit" {
+			step = event
+
+			break
+		}
 	}
 
-	text := string(content)
-	if !strings.Contains(text, `"actions"`) {
-		t.Fatalf("expected top-level actions in jsonl: %s", text)
+	if step == nil {
+		t.Fatal("step event not found in jsonl")
 	}
-	if strings.Contains(text, "Secret123") {
-		t.Fatalf("secure input leaked into jsonl: %s", text)
+
+	actions, ok := step["actions"].([]any)
+	if !ok {
+		t.Fatalf("expected top-level actions array, got %T (%#v)", step["actions"], step["actions"])
 	}
-	if !strings.Contains(text, `"value":"***"`) {
-		t.Fatalf("expected masked secure value in jsonl: %s", text)
+
+	if len(actions) != 3 {
+		t.Fatalf("expected 3 hoisted actions, got %d (%#v)", len(actions), actions)
+	}
+
+	second, ok := actions[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected action entry to be an object, got %T", actions[1])
+	}
+
+	if second["value"] != "***" {
+		t.Fatalf("expected upstream-masked password value preserved (***), got %#v", second["value"])
+	}
+
+	third, ok := actions[2].(map[string]any)
+	if !ok {
+		t.Fatalf("expected action entry to be an object, got %T", actions[2])
+	}
+
+	if third["token"] != "***" {
+		t.Fatalf("expected SanitizeUnknown to mask the token field by JSON key, got %#v", third["token"])
+	}
+
+	for _, action := range actions {
+		entry, ok := action.(map[string]any)
+		if !ok {
+			t.Fatalf("expected action entry object, got %T", action)
+		}
+
+		for _, raw := range entry {
+			if raw == "Secret123" {
+				t.Fatalf("raw secret survived report sanitization: %#v", entry)
+			}
+		}
 	}
 }
 

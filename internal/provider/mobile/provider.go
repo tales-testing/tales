@@ -368,19 +368,19 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 
 	var found *tree.ViewNode
 
-	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElementByID(pollCtx, session, action.ID)
 		if err != nil {
-			return false, err
+			return pollResult{}, err
 		}
 
 		if ok && tree.IsVisible(node) {
 			found = node
 
-			return true, nil
+			return pollResult{Done: true}, nil
 		}
 
-		return false, nil
+		return pollResult{}, nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("element %q was not visible after %s: %w", action.ID, opts.Timeout, err)
@@ -432,24 +432,34 @@ func (p *Provider) handleExpect(ctx context.Context, session *Session, expect pr
 func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v provider.MobileVisibilityExec, want bool) error {
 	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
 
-	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+	var found bool
+
+	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElementByID(pollCtx, session, v.ID)
 		if err != nil {
-			return false, err
+			return pollResult{}, err
+		}
+
+		if ok {
+			found = true
 		}
 
 		visible := ok && tree.IsVisible(node)
 		if want {
-			return visible, nil
+			return pollResult{Done: visible}, nil
 		}
 
-		return !visible, nil
+		return pollResult{Done: !visible}, nil
 	})
 	if err == nil {
 		return nil
 	}
 
 	if want {
+		if !found {
+			return fmt.Errorf("element %q not found after %s: %w", v.ID, opts.Timeout, err)
+		}
+
 		return fmt.Errorf("element %q was not visible after %s: %w", v.ID, opts.Timeout, err)
 	}
 
@@ -467,60 +477,88 @@ func (p *Provider) waitForValue(ctx context.Context, session *Session, v provide
 func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v provider.MobileValueExpectationExec, kind string, extract func(*tree.ViewNode) string) error {
 	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
 
-	var got string
+	var (
+		got   string
+		found bool
+	)
 
-	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElementByID(pollCtx, session, v.ID)
 		if err != nil {
-			return false, err
+			return pollResult{}, err
 		}
 
 		if !ok {
-			return false, nil
+			return pollResult{}, nil
 		}
 
+		found = true
 		got = extract(node)
-		if err := assertion.Equal(kind+"."+v.ID, v.Expected, cty.StringVal(got)); err != nil {
-			return false, fmt.Errorf("compare %s: %w", kind, err)
+
+		res := pollResult{Done: true}
+		if mismatch := assertion.Equal(kind+"."+v.ID, v.Expected, cty.StringVal(got)); mismatch != nil {
+			res = pollResult{Mismatch: mismatch}
 		}
 
-		return true, nil
+		return res, nil
 	})
 	if err == nil {
 		return nil
 	}
 
+	if !found {
+		return fmt.Errorf("element %q not found after %s: %w", v.ID, opts.Timeout, err)
+	}
+
 	want := diagnostic.ScalarString(v.Expected)
 
-	return fmt.Errorf("%s mismatch for %q after %s: want=%q got=%q", kind, v.ID, opts.Timeout, want, got)
+	return fmt.Errorf("%s mismatch for %q after %s: want=%q got=%q: %w", kind, v.ID, opts.Timeout, want, got, err)
 }
 
 func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provider.MobileStateExpectationExec, want bool) error {
 	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
 
-	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+	var (
+		found    bool
+		lastSeen bool
+	)
+
+	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElementByID(pollCtx, session, v.ID)
 		if err != nil {
-			return false, err
+			return pollResult{}, err
 		}
 
 		if !ok {
-			return false, nil
+			return pollResult{}, nil
 		}
 
-		return node.Enabled == want, nil
+		found = true
+		lastSeen = node.Enabled
+
+		if node.Enabled == want {
+			return pollResult{Done: true}, nil
+		}
+
+		return pollResult{Mismatch: fmt.Errorf("element %q enabled=%t, want=%t", v.ID, node.Enabled, want)}, nil
 	})
 	if err == nil {
 		return nil
 	}
 
-	if want {
-		return fmt.Errorf("element %q was not enabled after %s: %w", v.ID, opts.Timeout, err)
+	if !found {
+		return fmt.Errorf("element %q not found after %s: %w", v.ID, opts.Timeout, err)
 	}
 
-	return fmt.Errorf("element %q was not disabled after %s: %w", v.ID, opts.Timeout, err)
+	state := "enabled"
+	if !want {
+		state = "disabled"
+	}
+
+	return fmt.Errorf("element %q was not %s after %s (last seen enabled=%t): %w", v.ID, state, opts.Timeout, lastSeen, err)
 }
 
+// PollOptions configures a single poll() invocation.
 type PollOptions struct {
 	Timeout  time.Duration
 	Interval time.Duration
@@ -538,28 +576,58 @@ func pollOptions(timeout, interval, defaultTimeout time.Duration) PollOptions {
 	return PollOptions{Timeout: timeout, Interval: interval}
 }
 
-func poll(ctx context.Context, opts PollOptions, fn func(context.Context) (bool, error)) error {
+// pollResult lets a poll callback distinguish "found but not matching yet" (Mismatch)
+// from "definitely done" (Done) without conflating either with a transient fatal error.
+type pollResult struct {
+	Done     bool
+	Mismatch error
+}
+
+// poll invokes fn repeatedly until it reports Done, the context expires, or fn
+// returns a fatal error from outside the matcher pipeline.
+//
+// Transient fatal errors (e.g. driver / hierarchy fetch hiccups) are recorded
+// as lastErr and the loop keeps polling; on timeout, lastMismatch wins over
+// lastErr so matcher-specific messages survive into the final error.
+//
+// The poll interval reuses a single time.Ticker so frequent polling does not
+// allocate a new timer per iteration.
+func poll(ctx context.Context, opts PollOptions, fn func(context.Context) (pollResult, error)) error {
 	deadlineCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
-	var lastErr error
+	ticker := time.NewTicker(opts.Interval)
+	defer ticker.Stop()
+
+	var (
+		lastErr      error
+		lastMismatch error
+	)
 
 	for {
-		ok, err := fn(deadlineCtx)
-		if err != nil {
+		res, err := fn(deadlineCtx)
+
+		switch {
+		case err != nil:
 			lastErr = err
-		} else if ok {
+		case res.Done:
 			return nil
+		case res.Mismatch != nil:
+			lastMismatch = res.Mismatch
 		}
 
 		select {
 		case <-deadlineCtx.Done():
+			if lastMismatch != nil {
+				return lastMismatch
+			}
+
 			if lastErr != nil {
 				return lastErr
 			}
 
 			return fmt.Errorf("poll timed out: %w", deadlineCtx.Err())
-		case <-time.After(opts.Interval):
+		case <-ticker.C:
 		}
 	}
 }
