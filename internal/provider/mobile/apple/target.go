@@ -145,7 +145,7 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 }
 
 func readAttr(value cty.Value, name string) (cty.Value, error) {
-	if !value.Type().IsObjectType() && !value.Type().IsMapType() {
+	if !value.Type().IsObjectType() {
 		return cty.NilVal, fmt.Errorf("not an object")
 	}
 
