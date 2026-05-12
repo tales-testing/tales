@@ -77,7 +77,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	scope.Response = output.Response
 
 	resultValue := map[string]cty.Value{
-		"request":  cty.ObjectVal(map[string]cty.Value{}),
+		"request":  cty.ObjectVal(output.Request),
 		"response": cty.ObjectVal(output.Response),
 	}
 

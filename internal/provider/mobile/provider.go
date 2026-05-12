@@ -156,7 +156,7 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 
 	start := time.Now()
 	output := &provider.Output{
-		Request:  map[string]cty.Value{},
+		Request:  mobileRequestCty(input.Mobile),
 		Response: map[string]cty.Value{},
 	}
 
@@ -437,6 +437,55 @@ func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Inp
 	}
 
 	output.Response["artifacts"] = cty.ListVal(values)
+}
+
+// mobileRequestCty produces a cty map describing the mobile step request so
+// downstream steps can reference `result.<step>.request.*` (platform, target,
+// launch.clear_state, terminate, actions). Secure action values are masked.
+func mobileRequestCty(exec *provider.MobileExecution) map[string]cty.Value {
+	if exec == nil {
+		return map[string]cty.Value{}
+	}
+
+	out := map[string]cty.Value{
+		"platform": cty.StringVal(exec.Platform),
+		"target":   cty.StringVal(exec.TargetName),
+	}
+
+	if exec.Launch != nil {
+		out["launch"] = cty.ObjectVal(map[string]cty.Value{
+			"clear_state": cty.BoolVal(exec.Launch.ClearState),
+		})
+	}
+
+	if exec.Terminate != nil {
+		out["terminate"] = cty.BoolVal(true)
+	}
+
+	if len(exec.Actions) > 0 {
+		actions := make([]cty.Value, 0, len(exec.Actions))
+
+		for _, action := range exec.Actions {
+			entry := map[string]cty.Value{
+				"kind": cty.StringVal(string(action.Kind)),
+				"id":   cty.StringVal(action.ID),
+			}
+
+			if action.Value != "" {
+				if action.Secure {
+					entry["value"] = cty.StringVal("***")
+				} else {
+					entry["value"] = cty.StringVal(action.Value)
+				}
+			}
+
+			actions = append(actions, cty.ObjectVal(entry))
+		}
+
+		out["actions"] = cty.TupleVal(actions)
+	}
+
+	return out
 }
 
 func stepName(input provider.Input) string {
