@@ -9,11 +9,8 @@ config {
         app         = env("IOS_APP_PATH")
         bundle_id   = env("IOS_BUNDLE_ID", "com.example.MyApp")
         driver = {
-          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
-          port     = 9080
-          external = false
-          // Embedded mode (default): omit project / scheme. Tales
-          // extracts and builds the bundled driver on first run.
+          host = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port = 9080
         }
       }
     }
