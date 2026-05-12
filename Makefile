@@ -12,7 +12,7 @@ SKILL_NAME := tales-test-generator
 SKILL_SRC := .claude/skills/$(SKILL_NAME)
 CLAUDE_SKILLS_DIR ?= $(HOME)/.claude/skills
 
-UNIT_PKGS := ./internal/... ./cmd/tales
+UNIT_PKGS := ./internal/... ./cmd/tales ./drivers/...
 
 IOS_DEVICE_NAME ?= iPhone 17
 IOS_BUNDLE_ID ?= com.hyperxlab.tales.demo
@@ -57,7 +57,7 @@ test:
 
 .PHONY: lint
 lint:
-	@golangci-lint run ./cmd/tales ./internal/... ./e2e/mockserver
+	@golangci-lint run ./cmd/tales ./internal/... ./e2e/mockserver ./drivers/...
 
 .PHONY: e2e
 e2e: build
