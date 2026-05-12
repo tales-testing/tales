@@ -15,7 +15,9 @@ Scenarios are written in declarative HCL2 files with the `.tales` extension.
   Maestro at runtime. The XCUITest driver is **embedded** in the `tales`
   binary and built on first use into `~/Library/Caches/tales/apple-driver/`,
   so a released binary runs iOS tests on any macOS+Xcode host without the
-  repository on disk. See [docs/mobile/ios.md](docs/mobile/ios.md).
+  repository on disk. `tales doctor` (`--json` for CI) inspects the cache,
+  embedded source, Xcode, and simctl state in one place. See
+  [docs/mobile/ios.md](docs/mobile/ios.md).
 - Human-readable console output.
 - JUnit XML and JSONL reports with artifact paths (screenshots, UI hierarchy).
 
