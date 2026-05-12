@@ -91,6 +91,7 @@ scenario "register" {
       tap {
         id      = "welcome.register"
         timeout = "5s"
+        interval = "100ms"
       }
       input_text {
         id      = "register.email"
@@ -104,6 +105,12 @@ scenario "register" {
       }
       clear_text {
         id = "register.email"
+      }
+      wait_visible {
+        id = "verify.screen"
+      }
+      wait_not_visible {
+        id = "register.loading"
       }
       tap {
         id = "register.submit"
@@ -128,6 +135,8 @@ scenario "register" {
 		model.MobileActionInputText,
 		model.MobileActionInputText,
 		model.MobileActionClearText,
+		model.MobileActionWaitVisible,
+		model.MobileActionWaitNotVisible,
 		model.MobileActionTap,
 	}
 
@@ -147,6 +156,64 @@ scenario "register" {
 
 	if step.Mobile.Actions[0].Timeout.Empty() || step.Mobile.Actions[1].Timeout.Empty() {
 		t.Fatal("expected action timeout expressions to be captured")
+	}
+
+	if step.Mobile.Actions[0].Interval.Empty() {
+		t.Fatal("expected action interval expression to be captured")
+	}
+}
+
+func TestLoadPathMobileRichExpectations(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "rich" {
+  step "mobile" "verify" {
+    platform = "ios"
+    target = "iphone"
+    expect {
+      text {
+        id = "home.title"
+        value = contains("Welcome")
+        timeout = "5s"
+        interval = "100ms"
+      }
+      value {
+        id = "register.email"
+        value = "user@example.com"
+      }
+      enabled {
+        id = "register.submit"
+      }
+      disabled {
+        id = "register.submit"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	step := suite.Scenarios[0].Steps[0]
+	if len(step.Mobile.Expect.Text) != 1 {
+		t.Fatalf("expected 1 text expectation, got %d", len(step.Mobile.Expect.Text))
+	}
+	if len(step.Mobile.Expect.Value) != 1 {
+		t.Fatalf("expected 1 value expectation, got %d", len(step.Mobile.Expect.Value))
+	}
+	if len(step.Mobile.Expect.Enabled) != 1 {
+		t.Fatalf("expected 1 enabled expectation, got %d", len(step.Mobile.Expect.Enabled))
+	}
+	if len(step.Mobile.Expect.Disabled) != 1 {
+		t.Fatalf("expected 1 disabled expectation, got %d", len(step.Mobile.Expect.Disabled))
+	}
+	if step.Mobile.Expect.Text[0].Interval.Empty() {
+		t.Fatal("expected text interval expression to be captured")
 	}
 }
 

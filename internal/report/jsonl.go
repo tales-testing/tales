@@ -85,6 +85,9 @@ func encodeStepEvent(encoder *json.Encoder, seed int64, phase string, step *Step
 
 	if len(step.Request) > 0 {
 		stepEvent["request"] = diagnostic.SanitizeMap(step.Request)
+		if actions, ok := step.Request["actions"]; ok {
+			stepEvent["actions"] = diagnostic.SanitizeUnknown(actions)
+		}
 	}
 
 	if len(step.Response) > 0 {

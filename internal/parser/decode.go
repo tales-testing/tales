@@ -205,7 +205,7 @@ func decodeMobileStepIfNeeded(path string, rs stepBlock, stepName string) (*mode
 
 	return nil, hcl.Diagnostics{diagError(
 		"Mobile fields on non-mobile step",
-		fmt.Sprintf("Step %q uses mobile-only fields (platform, target, launch, terminate, actions, visible/not_visible) but its provider is %q; use provider \"mobile\".", stepName, rs.Provider),
+		fmt.Sprintf("Step %q uses mobile-only fields (platform, target, launch, terminate, actions, or mobile expectations) but its provider is %q; use provider \"mobile\".", stepName, rs.Provider),
 		nil,
 	)}
 }

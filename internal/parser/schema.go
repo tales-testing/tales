@@ -87,11 +87,29 @@ type expectBlock struct {
 	Strict     hcl.Expression  `hcl:"strict,optional"`
 	Visible    []*visibleBlock `hcl:"visible,block"`
 	NotVisible []*visibleBlock `hcl:"not_visible,block"`
+	Text       []*valueBlock   `hcl:"text,block"`
+	Value      []*valueBlock   `hcl:"value,block"`
+	Enabled    []*stateBlock   `hcl:"enabled,block"`
+	Disabled   []*stateBlock   `hcl:"disabled,block"`
 }
 
 type visibleBlock struct {
-	ID      hcl.Expression `hcl:"id,optional"`
-	Timeout hcl.Expression `hcl:"timeout,optional"`
+	ID       hcl.Expression `hcl:"id,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
+	Interval hcl.Expression `hcl:"interval,optional"`
+}
+
+type valueBlock struct {
+	ID       hcl.Expression `hcl:"id,optional"`
+	Value    hcl.Expression `hcl:"value,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
+	Interval hcl.Expression `hcl:"interval,optional"`
+}
+
+type stateBlock struct {
+	ID       hcl.Expression `hcl:"id,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
+	Interval hcl.Expression `hcl:"interval,optional"`
 }
 
 type mobileLaunchBlock struct {
