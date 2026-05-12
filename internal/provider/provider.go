@@ -23,10 +23,33 @@ type Input struct {
 
 // Output is provider execution output.
 type Output struct {
-	Request    map[string]cty.Value
-	Response   map[string]cty.Value
+	Request       map[string]cty.Value
+	Response      map[string]cty.Value
+	Duration      time.Duration
+	StatusCode    int
+	ActionResults []ActionResult
+}
+
+// ActionResult is a provider-agnostic record of one UI action executed
+// within a step. The runtime converts it into a report.ActionResult after
+// the provider returns. Providers that do not emit actions leave this slice
+// nil; HTTP and keyword providers are unaffected.
+//
+// Secure actions MUST carry Value == "***" — providers mask before
+// constructing the result.
+type ActionResult struct {
+	Index      int
+	Kind       string
+	Label      string
+	SelectorID string
+	Secure     bool
+	Value      string
+	Status     string
 	Duration   time.Duration
-	StatusCode int
+	Screenshot string
+	Hierarchy  string
+	Err        error
+	StartedAt  time.Time
 }
 
 // Provider executes one step.
