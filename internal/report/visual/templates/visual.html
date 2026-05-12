@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tales Visual Report — {{.Title}}</title>
+<style>{{ css }}</style>
+</head>
+<body>
+<div id="backdrop" aria-hidden="true"></div>
+<main id="card" role="main">
+  <header id="report-header">
+    <div id="header-left">
+      <h1>Tales Visual Report</h1>
+      <span id="overall-status" class="status-pill"></span>
+    </div>
+    <div id="header-controls">
+      <label class="control">
+        <span>Scenario</span>
+        <select id="scenario-select" aria-label="Select scenario"></select>
+      </label>
+      <label class="control">
+        <span>Step</span>
+        <select id="step-select" aria-label="Select step"></select>
+      </label>
+    </div>
+  </header>
+
+  <section id="stage">
+    <div id="screenshot-pane">
+      <img id="screenshot" alt="">
+      <div id="screenshot-placeholder" hidden>No screenshot captured</div>
+    </div>
+    <ol id="timeline" role="listbox" aria-label="Actions"></ol>
+  </section>
+
+  <section id="action-meta" aria-live="polite"></section>
+
+  <footer id="controls">
+    <div id="transport">
+      <button id="prev" type="button" aria-label="Previous action">◀</button>
+      <button id="play" type="button" aria-label="Play or pause">▶</button>
+      <button id="next" type="button" aria-label="Next action">▶</button>
+    </div>
+    <div id="speed" role="group" aria-label="Playback speed">
+      <button type="button" data-speed="0.5">0.5×</button>
+      <button type="button" data-speed="0.75">0.75×</button>
+      <button type="button" data-speed="1" class="active">1×</button>
+      <button type="button" data-speed="1.5">1.5×</button>
+      <button type="button" data-speed="2">2×</button>
+    </div>
+    <progress id="progress" value="0" max="100"></progress>
+  </footer>
+</main>
+
+<div id="empty-state" hidden>
+  <p>No visual actions were captured.</p>
+  <p>Run with <code>--capture-screenshots actions</code> or execute mobile / web steps.</p>
+</div>
+
+<script type="application/json" id="tales-report-data">{{ jsonPayload }}</script>
+<script>{{ js }}</script>
+</body>
+</html>
