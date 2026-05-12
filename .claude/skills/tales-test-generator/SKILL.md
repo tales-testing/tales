@@ -91,14 +91,12 @@ Use this skill when asked to:
 - `retry.interval` must be a valid Go duration string such as `"100ms"`, `"500ms"`, or `"2s"`.
 - Matchers/functions available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`, `regex_find`, `url_encode`.
 - Use `regex_find(value, pattern)` for full matches and `regex_find(value, pattern, group)` for capture groups.
-- `coalesce(...)` is intentionally not a supported fallback primitive yet because lazy evaluation is required for missing-reference fallbacks.
 
 ## Mobile provider (iOS V1)
 
-The `mobile` provider drives iOS Simulator UI through Apple official tooling
-(`xcrun simctl`, `xcodebuild`) and a repository-owned Swift/XCUITest HTTP
-driver. No Appium, no Maestro, no external WebDriverAgent. Full architecture
-lives in [docs/mobile/ios.md](../../../docs/mobile/ios.md).
+Architecture and runtime details live in
+[docs/mobile/ios.md](../../../docs/mobile/ios.md). The skill focuses on
+the DSL shape user-authored `.tales` files need.
 
 ### Targets configuration
 
@@ -115,11 +113,8 @@ config {
         app         = env("IOS_APP_PATH")
         bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
         driver = {
-          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
-          port     = 9080
-          external = false
-          // Embedded mode (default): omit project/scheme. Tales extracts
-          // the bundled driver from the binary on first run.
+          host = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port = 9080
         }
       }
     }
@@ -129,24 +124,9 @@ config {
 
 - `platform` only accepts `"ios"` in V1.
 - `app` must be an iOS Simulator `.app` bundle, not a device build.
-- **Default — embedded mode**: leave `project`, `scheme`, and `source_path`
-  unset. Tales extracts the bundled XCUITest driver to
-  `~/Library/Caches/tales/apple-driver/<key>/`, builds it once with Xcode,
-  and reuses the cached build on every subsequent run. This is the right
-  shape for nearly every user-authored `.tales` file.
-- `driver.external = true` lets Tales talk to an already-running driver
-  instead of launching `xcodebuild` itself. Useful for debugging — Tales
-  only health-checks the URL.
-- `driver.source_path = "..."` is a developer override for iterating on
-  the Swift driver against a local checkout (same build/cache pipeline).
-- The legacy `driver.project` + `driver.scheme` fields are no longer
-  supported. A `.tales` file mentioning them fails parsing with a
-  migration message pointing at embedded mode or `source_path`.
-
-**Debugging tip**: run `tales doctor` to inspect the embedded driver
-cache, the running binary's source hash, and the host Xcode / simctl
-state in one place. `tales doctor --json` makes the output scriptable
-from CI.
+- `driver.host` and `driver.port` are the only fields user-authored suites
+  need. Tales extracts and builds the embedded XCUITest driver on first
+  run.
 
 ### Step shape
 
@@ -172,8 +152,6 @@ step "mobile" "<name>" {
   }
 }
 ```
-
-Backward-compatible alias `response` for `expect` works for mobile steps too.
 
 ### Supported actions
 
