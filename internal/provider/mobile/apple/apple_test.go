@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
 	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
@@ -98,14 +99,22 @@ func (f *fakeDriver) EraseText(_ context.Context, _ string, _ int) error  { retu
 func (f *fakeDriver) Screenshot(_ context.Context) ([]byte, error)        { return []byte{}, nil }
 
 type fakeXcodebuild struct {
-	calls atomic.Int32
-	opts  xcodebuild.Options
-	err   error
+	calls    atomic.Int32
+	opts     xcodebuild.Options
+	err      error
+	failOnce error
 }
 
 func (f *fakeXcodebuild) Start(_ context.Context, opts xcodebuild.Options, _ xcodebuild.Pinger) (*xcodebuild.Handle, error) {
 	f.calls.Add(1)
 	f.opts = opts
+
+	if f.failOnce != nil {
+		err := f.failOnce
+		f.failOnce = nil
+
+		return nil, err
+	}
 
 	if f.err != nil {
 		return nil, f.err
@@ -212,7 +221,7 @@ func TestEnsureDriverExternalSkipsXcodebuild(t *testing.T) {
 	drv := &fakeDriver{}
 	lc, _, xc := newLifecycleWithDriver(drv)
 
-	client, handle, err := lc.EnsureDriver(context.Background(), "AAA", sampleTarget(true))
+	client, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"},sampleTarget(true))
 	if err != nil {
 		t.Fatalf("ensure driver: %v", err)
 	}
@@ -240,7 +249,7 @@ func TestEnsureDriverExternalFailsOnHealth(t *testing.T) {
 	drv := &fakeDriver{healthErr: errors.New("connection refused")}
 	lc, _, _ := newLifecycleWithDriver(drv)
 
-	_, _, err := lc.EnsureDriver(context.Background(), "AAA", sampleTarget(true))
+	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"},sampleTarget(true))
 	if err == nil || !strings.Contains(err.Error(), "external driver health") {
 		t.Fatalf("expected external driver health error, got %v", err)
 	}
@@ -252,7 +261,7 @@ func TestEnsureDriverStartsXcodebuild(t *testing.T) {
 	drv := &fakeDriver{}
 	lc, _, xc := newLifecycleWithDriver(drv)
 
-	_, handle, err := lc.EnsureDriver(context.Background(), "AAA", sampleTarget(false))
+	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"},sampleTarget(false))
 	if err != nil {
 		t.Fatalf("ensure driver: %v", err)
 	}
@@ -278,7 +287,7 @@ func TestEnsureDriverStartsXcodebuild(t *testing.T) {
 	}
 }
 
-func TestEnsureDriverRejectsMissingProject(t *testing.T) {
+func TestEnsureDriverRejectsLegacySchemeWithoutProject(t *testing.T) {
 	t.Parallel()
 
 	drv := &fakeDriver{}
@@ -286,18 +295,21 @@ func TestEnsureDriverRejectsMissingProject(t *testing.T) {
 
 	target := sampleTarget(false)
 	target.Driver.Project = ""
+	// Scheme still set from sampleTarget; without a project this is an
+	// ambiguous half-configuration that should be rejected up front
+	// instead of silently falling into embedded mode.
 
-	_, _, err := lc.EnsureDriver(context.Background(), "AAA", target)
-	if err == nil || !strings.Contains(err.Error(), "config.mobile.targets.iphone.driver.project") {
-		t.Fatalf("expected error pointing at the project config key, got %v", err)
+	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, target)
+	if err == nil || !strings.Contains(err.Error(), "driver.scheme requires driver.project") {
+		t.Fatalf("expected scheme-without-project error, got %v", err)
 	}
 
 	if got := xc.calls.Load(); got != 0 {
-		t.Fatalf("expected no xcodebuild call when project is missing, got %d", got)
+		t.Fatalf("expected no xcodebuild call when configuration is invalid, got %d", got)
 	}
 }
 
-func TestEnsureDriverRejectsMissingScheme(t *testing.T) {
+func TestEnsureDriverLegacyModeRequiresScheme(t *testing.T) {
 	t.Parallel()
 
 	drv := &fakeDriver{}
@@ -306,12 +318,137 @@ func TestEnsureDriverRejectsMissingScheme(t *testing.T) {
 	target := sampleTarget(false)
 	target.Driver.Scheme = ""
 
-	_, _, err := lc.EnsureDriver(context.Background(), "AAA", target)
-	if err == nil || !strings.Contains(err.Error(), "config.mobile.targets.iphone.driver.scheme") {
-		t.Fatalf("expected error pointing at the scheme config key, got %v", err)
+	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, target)
+	if err == nil || !strings.Contains(err.Error(), "driver.scheme is required") {
+		t.Fatalf("expected scheme-required error, got %v", err)
 	}
 
 	if got := xc.calls.Load(); got != 0 {
 		t.Fatalf("expected no xcodebuild call when scheme is missing, got %d", got)
+	}
+}
+
+func TestEnsureDriverEmbeddedModeRequiresManager(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriver{}
+	lc, _, xc := newLifecycleWithDriver(drv)
+
+	target := sampleTarget(false)
+	target.Driver.Project = ""
+	target.Driver.Scheme = ""
+
+	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, target)
+	if err == nil || !strings.Contains(err.Error(), "embedded driver manager") {
+		t.Fatalf("expected embedded-manager error, got %v", err)
+	}
+
+	if got := xc.calls.Load(); got != 0 {
+		t.Fatalf("expected no xcodebuild call when manager is missing, got %d", got)
+	}
+}
+
+type fakeEmbedded struct {
+	prepareCalls atomic.Int32
+	invalidates  atomic.Int32
+	prepared     embeddeddriver.Prepared
+	prepareErr   error
+}
+
+func (f *fakeEmbedded) Prepare(_ context.Context, _, _ string) (embeddeddriver.Prepared, error) {
+	f.prepareCalls.Add(1)
+
+	if f.prepareErr != nil {
+		return embeddeddriver.Prepared{}, f.prepareErr
+	}
+
+	return f.prepared, nil
+}
+
+func (f *fakeEmbedded) InvalidateBuild(_ string) error {
+	f.invalidates.Add(1)
+
+	return nil
+}
+
+func TestEnsureDriverEmbeddedModeStartsTestWithoutBuilding(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriver{}
+	lc, _, xc := newLifecycleWithDriver(drv)
+
+	em := &fakeEmbedded{prepared: embeddeddriver.Prepared{
+		XCTestRunPath: "/cache/key123/derived-data/Build/Products/Driver.xctestrun",
+		CacheKey:      "key123",
+	}}
+	lc.Embedded = em
+
+	target := sampleTarget(false)
+	target.Driver.Project = ""
+	target.Driver.Scheme = ""
+
+	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, target)
+	if err != nil {
+		t.Fatalf("ensure driver: %v", err)
+	}
+
+	if handle == nil {
+		t.Fatal("expected non-nil handle in embedded mode")
+	}
+
+	if got := em.prepareCalls.Load(); got != 1 {
+		t.Fatalf("expected one Prepare call, got %d", got)
+	}
+
+	if got := xc.calls.Load(); got != 1 {
+		t.Fatalf("expected one xcodebuild call, got %d", got)
+	}
+
+	if xc.opts.XCTestRunPath != em.prepared.XCTestRunPath {
+		t.Fatalf("expected xctestrun path to flow into xcodebuild opts, got %q", xc.opts.XCTestRunPath)
+	}
+
+	if !strings.Contains(xc.opts.Destination, "AAA") {
+		t.Fatalf("expected destination to include UDID, got %q", xc.opts.Destination)
+	}
+}
+
+func TestEnsureDriverEmbeddedModeRetriesOnHealthFailure(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriver{}
+	lc, _, xc := newLifecycleWithDriver(drv)
+	// Fail the first Start, succeed on the retry.
+	xc.failOnce = errors.New("driver did not become healthy: timeout")
+
+	em := &fakeEmbedded{prepared: embeddeddriver.Prepared{
+		XCTestRunPath: "/cache/key123/Build/Products/Driver.xctestrun",
+		CacheKey:      "key123",
+	}}
+	lc.Embedded = em
+
+	target := sampleTarget(false)
+	target.Driver.Project = ""
+	target.Driver.Scheme = ""
+
+	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, target)
+	if err != nil {
+		t.Fatalf("ensure driver: %v", err)
+	}
+
+	if handle == nil {
+		t.Fatal("expected non-nil handle after retry")
+	}
+
+	if got := xc.calls.Load(); got != 2 {
+		t.Fatalf("expected 2 xcodebuild calls (initial + retry), got %d", got)
+	}
+
+	if got := em.invalidates.Load(); got != 1 {
+		t.Fatalf("expected one cache invalidation, got %d", got)
+	}
+
+	if got := em.prepareCalls.Load(); got != 2 {
+		t.Fatalf("expected 2 Prepare calls (initial + rebuild), got %d", got)
 	}
 }
