@@ -202,6 +202,15 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 			exec.Timeout = timeout
 		}
 
+		if !action.Interval.Empty() {
+			interval, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].interval", i), action.Interval)
+			if err != nil {
+				return nil, err
+			}
+
+			exec.Interval = interval
+		}
+
 		if !action.Value.Empty() {
 			value, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].value", i), action.Value)
 			if err != nil {
@@ -253,6 +262,42 @@ func evalMobileExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioN
 		out.NotVisible = append(out.NotVisible, exec)
 	}
 
+	for i, v := range expect.Text {
+		exec, err := evalMobileValueExpectation(evaluator, scope, scenarioName, step, fmt.Sprintf("mobile.expect.text[%d]", i), v)
+		if err != nil {
+			return provider.MobileExpectExec{}, err
+		}
+
+		out.Text = append(out.Text, exec)
+	}
+
+	for i, v := range expect.Value {
+		exec, err := evalMobileValueExpectation(evaluator, scope, scenarioName, step, fmt.Sprintf("mobile.expect.value[%d]", i), v)
+		if err != nil {
+			return provider.MobileExpectExec{}, err
+		}
+
+		out.Value = append(out.Value, exec)
+	}
+
+	for i, v := range expect.Enabled {
+		exec, err := evalMobileStateExpectation(evaluator, scope, scenarioName, step, fmt.Sprintf("mobile.expect.enabled[%d]", i), v)
+		if err != nil {
+			return provider.MobileExpectExec{}, err
+		}
+
+		out.Enabled = append(out.Enabled, exec)
+	}
+
+	for i, v := range expect.Disabled {
+		exec, err := evalMobileStateExpectation(evaluator, scope, scenarioName, step, fmt.Sprintf("mobile.expect.disabled[%d]", i), v)
+		if err != nil {
+			return provider.MobileExpectExec{}, err
+		}
+
+		out.Disabled = append(out.Disabled, exec)
+	}
+
 	return out, nil
 }
 
@@ -273,6 +318,82 @@ func evalMobileVisibility(evaluator *lang.Evaluator, scope lang.ScopeData, scena
 		exec.Timeout = duration
 	}
 
+	if !v.Interval.Empty() {
+		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".interval", v.Interval)
+		if err != nil {
+			return provider.MobileVisibilityExec{}, err
+		}
+
+		exec.Interval = duration
+	}
+
+	return exec, nil
+}
+
+func evalMobileValueExpectation(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, exprPath string, v model.MobileValueExpectation) (provider.MobileValueExpectationExec, error) {
+	id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, exprPath+".id", v.ID)
+	if err != nil {
+		return provider.MobileValueExpectationExec{}, err
+	}
+
+	if v.Expected.Empty() {
+		return provider.MobileValueExpectationExec{}, fmt.Errorf("%s.value: required", exprPath)
+	}
+
+	expected, err := evaluator.Eval(v.Expected, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: exprPath + ".value"})
+	if err != nil {
+		return provider.MobileValueExpectationExec{}, fmt.Errorf("%s.value: %w", exprPath, err)
+	}
+
+	exec := provider.MobileValueExpectationExec{ID: id, Expected: expected}
+
+	if !v.Timeout.Empty() {
+		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".timeout", v.Timeout)
+		if err != nil {
+			return provider.MobileValueExpectationExec{}, err
+		}
+
+		exec.Timeout = duration
+	}
+
+	if !v.Interval.Empty() {
+		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".interval", v.Interval)
+		if err != nil {
+			return provider.MobileValueExpectationExec{}, err
+		}
+
+		exec.Interval = duration
+	}
+
+	return exec, nil
+}
+
+func evalMobileStateExpectation(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, exprPath string, v model.MobileStateExpectation) (provider.MobileStateExpectationExec, error) {
+	id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, exprPath+".id", v.ID)
+	if err != nil {
+		return provider.MobileStateExpectationExec{}, err
+	}
+
+	exec := provider.MobileStateExpectationExec{ID: id}
+
+	if !v.Timeout.Empty() {
+		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".timeout", v.Timeout)
+		if err != nil {
+			return provider.MobileStateExpectationExec{}, err
+		}
+
+		exec.Timeout = duration
+	}
+
+	if !v.Interval.Empty() {
+		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".interval", v.Interval)
+		if err != nil {
+			return provider.MobileStateExpectationExec{}, err
+		}
+
+		exec.Interval = duration
+	}
+
 	return exec, nil
 }
 
@@ -289,6 +410,10 @@ func evalDurationAttr(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioN
 	duration, err := toDuration(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", exprPath, err)
+	}
+
+	if duration <= 0 {
+		return 0, fmt.Errorf("%s: must be greater than 0", exprPath)
 	}
 
 	return duration, nil
@@ -343,7 +468,9 @@ func mobileRequestSummary(exec *provider.MobileExecution) map[string]any {
 		summary["actions"] = actions
 	}
 
-	if len(exec.Expect.Visible) > 0 || len(exec.Expect.NotVisible) > 0 {
+	if len(exec.Expect.Visible) > 0 || len(exec.Expect.NotVisible) > 0 ||
+		len(exec.Expect.Text) > 0 || len(exec.Expect.Value) > 0 ||
+		len(exec.Expect.Enabled) > 0 || len(exec.Expect.Disabled) > 0 {
 		summary["expect"] = expectSummary(exec.Expect)
 	}
 
@@ -354,6 +481,10 @@ func mobileActionSummary(action provider.MobileActionExec) map[string]any {
 	entry := map[string]any{"kind": string(action.Kind), "id": action.ID}
 	if action.Timeout > 0 {
 		entry["timeout"] = action.Timeout.String()
+	}
+
+	if action.Interval > 0 {
+		entry["interval"] = action.Interval.String()
 	}
 
 	if action.Value == "" {
@@ -376,7 +507,7 @@ func expectSummary(expect provider.MobileExpectExec) map[string]any {
 		visibles := make([]map[string]any, 0, len(expect.Visible))
 
 		for _, v := range expect.Visible {
-			visibles = append(visibles, map[string]any{"id": v.ID, "timeout": v.Timeout.String()})
+			visibles = append(visibles, mobileVisibilitySummary(v))
 		}
 
 		summary["visible"] = visibles
@@ -386,13 +517,88 @@ func expectSummary(expect provider.MobileExpectExec) map[string]any {
 		notVisibles := make([]map[string]any, 0, len(expect.NotVisible))
 
 		for _, v := range expect.NotVisible {
-			notVisibles = append(notVisibles, map[string]any{"id": v.ID, "timeout": v.Timeout.String()})
+			notVisibles = append(notVisibles, mobileVisibilitySummary(v))
 		}
 
 		summary["not_visible"] = notVisibles
 	}
 
+	if len(expect.Text) > 0 {
+		items := make([]map[string]any, 0, len(expect.Text))
+		for _, v := range expect.Text {
+			items = append(items, mobileValueExpectationSummary(v))
+		}
+
+		summary["text"] = items
+	}
+
+	if len(expect.Value) > 0 {
+		items := make([]map[string]any, 0, len(expect.Value))
+		for _, v := range expect.Value {
+			items = append(items, mobileValueExpectationSummary(v))
+		}
+
+		summary["value"] = items
+	}
+
+	if len(expect.Enabled) > 0 {
+		items := make([]map[string]any, 0, len(expect.Enabled))
+		for _, v := range expect.Enabled {
+			items = append(items, mobileStateExpectationSummary(v))
+		}
+
+		summary["enabled"] = items
+	}
+
+	if len(expect.Disabled) > 0 {
+		items := make([]map[string]any, 0, len(expect.Disabled))
+		for _, v := range expect.Disabled {
+			items = append(items, mobileStateExpectationSummary(v))
+		}
+
+		summary["disabled"] = items
+	}
+
 	return summary
+}
+
+func mobileVisibilitySummary(v provider.MobileVisibilityExec) map[string]any {
+	entry := map[string]any{"id": v.ID}
+	if v.Timeout > 0 {
+		entry["timeout"] = v.Timeout.String()
+	}
+
+	if v.Interval > 0 {
+		entry["interval"] = v.Interval.String()
+	}
+
+	return entry
+}
+
+func mobileValueExpectationSummary(v provider.MobileValueExpectationExec) map[string]any {
+	entry := map[string]any{"id": v.ID, "value": diagnostic.FromCTY(v.Expected)}
+	if v.Timeout > 0 {
+		entry["timeout"] = v.Timeout.String()
+	}
+
+	if v.Interval > 0 {
+		entry["interval"] = v.Interval.String()
+	}
+
+	return entry
+}
+
+func mobileStateExpectationSummary(v provider.MobileStateExpectationExec) map[string]any {
+	entry := map[string]any{"id": v.ID}
+	if v.Timeout > 0 {
+		entry["timeout"] = v.Timeout.String()
+	}
+
+	if v.Interval > 0 {
+		entry["interval"] = v.Interval.String()
+	}
+
+	return entry
 }
 
 func artifactsFromOutput(output *provider.Output) []report.Artifact {

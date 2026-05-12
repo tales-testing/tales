@@ -379,7 +379,7 @@ func TestExecuteActionTimesOutWhenElementNeverAppears(t *testing.T) {
 			},
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), "was not visible within") {
+	if err == nil || !strings.Contains(err.Error(), "was not visible after") {
 		t.Fatalf("expected action timeout, got %v", err)
 	}
 }
@@ -408,7 +408,7 @@ func TestExecuteExpectVisibleTimesOut(t *testing.T) {
 			},
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), "timed out") {
+	if err == nil || !strings.Contains(err.Error(), "was not visible after") {
 		t.Fatalf("expected timeout error, got %v", err)
 	}
 }
@@ -518,8 +518,201 @@ func TestExecuteExpectNotVisibleTimesOutWhileVisible(t *testing.T) {
 			},
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), "timed out") {
+	if err == nil || !strings.Contains(err.Error(), "was still visible after") {
 		t.Fatalf("expected not_visible timeout, got %v", err)
+	}
+}
+
+func TestExecuteWaitVisibleActionPollsUntilVisible(t *testing.T) {
+	t.Parallel()
+
+	hidden := newButtonNode()
+	hidden.Children[0].Visible = false
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{hidden, newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("wait"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionWaitVisible, ID: "welcome.register", Timeout: time.Second},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("wait_visible should pass after polling: %v", err)
+	}
+}
+
+func TestExecuteWaitNotVisibleActionTimesOut(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("wait"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionWaitNotVisible, ID: "welcome.register", Timeout: 30 * time.Millisecond},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "was still visible after") {
+		t.Fatalf("expected wait_not_visible timeout, got %v", err)
+	}
+}
+
+func TestExecuteTextExpectationSupportsContainsMatcher(t *testing.T) {
+	t.Parallel()
+
+	node := newButtonNode()
+	node.Children[0].Text = "Welcome back"
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{node}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Text: []provider.MobileValueExpectationExec{
+					{
+						ID: "welcome.register",
+						Expected: cty.ObjectVal(map[string]cty.Value{
+							"__tales_matcher": cty.StringVal("contains"),
+							"value":           cty.StringVal("Welcome"),
+						}),
+						Timeout: time.Second,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("text matcher should pass: %v", err)
+	}
+}
+
+func TestExecuteTextExpectationFailsCleanly(t *testing.T) {
+	t.Parallel()
+
+	node := newButtonNode()
+	node.Children[0].Text = "Bienvenue"
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{node}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Text: []provider.MobileValueExpectationExec{
+					{ID: "welcome.register", Expected: cty.StringVal("Welcome"), Timeout: 30 * time.Millisecond},
+				},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), `text mismatch for "welcome.register"`) {
+		t.Fatalf("expected text mismatch, got %v", err)
+	}
+}
+
+func TestExecuteValueExpectationPasses(t *testing.T) {
+	t.Parallel()
+
+	node := newButtonNode()
+	node.Children[0].Value = "user@example.com"
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{node}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("value"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Value: []provider.MobileValueExpectationExec{
+					{ID: "welcome.register", Expected: cty.StringVal("user@example.com"), Timeout: time.Second},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("value expectation should pass: %v", err)
+	}
+}
+
+func TestExecuteEnabledDisabledExpectations(t *testing.T) {
+	t.Parallel()
+
+	enabled := newButtonNode()
+	disabled := newButtonNode()
+	disabled.Children[0].Enabled = false
+
+	for name, tc := range map[string]struct {
+		hierarchy *tree.ViewNode
+		expect    provider.MobileExpectExec
+	}{
+		"enabled": {
+			hierarchy: enabled,
+			expect: provider.MobileExpectExec{Enabled: []provider.MobileStateExpectationExec{
+				{ID: "welcome.register", Timeout: time.Second},
+			}},
+		},
+		"disabled": {
+			hierarchy: disabled,
+			expect: provider.MobileExpectExec{Disabled: []provider.MobileStateExpectationExec{
+				{ID: "welcome.register", Timeout: time.Second},
+			}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{tc.hierarchy}}
+			lc := &fakeLifecycle{udid: "UDID"}
+			p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+			_, err := p.Execute(context.Background(), provider.Input{
+				Scenario: "demo",
+				Step:     newStep(name),
+				Config:   sampleConfigCty(),
+				Mobile: &provider.MobileExecution{
+					Platform:   "ios",
+					TargetName: "iphone",
+					Expect:     tc.expect,
+				},
+			})
+			if err != nil {
+				t.Fatalf("expectation should pass: %v", err)
+			}
+		})
 	}
 }
 

@@ -20,9 +20,11 @@ struct DemoFlowView: View {
     @State private var screen: DemoScreen = .welcome
     @State private var email = ""
     @State private var password = ""
+    @State private var locale = ""
     @State private var verificationCode = ""
     @State private var registerError = ""
     @State private var verifyError = ""
+    @State private var isRegistering = false
 
     var body: some View {
         NavigationStack {
@@ -82,16 +84,28 @@ struct DemoFlowView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("register.password")
 
+            TextField("Locale", text: $locale)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("register.locale")
+
             if !registerError.isEmpty {
                 Text(registerError)
                     .foregroundStyle(.red)
                     .accessibilityIdentifier("register.error")
             }
 
+            if isRegistering {
+                ProgressView("Creating account")
+                    .accessibilityIdentifier("register.loading")
+            }
+
             Button("Submit") {
                 submitRegister()
             }
             .buttonStyle(.borderedProminent)
+            .disabled(email.isEmpty || password.isEmpty || isRegistering)
             .accessibilityIdentifier("register.submit")
         }
     }
@@ -154,7 +168,12 @@ struct DemoFlowView: View {
         }
 
         registerError = ""
-        screen = .verify
+        isRegistering = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            isRegistering = false
+            screen = .verify
+        }
     }
 
     private func submitVerification() {

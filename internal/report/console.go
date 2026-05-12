@@ -257,6 +257,10 @@ func printStep(out io.Writer, label string, width int, step *StepResult, painter
 		return err
 	}
 
+	if err := printActionSummaries(out, step.Request); err != nil {
+		return err
+	}
+
 	if len(step.Request) > 0 {
 		if err := printRequest(out, step.Request); err != nil {
 			return err
@@ -276,6 +280,45 @@ func printStep(out io.Writer, label string, width int, step *StepResult, painter
 	}
 
 	return nil
+}
+
+func printActionSummaries(out io.Writer, request map[string]interface{}) error {
+	if len(request) == 0 {
+		return nil
+	}
+
+	actions, ok := request["actions"].([]map[string]any)
+	if !ok || len(actions) == 0 {
+		return nil
+	}
+
+	if _, err := fmt.Fprintln(out, "    Actions:"); err != nil {
+		return fmt.Errorf("print actions header: %w", err)
+	}
+
+	for _, action := range actions {
+		if _, err := fmt.Fprintf(out, "      %s\n", renderActionSummary(action)); err != nil {
+			return fmt.Errorf("print action summary: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func renderActionSummary(action map[string]any) string {
+	kind := stringField(action, "kind")
+	id := stringField(action, "id")
+
+	rendered := kind
+	if id != "" {
+		rendered += " id=" + id
+	}
+
+	if value, ok := action["value"]; ok && value != nil {
+		rendered += " value=" + diagnostic.ScalarString(value)
+	}
+
+	return rendered
 }
 
 func printArtifacts(out io.Writer, artifacts []Artifact) error {

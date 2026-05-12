@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyperxlab/tales/internal/assertion"
+	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/hyperxlab/tales/internal/model"
 	"github.com/hyperxlab/tales/internal/provider"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
@@ -20,9 +22,9 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// expectPollInterval is the wait between two hierarchy fetches during visible
-// / not_visible polling.
-const expectPollInterval = 250 * time.Millisecond
+// defaultPollInterval is the wait between two hierarchy fetches during mobile
+// action and expectation polling.
+const defaultPollInterval = 250 * time.Millisecond
 
 // expectDefaultTimeout is used when a visibility block omits `timeout`.
 const expectDefaultTimeout = 10 * time.Second
@@ -269,7 +271,9 @@ func (p *Provider) executeMobile(ctx context.Context, input provider.Input, sess
 		}
 	}
 
-	if len(exec.Expect.Visible) > 0 || len(exec.Expect.NotVisible) > 0 {
+	if len(exec.Expect.Visible) > 0 || len(exec.Expect.NotVisible) > 0 ||
+		len(exec.Expect.Text) > 0 || len(exec.Expect.Value) > 0 ||
+		len(exec.Expect.Enabled) > 0 || len(exec.Expect.Disabled) > 0 {
 		if err := p.handleExpect(ctx, session, exec.Expect); err != nil {
 			return fmt.Errorf("expect: %w", err)
 		}
@@ -309,6 +313,14 @@ func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *p
 }
 
 func (p *Provider) handleAction(ctx context.Context, session *Session, action provider.MobileActionExec) error {
+	if action.Kind == model.MobileActionWaitVisible {
+		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, true)
+	}
+
+	if action.Kind == model.MobileActionWaitNotVisible {
+		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, false)
+	}
+
 	node, err := p.waitForActionElement(ctx, session, action)
 	if err != nil {
 		return err
@@ -342,6 +354,8 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 		if err := session.Driver.EraseText(ctx, session.Target.BundleID, count); err != nil {
 			return fmt.Errorf("erase text: %w", err)
 		}
+	case model.MobileActionWaitVisible, model.MobileActionWaitNotVisible:
+		return nil
 	default:
 		return fmt.Errorf("unsupported action kind %q", action.Kind)
 	}
@@ -350,42 +364,29 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 }
 
 func (p *Provider) waitForActionElement(ctx context.Context, session *Session, action provider.MobileActionExec) (*tree.ViewNode, error) {
-	timeout := action.Timeout
-	if timeout <= 0 {
-		timeout = actionDefaultTimeout
-	}
+	opts := pollOptions(action.Timeout, action.Interval, actionDefaultTimeout)
 
-	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	var found *tree.ViewNode
 
-	var lastErr error
-
-	for {
-		hierarchy, err := session.Driver.Hierarchy(deadlineCtx, session.Target.BundleID)
+	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+		node, ok, err := findElementByID(pollCtx, session, action.ID)
 		if err != nil {
-			lastErr = fmt.Errorf("fetch hierarchy: %w", err)
-		} else {
-			node, ok, findErr := tree.FindByID(hierarchy, action.ID)
-			switch {
-			case findErr != nil:
-				lastErr = fmt.Errorf("find element: %w", findErr)
-			case ok && tree.IsVisible(node):
-				return node, nil
-			default:
-				lastErr = nil
-			}
+			return false, err
 		}
 
-		select {
-		case <-deadlineCtx.Done():
-			if lastErr != nil {
-				return nil, fmt.Errorf("element id %q was not visible within %s: %w", action.ID, timeout, lastErr)
-			}
+		if ok && tree.IsVisible(node) {
+			found = node
 
-			return nil, fmt.Errorf("element id %q was not visible within %s", action.ID, timeout)
-		case <-time.After(expectPollInterval):
+			return true, nil
 		}
+
+		return false, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("element %q was not visible after %s: %w", action.ID, opts.Timeout, err)
 	}
+
+	return found, nil
 }
 
 func (p *Provider) handleExpect(ctx context.Context, session *Session, expect provider.MobileExpectExec) error {
@@ -401,67 +402,180 @@ func (p *Provider) handleExpect(ctx context.Context, session *Session, expect pr
 		}
 	}
 
+	for _, v := range expect.Text {
+		if err := p.waitForText(ctx, session, v); err != nil {
+			return err
+		}
+	}
+
+	for _, v := range expect.Value {
+		if err := p.waitForValue(ctx, session, v); err != nil {
+			return err
+		}
+	}
+
+	for _, v := range expect.Enabled {
+		if err := p.waitForEnabled(ctx, session, v, true); err != nil {
+			return err
+		}
+	}
+
+	for _, v := range expect.Disabled {
+		if err := p.waitForEnabled(ctx, session, v, false); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v provider.MobileVisibilityExec, want bool) error {
-	timeout := v.Timeout
-	if timeout <= 0 {
-		timeout = expectDefaultTimeout
+	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
+
+	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+		node, ok, err := findElementByID(pollCtx, session, v.ID)
+		if err != nil {
+			return false, err
+		}
+
+		visible := ok && tree.IsVisible(node)
+		if want {
+			return visible, nil
+		}
+
+		return !visible, nil
+	})
+	if err == nil {
+		return nil
 	}
 
-	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
+	if want {
+		return fmt.Errorf("element %q was not visible after %s: %w", v.ID, opts.Timeout, err)
+	}
+
+	return fmt.Errorf("element %q was still visible after %s: %w", v.ID, opts.Timeout, err)
+}
+
+func (p *Provider) waitForText(ctx context.Context, session *Session, v provider.MobileValueExpectationExec) error {
+	return p.waitForNodeValue(ctx, session, v, "text", tree.Text)
+}
+
+func (p *Provider) waitForValue(ctx context.Context, session *Session, v provider.MobileValueExpectationExec) error {
+	return p.waitForNodeValue(ctx, session, v, "value", tree.Value)
+}
+
+func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v provider.MobileValueExpectationExec, kind string, extract func(*tree.ViewNode) string) error {
+	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
+
+	var got string
+
+	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+		node, ok, err := findElementByID(pollCtx, session, v.ID)
+		if err != nil {
+			return false, err
+		}
+
+		if !ok {
+			return false, nil
+		}
+
+		got = extract(node)
+		if err := assertion.Equal(kind+"."+v.ID, v.Expected, cty.StringVal(got)); err != nil {
+			return false, fmt.Errorf("compare %s: %w", kind, err)
+		}
+
+		return true, nil
+	})
+	if err == nil {
+		return nil
+	}
+
+	want := diagnostic.ScalarString(v.Expected)
+
+	return fmt.Errorf("%s mismatch for %q after %s: want=%q got=%q", kind, v.ID, opts.Timeout, want, got)
+}
+
+func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provider.MobileStateExpectationExec, want bool) error {
+	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
+
+	err := poll(ctx, opts, func(pollCtx context.Context) (bool, error) {
+		node, ok, err := findElementByID(pollCtx, session, v.ID)
+		if err != nil {
+			return false, err
+		}
+
+		if !ok {
+			return false, nil
+		}
+
+		return node.Enabled == want, nil
+	})
+	if err == nil {
+		return nil
+	}
+
+	if want {
+		return fmt.Errorf("element %q was not enabled after %s: %w", v.ID, opts.Timeout, err)
+	}
+
+	return fmt.Errorf("element %q was not disabled after %s: %w", v.ID, opts.Timeout, err)
+}
+
+type PollOptions struct {
+	Timeout  time.Duration
+	Interval time.Duration
+}
+
+func pollOptions(timeout, interval, defaultTimeout time.Duration) PollOptions {
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+
+	if interval <= 0 {
+		interval = defaultPollInterval
+	}
+
+	return PollOptions{Timeout: timeout, Interval: interval}
+}
+
+func poll(ctx context.Context, opts PollOptions, fn func(context.Context) (bool, error)) error {
+	deadlineCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
+	var lastErr error
+
 	for {
-		match, err := pollVisibility(deadlineCtx, session, v.ID, want)
-		if err == nil && match {
+		ok, err := fn(deadlineCtx)
+		if err != nil {
+			lastErr = err
+		} else if ok {
 			return nil
 		}
 
 		select {
 		case <-deadlineCtx.Done():
-			return formatVisibilityError(v, want, err)
-		case <-time.After(expectPollInterval):
+			if lastErr != nil {
+				return lastErr
+			}
+
+			return fmt.Errorf("poll timed out: %w", deadlineCtx.Err())
+		case <-time.After(opts.Interval):
 		}
 	}
 }
 
-func pollVisibility(ctx context.Context, session *Session, id string, want bool) (bool, error) {
+func findElementByID(ctx context.Context, session *Session, id string) (*tree.ViewNode, bool, error) {
 	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID)
 	if err != nil {
-		return false, fmt.Errorf("fetch hierarchy: %w", err)
+		return nil, false, fmt.Errorf("fetch hierarchy: %w", err)
 	}
 
 	node, ok, err := tree.FindByID(hierarchy, id)
 	if err != nil {
-		return false, fmt.Errorf("find element: %w", err)
+		return nil, false, fmt.Errorf("find element: %w", err)
 	}
 
-	visible := ok && tree.IsVisible(node)
-	if want {
-		return visible, nil
-	}
-
-	return !visible, nil
-}
-
-func formatVisibilityError(v provider.MobileVisibilityExec, want bool, lastErr error) error {
-	kind := "visible"
-	if !want {
-		kind = "not_visible"
-	}
-
-	timeout := v.Timeout
-	if timeout <= 0 {
-		timeout = expectDefaultTimeout
-	}
-
-	if lastErr != nil {
-		return fmt.Errorf("expect %s id %q timed out after %s: %w", kind, v.ID, timeout, lastErr)
-	}
-
-	return fmt.Errorf("expect %s id %q timed out after %s", kind, v.ID, timeout)
+	return node, ok, nil
 }
 
 func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Input, session *Session, output *provider.Output) {
@@ -546,6 +660,10 @@ func mobileActionCty(action provider.MobileActionExec) map[string]cty.Value {
 	}
 	if action.Timeout > 0 {
 		entry["timeout"] = cty.StringVal(action.Timeout.String())
+	}
+
+	if action.Interval > 0 {
+		entry["interval"] = cty.StringVal(action.Interval.String())
 	}
 
 	if action.Value == "" {

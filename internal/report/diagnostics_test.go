@@ -162,6 +162,48 @@ func TestConsoleFailureOutputMasksBasicAuth(t *testing.T) {
 	}
 }
 
+func TestConsoleFailureOutputShowsSanitizedMobileActions(t *testing.T) {
+	t.Parallel()
+
+	result := &SuiteResult{
+		Seed:     1234,
+		Duration: 10 * time.Millisecond,
+		Scenarios: []*ScenarioResult{{
+			File:   "ios.tales",
+			Name:   "mobile",
+			Status: StatusFail,
+			Steps: []*StepResult{{
+				File:     "ios.tales",
+				Scenario: "mobile",
+				Name:     "submit",
+				Provider: "mobile",
+				Status:   StatusFail,
+				Request: map[string]interface{}{
+					"actions": []map[string]any{
+						{"kind": "tap", "id": "welcome.register"},
+						{"kind": "input_text", "id": "register.password", "value": "***"},
+					},
+				},
+				Failure: &ErrorDetail{Kind: "provider", Message: "element missing"},
+			}},
+			Failure: &ErrorDetail{Kind: "provider", Message: "element missing"},
+		}},
+	}
+
+	buffer := bytes.Buffer{}
+	if err := PrintConsoleWithOptions(&buffer, result, ConsoleOptions{Color: false, Progress: false}); err != nil {
+		t.Fatalf("print console: %v", err)
+	}
+
+	output := buffer.String()
+	if !strings.Contains(output, "Actions:") || !strings.Contains(output, "input_text id=register.password value=***") {
+		t.Fatalf("expected sanitized action summaries, got: %s", output)
+	}
+	if strings.Contains(output, "Secret123") {
+		t.Fatalf("secure value leaked in console output: %s", output)
+	}
+}
+
 func TestJSONLFailureOutputMasksBasicAuth(t *testing.T) {
 	t.Parallel()
 

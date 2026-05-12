@@ -47,6 +47,10 @@ scenario "iOS register demo app" {
         id      = "welcome.register"
         timeout = "20s"
       }
+      text {
+        id    = "welcome.title"
+        value = "Tales Demo"
+      }
     }
   }
 
@@ -59,17 +63,23 @@ scenario "iOS register demo app" {
       tap {
         id = "welcome.register"
       }
+      wait_visible {
+        id = "register.screen"
+      }
     }
     expect {
       visible {
         id      = "register.screen"
         timeout = "10s"
       }
+      disabled {
+        id = "register.submit"
+      }
     }
   }
 
   step "mobile" "submit_register" {
-    depends_on = ["open_register"]
+    depends_on = ["clear_prefill"]
 
     platform = "ios"
     target   = "iphone"
@@ -83,27 +93,70 @@ scenario "iOS register demo app" {
         value  = generate("ios_password")
         secure = true
       }
-      tap {
+    }
+    expect {
+      enabled {
         id = "register.submit"
+      }
+      value {
+        id    = "register.email"
+        value = contains("@example.com")
+      }
+    }
+    capture {
+      email = value("register.email")
+    }
+  }
+
+  step "mobile" "clear_prefill" {
+    depends_on = ["open_register"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "register.locale"
+        value = "fr_FR"
+      }
+      clear_text {
+        id = "register.locale"
       }
     }
     expect {
-      visible {
+      disabled {
+        id = "register.submit"
+      }
+    }
+  }
+
+  step "mobile" "submit_and_wait_verification" {
+    depends_on = ["submit_register"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "register.submit"
+      }
+      wait_not_visible {
+        id      = "register.loading"
+        timeout = "5s"
+      }
+      wait_visible {
         id      = "verify.screen"
         timeout = "10s"
       }
+    }
+    expect {
       visible {
         id      = "verify.code"
         timeout = "10s"
       }
     }
-    capture {
-      email = request.actions[0].value
-    }
   }
 
   step "mobile" "verify_account" {
-    depends_on = ["submit_register"]
+    depends_on = ["submit_and_wait_verification"]
 
     platform = "ios"
     target   = "iphone"
@@ -115,19 +168,19 @@ scenario "iOS register demo app" {
       tap {
         id = "verify.submit"
       }
+      wait_visible {
+        id = "home.screen"
+      }
     }
     expect {
-      visible {
-        id      = "home.screen"
-        timeout = "10s"
+      text {
+        id    = "home.title"
+        value = "Welcome"
       }
-      visible {
-        id      = "home.title"
-        timeout = "10s"
+      text {
+        id    = "home.email"
+        value = result.submit_register.email
       }
-    }
-    capture {
-      title = text("home.title")
     }
   }
 

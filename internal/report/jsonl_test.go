@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -146,6 +147,53 @@ func TestWriteJSONLIncludesAttemptsForRetriedSteps(t *testing.T) {
 	}
 
 	t.Fatalf("step event not found")
+}
+
+func TestWriteJSONLIncludesSanitizedMobileActions(t *testing.T) {
+	t.Parallel()
+
+	file := t.TempDir() + "/events.jsonl"
+	result := &SuiteResult{
+		Seed: 1234,
+		Scenarios: []*ScenarioResult{{
+			File:   "ios.tales",
+			Name:   "mobile",
+			Status: StatusPass,
+			Steps: []*StepResult{{
+				File:     "ios.tales",
+				Scenario: "mobile",
+				Name:     "submit",
+				Provider: "mobile",
+				Status:   StatusPass,
+				Request: map[string]interface{}{
+					"actions": []map[string]any{
+						{"kind": "input_text", "id": "register.email", "value": "ios-user@example.com"},
+						{"kind": "input_text", "id": "register.password", "value": "***"},
+					},
+				},
+			}},
+		}},
+	}
+
+	if err := WriteJSONL(file, result); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("read jsonl: %v", err)
+	}
+
+	text := string(content)
+	if !strings.Contains(text, `"actions"`) {
+		t.Fatalf("expected top-level actions in jsonl: %s", text)
+	}
+	if strings.Contains(text, "Secret123") {
+		t.Fatalf("secure input leaked into jsonl: %s", text)
+	}
+	if !strings.Contains(text, `"value":"***"`) {
+		t.Fatalf("expected masked secure value in jsonl: %s", text)
+	}
 }
 
 func readJSONLEvents(t *testing.T, path string) []map[string]interface{} {
