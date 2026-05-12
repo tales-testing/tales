@@ -3,6 +3,7 @@ package mobile
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/simctl"
@@ -67,12 +68,20 @@ func (s simctlAdapter) FindDeviceByName(ctx context.Context, name string) (apple
 		return apple.Device{}, fmt.Errorf("simctl find device: %w", err)
 	}
 
-	return apple.Device{UDID: device.UDID, Booted: device.Booted()}, nil
+	return apple.Device{UDID: device.UDID, Name: device.Name, Runtime: device.Runtime, Booted: device.Booted()}, nil
 }
 
 func (s simctlAdapter) Boot(ctx context.Context, udid string) error {
 	if err := s.tool.Boot(ctx, udid); err != nil {
 		return fmt.Errorf("simctl boot: %w", err)
+	}
+
+	return nil
+}
+
+func (s simctlAdapter) WaitBooted(ctx context.Context, udid string, timeout time.Duration) error {
+	if err := s.tool.WaitBooted(ctx, udid, timeout); err != nil {
+		return fmt.Errorf("simctl bootstatus: %w", err)
 	}
 
 	return nil

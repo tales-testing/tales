@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
@@ -16,6 +17,7 @@ type fakeSimctl struct {
 	device     Device
 	findErr    error
 	bootCalls  atomic.Int32
+	waitCalls  atomic.Int32
 	installs   []string
 	uninstalls []string
 	launches   []string
@@ -37,6 +39,12 @@ func (f *fakeSimctl) FindDeviceByName(_ context.Context, name string) (Device, e
 func (f *fakeSimctl) Boot(_ context.Context, _ string) error {
 	f.bootCalls.Add(1)
 	f.device.Booted = true
+
+	return nil
+}
+
+func (f *fakeSimctl) WaitBooted(_ context.Context, _ string, _ time.Duration) error {
+	f.waitCalls.Add(1)
 
 	return nil
 }
@@ -84,18 +92,20 @@ func (f *fakeDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, err
 	return &tree.ViewNode{ID: "root"}, nil
 }
 
-func (f *fakeDriver) Tap(_ context.Context, _, _ float64) error          { return nil }
-func (f *fakeDriver) InputText(_ context.Context, _ string) error        { return nil }
-func (f *fakeDriver) EraseText(_ context.Context, _ int) error           { return nil }
-func (f *fakeDriver) Screenshot(_ context.Context) ([]byte, error)       { return []byte{}, nil }
+func (f *fakeDriver) Tap(_ context.Context, _ string, _, _ float64) error { return nil }
+func (f *fakeDriver) InputText(_ context.Context, _, _ string) error      { return nil }
+func (f *fakeDriver) EraseText(_ context.Context, _ string, _ int) error  { return nil }
+func (f *fakeDriver) Screenshot(_ context.Context) ([]byte, error)        { return []byte{}, nil }
 
 type fakeXcodebuild struct {
 	calls atomic.Int32
+	opts  xcodebuild.Options
 	err   error
 }
 
-func (f *fakeXcodebuild) Start(_ context.Context, _ xcodebuild.Options, _ xcodebuild.Pinger) (*xcodebuild.Handle, error) {
+func (f *fakeXcodebuild) Start(_ context.Context, opts xcodebuild.Options, _ xcodebuild.Pinger) (*xcodebuild.Handle, error) {
 	f.calls.Add(1)
+	f.opts = opts
 
 	if f.err != nil {
 		return nil, f.err
@@ -149,6 +159,10 @@ func TestEnsureBootedBootsWhenNotBooted(t *testing.T) {
 	if sim.bootCalls.Load() != 1 {
 		t.Fatalf("expected 1 boot, got %d", sim.bootCalls.Load())
 	}
+
+	if sim.waitCalls.Load() != 1 {
+		t.Fatalf("expected 1 bootstatus wait, got %d", sim.waitCalls.Load())
+	}
 }
 
 func TestEnsureBootedSkipsBootIfAlreadyBooted(t *testing.T) {
@@ -163,6 +177,10 @@ func TestEnsureBootedSkipsBootIfAlreadyBooted(t *testing.T) {
 
 	if got := sim.bootCalls.Load(); got != 0 {
 		t.Fatalf("expected 0 boots for already-booted device, got %d", got)
+	}
+
+	if got := sim.waitCalls.Load(); got != 1 {
+		t.Fatalf("expected 1 bootstatus wait for already-booted device, got %d", got)
 	}
 }
 
@@ -245,6 +263,14 @@ func TestEnsureDriverStartsXcodebuild(t *testing.T) {
 
 	if got := xc.calls.Load(); got != 1 {
 		t.Fatalf("expected 1 xcodebuild call, got %d", got)
+	}
+
+	if !strings.Contains(xc.opts.LogPath, "build/artifacts/mobile/driver/iphone/driver.log") {
+		t.Fatalf("expected driver log path in options, got %+v", xc.opts)
+	}
+
+	if xc.opts.HealthURL != "http://127.0.0.1:9080/health" {
+		t.Fatalf("expected health URL in options, got %+v", xc.opts)
 	}
 }
 

@@ -82,10 +82,15 @@ make e2e-failure
 macOS/Xcode-only targets:
 
 ```bash
+make doctor-ios
 make build-ios-demo
 make e2e-ios
 make e2e-ios-failure
 ```
+
+`make doctor-ios` prints system, Xcode, `simctl`, and iOS-related environment
+state without requiring optional variables to be set. Run it first when a local
+simulator behaves strangely after an Xcode upgrade.
 
 `make build-ios-demo`:
 
@@ -94,25 +99,29 @@ make e2e-ios-failure
 - builds `e2e/ios/demoapp/TalesDemoApp.xcodeproj`
 - writes derived data under `build/ios/demoapp`
 - produces `TalesDemoApp.app` for iOS Simulator
+- writes the resolved app bundle to `build/ios/demoapp/app_path.txt`
 
 `make e2e-ios`:
 
 - builds the Tales binary
 - builds the demo app
 - sets `IOS_APP_PATH`, `IOS_BUNDLE_ID`, and `IOS_DEVICE_NAME`
+- defaults to `IOS_DEVICE_NAME="iPhone 17"`
 - runs `tales test ./e2e/ios/pass --seed 1234 --parallel 1`
 - writes reports under `build/reports`
 - writes mobile artifacts under `build/artifacts`
+- prints the selected device configuration, report paths, and artifact root
 
 `make e2e-ios-failure` runs the failing iOS suite, expects exit code `1`, and
-verifies that screenshot and hierarchy artifacts exist and are referenced in the
-JSONL report.
+verifies that the failure is the expected `missing_element` visibility failure,
+not a simulator/driver environment failure. It also checks that screenshot and
+hierarchy artifacts exist and are referenced in the JSONL report.
 
 Useful overrides:
 
 ```bash
-IOS_DEVICE_NAME="iPhone 16" make e2e-ios
-IOS_DEVICE_NAME="iPhone 16 Pro" make e2e-ios-failure
+IOS_DEVICE_NAME="iPhone 17" make e2e-ios
+IOS_DEVICE_NAME="iPhone 17 Pro" make e2e-ios-failure
 ```
 
 ## Build Requirements
@@ -126,7 +135,7 @@ User applications should be built by the owning project and passed through:
 ```bash
 IOS_APP_PATH=/path/to/MyApp.app \
 IOS_BUNDLE_ID=com.example.MyApp \
-IOS_DEVICE_NAME="iPhone 16" \
+IOS_DEVICE_NAME="iPhone 17" \
   ./build/tales test ./my/mobile/suite --seed 1234
 ```
 
@@ -138,7 +147,7 @@ config {
     targets = {
       iphone = {
         platform    = "ios"
-        device_name = env("IOS_DEVICE_NAME", "iPhone 16")
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
         app         = env("IOS_APP_PATH")
         bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
         driver = {
@@ -200,6 +209,20 @@ Supported V1 captures:
 
 Secure input values are masked in user-facing reports.
 
+## Simulator Selection
+
+When duplicate simulator names exist across runtimes, Tales selects
+deterministically:
+
+- available iOS devices only
+- newest iOS runtime first
+- booted device first when runtime and name are equal
+- UDID as a stable tie-breaker
+
+The selected simulator name, UDID, and runtime are printed before the session is
+used. This avoids accidentally choosing an older duplicate runtime when Xcode
+ships several simulator runtimes.
+
 ## Accessibility Identifiers
 
 Tales selectors are accessibility identifiers only. Do not rely on visible text
@@ -242,13 +265,28 @@ build/artifacts/mobile/<scenario>-<file-hash>/<step>/<phase>/attempt-<n>/hierarc
 The file hash prevents collisions when two files contain scenarios with the same
 name. Paths are included in console, JUnit, and JSONL reports when available.
 
+When Tales starts the managed Apple driver, stdout and stderr are written to:
+
+```text
+build/artifacts/mobile/driver/<target>/driver.log
+```
+
+If the driver does not become healthy, the failure message includes this log
+path and suggests `make doctor-ios`.
+
 ## Troubleshooting
 
+- Run `make doctor-ios` to collect system, Xcode, runtime, device, and
+  environment diagnostics.
 - Simulator not found: verify `IOS_DEVICE_NAME` with `xcrun simctl list devices`.
 - App path missing: run `make build-ios-demo` or set `IOS_APP_PATH` to a simulator `.app` bundle.
 - Device build installed into simulator: rebuild the app with `-sdk iphonesimulator`.
 - Bundle ID mismatch: check `IOS_BUNDLE_ID` matches the app's `PRODUCT_BUNDLE_IDENTIFIER`.
 - Driver health timeout: ensure Xcode can run `TalesAppleDriverUITests` on the selected simulator.
+- Stale CoreSimulator after Xcode upgrade: run `sudo xcodebuild -runFirstLaunch`,
+  then `xcrun simctl shutdown all`, then
+  `killall -9 com.apple.CoreSimulator.CoreSimulatorService || true`, then
+  `xcrun simctl list devices`.
 - Element not found: verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
 - No screenshot: check simulator permissions and fallback `xcrun simctl io screenshot` availability.
 - Port conflict: set `IOS_DRIVER_HOST` or update the target driver port in the `.tales` file.

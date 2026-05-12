@@ -3,6 +3,8 @@ package xcodebuild
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -10,8 +12,9 @@ import (
 )
 
 type fakeSpawn struct {
-	name string
-	args []string
+	name    string
+	args    []string
+	logPath string
 }
 
 type fakeSpawner struct {
@@ -20,8 +23,8 @@ type fakeSpawner struct {
 	err     error
 }
 
-func (f *fakeSpawner) Spawn(_ context.Context, name string, args []string) (Process, error) {
-	f.calls = append(f.calls, fakeSpawn{name: name, args: append([]string(nil), args...)})
+func (f *fakeSpawner) Spawn(_ context.Context, name string, args []string, logPath string) (Process, error) {
+	f.calls = append(f.calls, fakeSpawn{name: name, args: append([]string(nil), args...), logPath: logPath})
 
 	if f.err != nil {
 		return nil, f.err
@@ -118,6 +121,29 @@ func TestStartReturnsHandleWhenHealthy(t *testing.T) {
 	}
 }
 
+func TestStartPassesLogPathToSpawner(t *testing.T) {
+	t.Parallel()
+
+	spawner := &fakeSpawner{}
+	launcher := New(spawner)
+
+	_, err := launcher.Start(context.Background(), Options{
+		Project:       "p.xcodeproj",
+		Scheme:        "S",
+		Destination:   "platform=iOS Simulator,id=ABC",
+		LogPath:       "build/artifacts/mobile/driver/iphone/driver.log",
+		HealthTimeout: time.Second,
+		PollInterval:  time.Millisecond,
+	}, &fakePinger{until: 1})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	if got := spawner.calls[0].logPath; got != "build/artifacts/mobile/driver/iphone/driver.log" {
+		t.Fatalf("log path=%q", got)
+	}
+}
+
 func TestStartStopsProcessOnHealthTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -144,6 +170,32 @@ func TestStartStopsProcessOnHealthTimeout(t *testing.T) {
 
 	if got := process.stopCount.Load(); got != 1 {
 		t.Fatalf("expected process to be stopped once, got %d", got)
+	}
+}
+
+func TestStartTimeoutIncludesLogPathAndDoctorHint(t *testing.T) {
+	t.Parallel()
+
+	launcher := New(&fakeSpawner{process: &fakeProcess{}})
+
+	_, err := launcher.Start(context.Background(), Options{
+		Project:       "p.xcodeproj",
+		Scheme:        "S",
+		Destination:   "platform=iOS Simulator,id=ABC",
+		HealthURL:     "http://127.0.0.1:9080/health",
+		LogPath:       "build/artifacts/mobile/driver/iphone/driver.log",
+		HealthTimeout: 30 * time.Millisecond,
+		PollInterval:  5 * time.Millisecond,
+	}, &fakePinger{until: 999, err: errors.New("never ready")})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	msg := err.Error()
+	for _, want := range []string{"http://127.0.0.1:9080/health", "build/artifacts/mobile/driver/iphone/driver.log", "make doctor-ios"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("expected %q in error: %v", want, err)
+		}
 	}
 }
 
@@ -191,5 +243,42 @@ func TestHandleStopIsSafeOnNil(t *testing.T) {
 	var handle *Handle
 	if err := handle.Stop(context.Background()); err != nil {
 		t.Fatalf("expected nil error from nil handle, got %v", err)
+	}
+}
+
+func TestExecSpawnerCreatesDriverLog(t *testing.T) {
+	t.Parallel()
+
+	logPath := filepath.Join(t.TempDir(), "driver", "driver.log")
+	process, err := ExecSpawner{}.Spawn(context.Background(), "sh", []string{"-c", "echo stdout; echo stderr >&2; sleep 5"}, logPath)
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		data, _ := os.ReadFile(logPath)
+		if strings.Contains(string(data), "stdout") && strings.Contains(string(data), "stderr") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for log output, got %q", string(data))
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err := process.Stop(context.Background()); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+
+	log := string(data)
+	if !strings.Contains(log, "stdout") || !strings.Contains(log, "stderr") {
+		t.Fatalf("expected stdout and stderr in log, got %q", log)
 	}
 }

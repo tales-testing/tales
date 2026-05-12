@@ -15,6 +15,7 @@ import (
 	"github.com/hyperxlab/tales/internal/model"
 	"github.com/hyperxlab/tales/internal/provider"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
+	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -158,15 +159,24 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	stepLock.Lock()
 	defer stepLock.Unlock()
 
-	session, err := p.acquireSession(ctx, target)
-	if err != nil {
-		return nil, fmt.Errorf("acquire session: %w", err)
-	}
-
 	start := time.Now()
 	output := &provider.Output{
 		Request:  mobileRequestCty(input.Mobile),
 		Response: map[string]cty.Value{},
+	}
+
+	session, err := p.acquireSession(ctx, target)
+	if err != nil {
+		if a, ok := driverLogArtifactFromError(err); ok {
+			output.Response["artifacts"] = cty.ListVal([]cty.Value{cty.ObjectVal(map[string]cty.Value{
+				"type": cty.StringVal(a.Type),
+				"path": cty.StringVal(a.Path),
+			})})
+		}
+
+		output.Duration = time.Since(start)
+
+		return output, fmt.Errorf("acquire session: %w", err)
 	}
 
 	if err := p.executeMobile(ctx, input, session, output); err != nil {
@@ -308,19 +318,19 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 
 	switch action.Kind {
 	case model.MobileActionTap:
-		if err := session.Driver.Tap(ctx, x, y); err != nil {
+		if err := session.Driver.Tap(ctx, session.Target.BundleID, x, y); err != nil {
 			return fmt.Errorf("tap: %w", err)
 		}
 	case model.MobileActionInputText:
-		if err := session.Driver.Tap(ctx, x, y); err != nil {
+		if err := session.Driver.Tap(ctx, session.Target.BundleID, x, y); err != nil {
 			return fmt.Errorf("focus element: %w", err)
 		}
 
-		if err := session.Driver.InputText(ctx, action.Value); err != nil {
+		if err := session.Driver.InputText(ctx, session.Target.BundleID, action.Value); err != nil {
 			return fmt.Errorf("input text: %w", err)
 		}
 	case model.MobileActionClearText:
-		if err := session.Driver.Tap(ctx, x, y); err != nil {
+		if err := session.Driver.Tap(ctx, session.Target.BundleID, x, y); err != nil {
 			return fmt.Errorf("focus element: %w", err)
 		}
 
@@ -329,7 +339,7 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 			count = defaultClearTextErase
 		}
 
-		if err := session.Driver.EraseText(ctx, count); err != nil {
+		if err := session.Driver.EraseText(ctx, session.Target.BundleID, count); err != nil {
 			return fmt.Errorf("erase text: %w", err)
 		}
 	default:
@@ -581,6 +591,15 @@ func inputAttempt(input provider.Input) int {
 	}
 
 	return input.Attempt
+}
+
+func driverLogArtifactFromError(err error) (Artifact, bool) {
+	var startErr *xcodebuild.StartError
+	if !errors.As(err, &startErr) || startErr.LogPath == "" {
+		return Artifact{}, false
+	}
+
+	return Artifact{Type: "driver_log", Path: startErr.LogPath}, true
 }
 
 // defaultSessionBuilder returns a builder that errors out clearly. Callers

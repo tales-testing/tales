@@ -3,6 +3,11 @@ package apple
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
@@ -13,6 +18,7 @@ import (
 type SimctlTool interface {
 	FindDeviceByName(ctx context.Context, name string) (Device, error)
 	Boot(ctx context.Context, udid string) error
+	WaitBooted(ctx context.Context, udid string, timeout time.Duration) error
 	Install(ctx context.Context, udid, appPath string) error
 	Uninstall(ctx context.Context, udid, bundleID string) error
 	Launch(ctx context.Context, udid, bundleID string) error
@@ -22,8 +28,10 @@ type SimctlTool interface {
 
 // Device is the minimal device representation needed by the lifecycle.
 type Device struct {
-	UDID   string
-	Booted bool
+	UDID    string
+	Name    string
+	Runtime string
+	Booted  bool
 }
 
 // XcodebuildLauncher starts the XCUITest driver. Production code uses
@@ -43,6 +51,10 @@ type Lifecycle struct {
 	NewDriver  DriverFactory
 }
 
+const driverLogsBase = "build/artifacts/mobile/driver"
+
+var unsafeDriverLogSegment = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
+
 // DriverHandle is returned alongside a Driver and lets the caller stop the
 // xcodebuild subprocess Tales started. It is nil in external-driver mode.
 type DriverHandle interface {
@@ -56,10 +68,18 @@ func (l *Lifecycle) EnsureBooted(ctx context.Context, target Target) (string, er
 		return "", fmt.Errorf("find simulator %q: %w", target.DeviceName, err)
 	}
 
+	if device.Name != "" || device.Runtime != "" {
+		fmt.Fprintf(os.Stderr, "Selected iOS simulator: name=%q udid=%s runtime=%s\n", device.Name, device.UDID, device.Runtime)
+	}
+
 	if !device.Booted {
 		if err := l.Simctl.Boot(ctx, device.UDID); err != nil {
 			return "", fmt.Errorf("boot simulator %q: %w", target.DeviceName, err)
 		}
+	}
+
+	if err := l.Simctl.WaitBooted(ctx, device.UDID, 2*time.Minute); err != nil {
+		return "", fmt.Errorf("wait simulator boot %q: %w", target.DeviceName, err)
 	}
 
 	return device.UDID, nil
@@ -136,17 +156,30 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, udid string, target Target
 		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.scheme is required when driver.external is false", target.Name)
 	}
 
+	logPath := driverLogPath(target.Name)
+
 	handle, err := l.Xcodebuild.Start(ctx, xcodebuild.Options{
 		UDID:        udid,
 		Project:     target.Driver.Project,
 		Scheme:      target.Driver.Scheme,
 		Destination: fmt.Sprintf("platform=iOS Simulator,id=%s", udid),
+		HealthURL:   target.Driver.BaseURL() + "/health",
+		LogPath:     logPath,
 	}, client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start xcuitest driver: %w", err)
 	}
 
 	return client, handle, nil
+}
+
+func driverLogPath(targetName string) string {
+	segment := strings.Trim(unsafeDriverLogSegment.ReplaceAllString(targetName, "_"), "_")
+	if segment == "" {
+		segment = "unnamed"
+	}
+
+	return filepath.Join(driverLogsBase, segment, "driver.log")
 }
 
 // ScreenshotFallback uses simctl io screenshot to capture a PNG when the

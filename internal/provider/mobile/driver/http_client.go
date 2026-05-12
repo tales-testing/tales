@@ -107,22 +107,22 @@ func (c *Client) Hierarchy(ctx context.Context, bundleID string) (*tree.ViewNode
 }
 
 // Tap posts to /tap.
-func (c *Client) Tap(ctx context.Context, x, y float64) error {
-	return c.postJSON(ctx, "/tap", map[string]float64{"x": x, "y": y})
+func (c *Client) Tap(ctx context.Context, bundleID string, x, y float64) error {
+	return c.postJSON(ctx, "/tap", map[string]any{"bundleId": bundleID, "x": x, "y": y})
 }
 
 // InputText posts to /inputText.
-func (c *Client) InputText(ctx context.Context, text string) error {
-	return c.postJSON(ctx, "/inputText", map[string]string{"text": text})
+func (c *Client) InputText(ctx context.Context, bundleID string, text string) error {
+	return c.postJSON(ctx, "/inputText", map[string]string{"bundleId": bundleID, "text": text})
 }
 
 // EraseText posts to /eraseText.
-func (c *Client) EraseText(ctx context.Context, characters int) error {
+func (c *Client) EraseText(ctx context.Context, bundleID string, characters int) error {
 	if characters < 0 {
 		return fmt.Errorf("eraseText: characters must be non-negative, got %d", characters)
 	}
 
-	return c.postJSON(ctx, "/eraseText", map[string]int{"characters": characters})
+	return c.postJSON(ctx, "/eraseText", map[string]any{"bundleId": bundleID, "characters": characters})
 }
 
 // Screenshot fetches GET /screenshot returning the raw PNG bytes.

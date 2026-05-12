@@ -125,7 +125,7 @@ func TestClientHierarchyMalformedJSON(t *testing.T) {
 func TestClientTapSendsPayload(t *testing.T) {
 	t.Parallel()
 
-	var captured map[string]float64
+	var captured map[string]any
 
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/tap" {
@@ -139,11 +139,11 @@ func TestClientTapSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.Tap(context.Background(), 12.5, 34.25); err != nil {
+	if err := client.Tap(context.Background(), "com.example.MyApp", 12.5, 34.25); err != nil {
 		t.Fatalf("tap: %v", err)
 	}
 
-	if captured["x"] != 12.5 || captured["y"] != 34.25 {
+	if captured["bundleId"] != "com.example.MyApp" || captured["x"] != 12.5 || captured["y"] != 34.25 {
 		t.Fatalf("unexpected payload: %v", captured)
 	}
 }
@@ -165,11 +165,11 @@ func TestClientInputTextSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.InputText(context.Background(), "hello@example.com"); err != nil {
+	if err := client.InputText(context.Background(), "com.example.MyApp", "hello@example.com"); err != nil {
 		t.Fatalf("inputText: %v", err)
 	}
 
-	if captured["text"] != "hello@example.com" {
+	if captured["bundleId"] != "com.example.MyApp" || captured["text"] != "hello@example.com" {
 		t.Fatalf("unexpected payload %v", captured)
 	}
 }
@@ -177,7 +177,7 @@ func TestClientInputTextSendsPayload(t *testing.T) {
 func TestClientEraseTextSendsPayload(t *testing.T) {
 	t.Parallel()
 
-	var captured map[string]int
+	var captured map[string]any
 
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/eraseText" {
@@ -191,11 +191,11 @@ func TestClientEraseTextSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.EraseText(context.Background(), 5); err != nil {
+	if err := client.EraseText(context.Background(), "com.example.MyApp", 5); err != nil {
 		t.Fatalf("eraseText: %v", err)
 	}
 
-	if captured["characters"] != 5 {
+	if captured["bundleId"] != "com.example.MyApp" || captured["characters"] != float64(5) {
 		t.Fatalf("unexpected payload %v", captured)
 	}
 }
@@ -204,7 +204,7 @@ func TestClientEraseTextRejectsNegative(t *testing.T) {
 	t.Parallel()
 
 	client := New("http://unused")
-	if err := client.EraseText(context.Background(), -1); err == nil {
+	if err := client.EraseText(context.Background(), "com.example.MyApp", -1); err == nil {
 		t.Fatal("expected error for negative characters")
 	}
 }

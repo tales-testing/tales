@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hyperxlab/tales/internal/model"
 	"github.com/hyperxlab/tales/internal/parser"
@@ -28,17 +29,17 @@ func (s *stubMobileDriver) Health(_ context.Context) error { return nil }
 func (s *stubMobileDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
 	return s.hierarchy, nil
 }
-func (s *stubMobileDriver) Tap(_ context.Context, _, _ float64) error {
+func (s *stubMobileDriver) Tap(_ context.Context, _ string, _, _ float64) error {
 	s.taps.Add(1)
 
 	return nil
 }
-func (s *stubMobileDriver) InputText(_ context.Context, t string) error {
+func (s *stubMobileDriver) InputText(_ context.Context, _ string, t string) error {
 	s.inputs = append(s.inputs, t)
 
 	return nil
 }
-func (s *stubMobileDriver) EraseText(_ context.Context, _ int) error { return nil }
+func (s *stubMobileDriver) EraseText(_ context.Context, _ string, _ int) error { return nil }
 func (s *stubMobileDriver) Screenshot(_ context.Context) ([]byte, error) {
 	return []byte("png"), nil
 }
@@ -48,12 +49,13 @@ type noopSim struct{}
 func (noopSim) FindDeviceByName(_ context.Context, _ string) (apple.Device, error) {
 	return apple.Device{UDID: "UDID"}, nil
 }
-func (noopSim) Boot(_ context.Context, _ string) error                       { return nil }
-func (noopSim) Install(_ context.Context, _, _ string) error                 { return nil }
-func (noopSim) Uninstall(_ context.Context, _, _ string) error               { return nil }
-func (noopSim) Launch(_ context.Context, _, _ string) error                  { return nil }
-func (noopSim) Terminate(_ context.Context, _, _ string) error               { return nil }
-func (noopSim) Screenshot(_ context.Context, _, _ string) error              { return nil }
+func (noopSim) Boot(_ context.Context, _ string) error                        { return nil }
+func (noopSim) WaitBooted(_ context.Context, _ string, _ time.Duration) error { return nil }
+func (noopSim) Install(_ context.Context, _, _ string) error                  { return nil }
+func (noopSim) Uninstall(_ context.Context, _, _ string) error                { return nil }
+func (noopSim) Launch(_ context.Context, _, _ string) error                   { return nil }
+func (noopSim) Terminate(_ context.Context, _, _ string) error                { return nil }
+func (noopSim) Screenshot(_ context.Context, _, _ string) error               { return nil }
 
 func newStubProvider(drv *stubMobileDriver) *mobile.Provider {
 	builder := mobile.SessionBuilderFunc(func(_ context.Context, target apple.Target) (*mobile.Session, error) {
@@ -296,4 +298,3 @@ func TestArtifactsFromOutputSkipsMalformedEntries(t *testing.T) {
 		t.Fatalf("unexpected well-formed artifact: %+v", got[1])
 	}
 }
-

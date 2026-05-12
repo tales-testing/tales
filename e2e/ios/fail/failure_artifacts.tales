@@ -5,7 +5,7 @@ config {
     targets = {
       iphone = {
         platform    = "ios"
-        device_name = env("IOS_DEVICE_NAME", "iPhone 16")
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
         app         = env("IOS_APP_PATH")
         bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
         driver = {
@@ -52,6 +52,8 @@ scenario "iOS failure produces artifacts" {
 
   teardown {
     step "mobile" "terminate" {
+      when = true
+
       platform = "ios"
       target   = "iphone"
       terminate {}

@@ -20,7 +20,7 @@ const DefaultPollInterval = 500 * time.Millisecond
 // Spawner starts an external command and returns a Process handle. Replace it
 // in tests with a fake spawner.
 type Spawner interface {
-	Spawn(ctx context.Context, name string, args []string) (Process, error)
+	Spawn(ctx context.Context, name string, args []string, logPath string) (Process, error)
 }
 
 // Process represents a running xcodebuild test subprocess.
@@ -44,6 +44,34 @@ type Options struct {
 	ExtraArgs     []string
 	HealthTimeout time.Duration
 	PollInterval  time.Duration
+	HealthURL     string
+	LogPath       string
+}
+
+// StartError adds driver-log context to startup failures.
+type StartError struct {
+	Err     error
+	LogPath string
+}
+
+func (e *StartError) Error() string {
+	if e == nil {
+		return ""
+	}
+
+	if e.LogPath == "" {
+		return e.Err.Error()
+	}
+
+	return fmt.Sprintf("%s\nDriver log: %s\nRun `make doctor-ios` for simulator diagnostics.", e.Err, e.LogPath)
+}
+
+func (e *StartError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+
+	return e.Err
 }
 
 // Launcher builds and supervises the xcodebuild subprocess.
@@ -84,9 +112,9 @@ func (l *Launcher) Start(ctx context.Context, opts Options, pinger Pinger) (*Han
 
 	args := BuildArgs(opts)
 
-	process, err := l.spawner.Spawn(ctx, "xcodebuild", args)
+	process, err := l.spawner.Spawn(ctx, "xcodebuild", args, opts.LogPath)
 	if err != nil {
-		return nil, fmt.Errorf("spawn xcodebuild: %w", err)
+		return nil, wrapStartError(fmt.Errorf("spawn xcodebuild: %w", err), opts.LogPath)
 	}
 
 	handle := &Handle{process: process}
@@ -94,10 +122,18 @@ func (l *Launcher) Start(ctx context.Context, opts Options, pinger Pinger) (*Han
 	if err := waitForHealth(ctx, pinger, opts); err != nil {
 		_ = process.Stop(context.Background())
 
-		return nil, err
+		return nil, wrapStartError(err, opts.LogPath)
 	}
 
 	return handle, nil
+}
+
+func wrapStartError(err error, logPath string) error {
+	if err == nil {
+		return nil
+	}
+
+	return &StartError{Err: err, LogPath: logPath}
 }
 
 // BuildArgs produces the xcodebuild argv for the given options. Exported for
@@ -159,7 +195,12 @@ func waitForHealth(ctx context.Context, pinger Pinger, opts Options) error {
 
 		select {
 		case <-deadlineCtx.Done():
-			return fmt.Errorf("driver did not become healthy within %s: %w", timeout, lastErr)
+			healthURL := opts.HealthURL
+			if healthURL == "" {
+				healthURL = "/health"
+			}
+
+			return fmt.Errorf("apple driver did not become healthy at %s within %s: %w", healthURL, timeout, lastErr)
 		case <-time.After(interval):
 		}
 	}

@@ -10,22 +10,30 @@ final class TalesRouter {
         case ("GET", "/health"):
             return HTTPResponse.json(["status": "ok"])
         case ("GET", "/hierarchy"):
-            return handleHierarchy(request: request)
+            return runOnMain { self.handleHierarchy(request: request) }
         case ("POST", "/tap"):
-            return handleTap(request: request)
+            return runOnMain { self.handleTap(request: request) }
         case ("POST", "/inputText"):
-            return handleInputText(request: request)
+            return runOnMain { self.handleInputText(request: request) }
         case ("POST", "/eraseText"):
-            return handleEraseText(request: request)
+            return runOnMain { self.handleEraseText(request: request) }
         case ("GET", "/screenshot"):
-            return handleScreenshot(request: request)
+            return runOnMain { self.handleScreenshot(request: request) }
         case ("POST", "/launch"):
-            return handleLaunch(request: request)
+            return runOnMain { self.handleLaunch(request: request) }
         case ("POST", "/terminate"):
-            return handleTerminate(request: request)
+            return runOnMain { self.handleTerminate(request: request) }
         default:
             return HTTPResponse.error("route not found", status: 404)
         }
+    }
+
+    private func runOnMain(_ work: @escaping () -> HTTPResponse) -> HTTPResponse {
+        if Thread.isMainThread {
+            return work()
+        }
+
+        return DispatchQueue.main.sync(execute: work)
     }
 
     private func handleHierarchy(request: HTTPRequest) -> HTTPResponse {
@@ -47,16 +55,17 @@ final class TalesRouter {
 
     private func handleTap(request: HTTPRequest) -> HTTPResponse {
         guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String,
               let x = doubleField(payload["x"]),
               let y = doubleField(payload["y"]) else {
-            return HTTPResponse.error("expected {x, y}", status: 400)
+            return HTTPResponse.error("expected {bundleId, x, y}", status: 400)
         }
 
-        // Anchor on the main screen (not on a specific XCUIApplication) so the
-        // (x, y) coordinates produced by the provider — which come from the
-        // snapshot's frame in screen space — land correctly even when the
-        // foreground app isn't the one this XCUITest bundle was built against.
-        let origin = XCUIScreen.main.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        // Anchor on the target app because Xcode 26 removed XCUIScreen.coordinate.
+        // The provider sends screen-space coordinates derived from that app's
+        // snapshot, so the app origin keeps taps stable without external drivers.
+        let app = XCUIApplication(bundleIdentifier: bundleID)
+        let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let target = origin.withOffset(CGVector(dx: x, dy: y))
         target.tap()
 
@@ -64,11 +73,13 @@ final class TalesRouter {
     }
 
     private func handleInputText(request: HTTPRequest) -> HTTPResponse {
-        guard let payload = jsonObject(request.body), let text = payload["text"] as? String else {
-            return HTTPResponse.error("expected {text}", status: 400)
+        guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String,
+              let text = payload["text"] as? String else {
+            return HTTPResponse.error("expected {bundleId, text}", status: 400)
         }
 
-        let app = XCUIApplication()
+        let app = XCUIApplication(bundleIdentifier: bundleID)
         app.typeText(text)
 
         return HTTPResponse.json(["ok": true])
@@ -76,12 +87,13 @@ final class TalesRouter {
 
     private func handleEraseText(request: HTTPRequest) -> HTTPResponse {
         guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String,
               let count = payload["characters"] as? Int else {
-            return HTTPResponse.error("expected {characters}", status: 400)
+            return HTTPResponse.error("expected {bundleId, characters}", status: 400)
         }
 
         if count > 0 {
-            let app = XCUIApplication()
+            let app = XCUIApplication(bundleIdentifier: bundleID)
             let deleteKey = String(repeating: XCUIKeyboardKey.delete.rawValue, count: count)
             app.typeText(deleteKey)
         }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeCall struct {
@@ -56,6 +57,31 @@ const sampleDeviceList = `{
   }
 }`
 
+const duplicateDeviceList = `{
+  "devices": {
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-4": [
+      {"udid":"OLD","name":"iPhone 17","state":"Booted","isAvailable":true},
+      {"udid":"UNAVAILABLE","name":"iPhone 17","state":"Shutdown","isAvailable":false}
+    ],
+    "com.apple.CoreSimulator.SimRuntime.tvOS-26-4": [
+      {"udid":"TV","name":"iPhone 17","state":"Booted","isAvailable":true}
+    ],
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+      {"udid":"NEW-Z","name":"iPhone 17","state":"Shutdown","isAvailable":true},
+      {"udid":"NEW-A","name":"iPhone 17","state":"Shutdown","isAvailable":true}
+    ]
+  }
+}`
+
+const bootedSameRuntimeList = `{
+  "devices": {
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+      {"udid":"SHUTDOWN","name":"iPhone 17","state":"Shutdown","isAvailable":true},
+      {"udid":"BOOTED","name":"iPhone 17","state":"Booted","isAvailable":true}
+    ]
+  }
+}`
+
 func TestListDevicesParsesJSON(t *testing.T) {
 	t.Parallel()
 
@@ -89,6 +115,50 @@ func TestFindDeviceByNamePrefersBooted(t *testing.T) {
 
 	if device.UDID != "BBB" || !device.Booted() {
 		t.Fatalf("expected booted BBB, got %+v", device)
+	}
+}
+
+func TestFindDeviceByNamePrefersNewestIOSRuntime(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeRunner()
+	fake.outputs[fake.key("xcrun", []string{"simctl", "list", "devices", "--json"})] = []byte(duplicateDeviceList)
+
+	device, err := New(fake).FindDeviceByName(context.Background(), "iPhone 17")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+
+	if device.UDID != "NEW-A" {
+		t.Fatalf("expected newest iOS runtime with deterministic UDID tie-break, got %+v", device)
+	}
+}
+
+func TestFindDeviceByNamePrefersBootedWithinSameRuntime(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeRunner()
+	fake.outputs[fake.key("xcrun", []string{"simctl", "list", "devices", "--json"})] = []byte(bootedSameRuntimeList)
+
+	device, err := New(fake).FindDeviceByName(context.Background(), "iPhone 17")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+
+	if device.UDID != "BOOTED" {
+		t.Fatalf("expected booted device in same runtime, got %+v", device)
+	}
+}
+
+func TestFindDeviceByNameIgnoresUnavailableDevices(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeRunner()
+	fake.outputs[fake.key("xcrun", []string{"simctl", "list", "devices", "--json"})] = []byte(`{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"udid":"BAD","name":"iPhone 17","state":"Shutdown","isAvailable":false}]}}`)
+
+	_, err := New(fake).FindDeviceByName(context.Background(), "iPhone 17")
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected missing error for unavailable-only device, got %v", err)
 	}
 }
 
@@ -135,6 +205,34 @@ func TestBootAlreadyBootedIsSuccess(t *testing.T) {
 
 	if err := tool.Boot(context.Background(), "AAA"); err != nil {
 		t.Fatalf("expected nil for already-booted, got %v", err)
+	}
+}
+
+func TestWaitBootedArgs(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeRunner()
+	tool := New(fake)
+
+	if err := tool.WaitBooted(context.Background(), "AAA", time.Second); err != nil {
+		t.Fatalf("bootstatus: %v", err)
+	}
+
+	if !equalArgs(fake.calls[0].args, []string{"simctl", "bootstatus", "AAA", "-b"}) {
+		t.Fatalf("unexpected args: %+v", fake.calls[0].args)
+	}
+}
+
+func TestCoreSimulatorStaleErrorAddsHint(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeRunner()
+	fake.errors[fake.key("xcrun", []string{"simctl", "list", "devices", "--json"})] = errors.New("CoreSimulatorService connection became invalid")
+	tool := New(fake)
+
+	_, err := tool.ListDevices(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "sudo xcodebuild -runFirstLaunch") {
+		t.Fatalf("expected recovery hint, got %v", err)
 	}
 }
 

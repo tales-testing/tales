@@ -21,14 +21,14 @@ type Driver interface {
 	Hierarchy(ctx context.Context, bundleID string) (*tree.ViewNode, error)
 
 	// Tap performs a single tap at the given screen-space coordinates.
-	Tap(ctx context.Context, x, y float64) error
+	Tap(ctx context.Context, bundleID string, x, y float64) error
 
 	// InputText types into the currently focused element.
-	InputText(ctx context.Context, text string) error
+	InputText(ctx context.Context, bundleID string, text string) error
 
 	// EraseText erases the given number of characters from the focused
 	// element.
-	EraseText(ctx context.Context, characters int) error
+	EraseText(ctx context.Context, bundleID string, characters int) error
 
 	// Screenshot captures a PNG-encoded screenshot of the active screen.
 	Screenshot(ctx context.Context) ([]byte, error)

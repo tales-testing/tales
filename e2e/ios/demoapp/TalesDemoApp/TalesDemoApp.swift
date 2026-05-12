@@ -63,6 +63,11 @@ struct DemoFlowView: View {
 
     private var register: some View {
         VStack(spacing: 16) {
+            Text("Register screen")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("register.screen")
+
             Text("Create account")
                 .font(.title.bold())
 
@@ -89,11 +94,15 @@ struct DemoFlowView: View {
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("register.submit")
         }
-        .accessibilityIdentifier("register.screen")
     }
 
     private var verify: some View {
         VStack(spacing: 16) {
+            Text("Verification screen")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("verify.screen")
+
             Text("Verify account")
                 .font(.title.bold())
 
@@ -115,11 +124,15 @@ struct DemoFlowView: View {
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("verify.submit")
         }
-        .accessibilityIdentifier("verify.screen")
     }
 
     private var home: some View {
         VStack(spacing: 16) {
+            Text("Home screen")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("home.screen")
+
             Text("Welcome")
                 .font(.largeTitle.bold())
                 .accessibilityIdentifier("home.title")
@@ -127,7 +140,6 @@ struct DemoFlowView: View {
             Text(email)
                 .accessibilityIdentifier("home.email")
         }
-        .accessibilityIdentifier("home.screen")
     }
 
     private func submitRegister() {

@@ -12,6 +12,7 @@ import (
 	"github.com/hyperxlab/tales/internal/model"
 	"github.com/hyperxlab/tales/internal/provider"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
+	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -70,7 +71,7 @@ func (f *fakeDriverAll) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, 
 	return node, nil
 }
 
-func (f *fakeDriverAll) Tap(_ context.Context, x, y float64) error {
+func (f *fakeDriverAll) Tap(_ context.Context, _ string, x, y float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -79,7 +80,7 @@ func (f *fakeDriverAll) Tap(_ context.Context, x, y float64) error {
 	return f.tapErr
 }
 
-func (f *fakeDriverAll) InputText(_ context.Context, text string) error {
+func (f *fakeDriverAll) InputText(_ context.Context, _ string, text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -88,7 +89,7 @@ func (f *fakeDriverAll) InputText(_ context.Context, text string) error {
 	return nil
 }
 
-func (f *fakeDriverAll) EraseText(_ context.Context, count int) error {
+func (f *fakeDriverAll) EraseText(_ context.Context, _ string, count int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -126,7 +127,10 @@ func (n *noopSimctl) FindDeviceByName(_ context.Context, _ string) (apple.Device
 	return apple.Device{UDID: "UDID"}, nil
 }
 
-func (n *noopSimctl) Boot(_ context.Context, _ string) error       { return nil }
+func (n *noopSimctl) Boot(_ context.Context, _ string) error { return nil }
+func (*noopSimctl) WaitBooted(_ context.Context, _ string, _ time.Duration) error {
+	return nil
+}
 func (*noopSimctl) Install(_ context.Context, _, _ string) error   { return nil }
 func (*noopSimctl) Uninstall(_ context.Context, _, _ string) error { return nil }
 func (*noopSimctl) Launch(_ context.Context, _, _ string) error    { return nil }
@@ -614,6 +618,37 @@ func TestExecuteWritesArtifactsOnFailure(t *testing.T) {
 	artifacts, ok := out.Response["artifacts"]
 	if !ok || artifacts.LengthInt() == 0 {
 		t.Fatalf("expected artifacts in response, got %+v", out.Response)
+	}
+}
+
+func TestExecuteIncludesDriverLogArtifactOnStartupFailure(t *testing.T) {
+	t.Parallel()
+
+	builder := SessionBuilderFunc(func(_ context.Context, _ apple.Target) (*Session, error) {
+		return nil, &xcodebuild.StartError{Err: errors.New("driver did not become healthy"), LogPath: "build/artifacts/mobile/driver/iphone/driver.log"}
+	})
+	p := New(WithSessionBuilder(builder), WithArtifactsBase(""))
+
+	out, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("launch"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected startup failure")
+	}
+
+	if out == nil {
+		t.Fatal("expected output with artifacts")
+	}
+
+	artifacts := out.Response["artifacts"]
+	if artifacts.LengthInt() != 1 {
+		t.Fatalf("expected one driver log artifact, got %s", artifacts.GoString())
 	}
 }
 

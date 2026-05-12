@@ -30,9 +30,10 @@ final class TalesAppleDriverUITests: XCTestCase {
 
         NSLog("[tales-driver] listening on \(host):\(port)")
 
-        // Block until the runner is killed by xcodebuild teardown.
-        let semaphore = DispatchSemaphore(value: 0)
-        semaphore.wait()
+        // Keep the XCTest process alive while still letting main-queue XCUITest
+        // work run. A blocking semaphore here starves DispatchQueue.main and can
+        // make snapshot/tap calls hang under newer Xcode releases.
+        RunLoop.current.run()
     }
 }
 
