@@ -2,7 +2,6 @@ package xcodebuild
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,8 +19,9 @@ type ExecSpawner struct{}
 
 // Spawn starts the command and returns a Process backed by os/exec.
 func (ExecSpawner) Spawn(ctx context.Context, name string, args []string, logPath string, env map[string]string) (Process, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: command name and args originate from Tales' internal configuration, not user input.
 	cmd.Env = mergedEnv(env)
+	enableProcessGroup(cmd)
 
 	var logFile *os.File
 
@@ -81,7 +81,7 @@ func (p *execProcess) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+	if err := signalProcessGroup(p.cmd, syscall.SIGTERM); err != nil {
 		return fmt.Errorf("send SIGTERM: %w", err)
 	}
 
@@ -100,7 +100,7 @@ func (p *execProcess) Stop(ctx context.Context) error {
 
 		return nil
 	case <-stopCtx.Done():
-		_ = p.cmd.Process.Kill()
+		_ = signalProcessGroup(p.cmd, syscall.SIGKILL)
 
 		<-done
 		p.closeLog()
