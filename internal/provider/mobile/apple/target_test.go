@@ -129,6 +129,35 @@ func TestResolveTargetMissingMobile(t *testing.T) {
 	}
 }
 
+func TestResolveTargetCapturesSourcePath(t *testing.T) {
+	t.Parallel()
+
+	config := map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.ObjectVal(map[string]cty.Value{
+				"iphone": cty.ObjectVal(map[string]cty.Value{
+					"platform":    cty.StringVal("ios"),
+					"device_name": cty.StringVal("iPhone 16"),
+					"app":         cty.StringVal("./MyApp.app"),
+					"bundle_id":   cty.StringVal("com.example.MyApp"),
+					"driver": cty.ObjectVal(map[string]cty.Value{
+						"source_path": cty.StringVal("./drivers/apple/TalesAppleDriver"),
+					}),
+				}),
+			}),
+		}),
+	}
+
+	target, err := ResolveTarget(config, "iphone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.Driver.SourcePath != "./drivers/apple/TalesAppleDriver" {
+		t.Fatalf("expected SourcePath to be captured, got %+v", target.Driver)
+	}
+}
+
 func TestResolveTargetRejectsMissingRequiredField(t *testing.T) {
 	t.Parallel()
 

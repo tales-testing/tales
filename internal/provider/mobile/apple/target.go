@@ -23,13 +23,19 @@ type Target struct {
 }
 
 // DriverConfig captures how the mobile provider should talk to the driver.
+//
+// Resolution order when external is false:
+//  1. SourcePath set     → dev override (build from a local checkout).
+//  2. Project set        → legacy mode (build directly from a repo-relative path).
+//  3. neither set        → embedded mode (extract the bundled driver source).
 type DriverConfig struct {
-	Host     string
-	Port     int
-	External bool
-	Mode     string
-	Project  string
-	Scheme   string
+	Host       string
+	Port       int
+	External   bool
+	Mode       string
+	Project    string
+	Scheme     string
+	SourcePath string
 }
 
 // BaseURL returns the HTTP base URL the driver client should hit.
@@ -139,6 +145,10 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 
 	if scheme, ok := readOptionalString(driverVal, "scheme"); ok {
 		driver.Scheme = scheme
+	}
+
+	if sourcePath, ok := readOptionalString(driverVal, "source_path"); ok {
+		driver.SourcePath = sourcePath
 	}
 
 	return driver, nil
