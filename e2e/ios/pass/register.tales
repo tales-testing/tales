@@ -12,8 +12,12 @@ config {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
           external = false
-          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
-          scheme   = "TalesAppleDriverUITests"
+          // Embedded mode: project/scheme omitted on purpose so Tales
+          // extracts the bundled driver source from the binary, builds
+          // it once into ~/Library/Caches/tales/apple-driver/<key>/, and
+          // reuses the cached build on subsequent runs. The released
+          // tales binary therefore does not require the repository at
+          // runtime.
         }
       }
     }

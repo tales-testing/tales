@@ -89,6 +89,12 @@ check-ios-host:
 	@command -v xcodebuild >/dev/null 2>&1 || { echo "xcodebuild is required for iOS targets."; exit 1; }
 	@command -v xcrun >/dev/null 2>&1 || { echo "xcrun is required for iOS targets."; exit 1; }
 
+.PHONY: clean-ios-driver-cache
+clean-ios-driver-cache:
+	@rm -rf "$$HOME/Library/Caches/tales/apple-driver"
+	@echo "Cleared tales apple-driver cache at \$$HOME/Library/Caches/tales/apple-driver"
+	@echo "(set TALES_DRIVER_CACHE_DIR to override the default location.)"
+
 .PHONY: doctor-ios
 doctor-ios:
 	@set +e; \

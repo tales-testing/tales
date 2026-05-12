@@ -12,8 +12,9 @@ config {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
           external = false
-          project  = "drivers/apple/TalesAppleDriver/TalesAppleDriver.xcodeproj"
-          scheme   = "TalesAppleDriverUITests"
+          // Embedded mode (see e2e/ios/pass/register.tales for details):
+          // the driver source is extracted from the tales binary and
+          // built on first run, not read from drivers/apple/.
         }
       }
     }
