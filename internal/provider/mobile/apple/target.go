@@ -25,16 +25,13 @@ type Target struct {
 // DriverConfig captures how the mobile provider should talk to the driver.
 //
 // Resolution order when external is false:
-//  1. SourcePath set     → dev override (build from a local checkout).
-//  2. Project set        → legacy mode (build directly from a repo-relative path).
-//  3. neither set        → embedded mode (extract the bundled driver source).
+//  1. SourcePath set → dev override (build from a local Swift checkout).
+//  2. unset          → embedded mode (extract the bundled driver source).
 type DriverConfig struct {
 	Host       string
 	Port       int
 	External   bool
 	Mode       string
-	Project    string
-	Scheme     string
 	SourcePath string
 }
 
@@ -139,12 +136,12 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 		driver.Mode = mode
 	}
 
-	if project, ok := readOptionalString(driverVal, "project"); ok {
-		driver.Project = project
+	if _, ok := readOptionalAttr(driverVal, "project"); ok {
+		return driver, fmt.Errorf(`"project" is no longer supported; omit it for embedded mode or use "source_path" for a local driver checkout`)
 	}
 
-	if scheme, ok := readOptionalString(driverVal, "scheme"); ok {
-		driver.Scheme = scheme
+	if _, ok := readOptionalAttr(driverVal, "scheme"); ok {
+		return driver, fmt.Errorf(`"scheme" is no longer supported; omit it for embedded mode or use "source_path" for a local driver checkout`)
 	}
 
 	if sourcePath, ok := readOptionalString(driverVal, "source_path"); ok {

@@ -191,9 +191,7 @@ func (l *Lifecycle) TerminateDriverRunner(ctx context.Context, udid string) erro
 //
 // Resolution order:
 //  1. driver.external = true → only health-check the configured URL.
-//  2. driver.project set     → legacy path: build+run the driver project
-//     directly with `xcodebuild test`.
-//  3. otherwise              → embedded mode: extract+build the embedded
+//  2. otherwise              → embedded mode: extract+build the embedded
 //     driver (or driver.source_path override), then run it via
 //     `xcodebuild test-without-building`.
 //
@@ -216,43 +214,12 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, device Device, target Targ
 		return client, nil, nil
 	}
 
-	if target.Driver.Project != "" {
-		return l.startLegacyDriver(ctx, device.UDID, target, client)
-	}
-
-	if target.Driver.Scheme != "" && target.Driver.Project == "" {
-		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.scheme requires driver.project (or remove both for embedded mode)", target.Name)
-	}
-
 	return l.startEmbeddedDriver(ctx, device, target, client)
-}
-
-func (l *Lifecycle) startLegacyDriver(ctx context.Context, udid string, target Target, client driver.Driver) (driver.Driver, DriverHandle, error) {
-	if target.Driver.Scheme == "" {
-		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.scheme is required alongside driver.project", target.Name)
-	}
-
-	opts := xcodebuild.Options{
-		UDID:        udid,
-		Project:     target.Driver.Project,
-		Scheme:      target.Driver.Scheme,
-		Destination: fmt.Sprintf("platform=iOS Simulator,id=%s", udid),
-		HealthURL:   target.Driver.BaseURL() + "/health",
-		LogPath:     driverLogPath(target.Name),
-		Env:         driverEnv(target.Driver),
-	}
-
-	handle, err := l.Xcodebuild.Start(ctx, opts, client)
-	if err != nil {
-		return nil, nil, fmt.Errorf("start xcuitest driver: %w", err)
-	}
-
-	return client, handle, nil
 }
 
 func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, target Target, client driver.Driver) (driver.Driver, DriverHandle, error) {
 	if l.Embedded == nil {
-		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver: embedded mode requested but no embedded driver manager is configured; set driver.project for legacy mode, driver.external=true to connect to a manually started driver, or build Tales with the embedded driver wired up", target.Name)
+		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver: embedded driver manager is not configured; set driver.external = true to connect to a manually started driver, or rebuild Tales with the embedded driver wired up", target.Name)
 	}
 
 	prepared, err := l.Embedded.Prepare(ctx, target.Driver.SourcePath, device.Runtime)
