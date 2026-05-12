@@ -256,3 +256,44 @@ func TestArtifactsFromOutputExtractsValues(t *testing.T) {
 	}
 }
 
+func TestArtifactsFromOutputSkipsMalformedEntries(t *testing.T) {
+	t.Parallel()
+
+	// Mix of well-formed and malformed entries: a null item, an entry with a
+	// non-string type (we keep path but drop the bogus type), an entry with
+	// a null path (must be skipped — path is the load-bearing field), and a
+	// well-formed entry. None of these must panic.
+	output := &provider.Output{
+		Response: map[string]cty.Value{
+			"artifacts": cty.TupleVal([]cty.Value{
+				cty.NullVal(cty.Object(map[string]cty.Type{"type": cty.String, "path": cty.String})),
+				cty.ObjectVal(map[string]cty.Value{
+					"type": cty.NumberIntVal(42),
+					"path": cty.StringVal("/tmp/bad-type.png"),
+				}),
+				cty.ObjectVal(map[string]cty.Value{
+					"type": cty.StringVal("screenshot"),
+					"path": cty.NullVal(cty.String),
+				}),
+				cty.ObjectVal(map[string]cty.Value{
+					"type": cty.StringVal("screenshot"),
+					"path": cty.StringVal("/tmp/ok.png"),
+				}),
+			}),
+		},
+	}
+
+	got := artifactsFromOutput(output)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 surviving artifacts, got %d: %+v", len(got), got)
+	}
+
+	if got[0].Type != "" || got[0].Path != "/tmp/bad-type.png" {
+		t.Fatalf("expected bad-type artifact path to survive with empty type, got %+v", got[0])
+	}
+
+	if got[1].Type != "screenshot" || got[1].Path != "/tmp/ok.png" {
+		t.Fatalf("unexpected well-formed artifact: %+v", got[1])
+	}
+}
+

@@ -384,23 +384,39 @@ func artifactsFromOutput(output *provider.Output) []report.Artifact {
 
 	for it := value.ElementIterator(); it.Next(); {
 		_, item := it.Element()
-		if !item.Type().IsObjectType() {
+		if item.IsNull() || !item.Type().IsObjectType() {
 			continue
 		}
 
-		a := report.Artifact{}
-		if item.Type().HasAttribute("type") {
-			a.Type = item.GetAttr("type").AsString()
+		a := report.Artifact{
+			Type: stringAttr(item, "type"),
+			Path: stringAttr(item, "path"),
 		}
-
-		if item.Type().HasAttribute("path") {
-			a.Path = item.GetAttr("path").AsString()
+		if a.Path == "" {
+			continue
 		}
 
 		artifacts = append(artifacts, a)
 	}
 
 	return artifacts
+}
+
+// stringAttr returns the named string attribute on item, or "" when it is
+// missing, null, or not a cty string. Defensive against malformed artifact
+// payloads from providers (or future step kinds) so the runner cannot panic
+// on a bad value here.
+func stringAttr(item cty.Value, name string) string {
+	if !item.Type().HasAttribute(name) {
+		return ""
+	}
+
+	attr := item.GetAttr(name)
+	if attr.IsNull() || attr.Type() != cty.String {
+		return ""
+	}
+
+	return attr.AsString()
 }
 
 func mobileCaptureFunctions(providerImpl provider.Provider, scenarioName, stepName string) map[string]function.Function {
