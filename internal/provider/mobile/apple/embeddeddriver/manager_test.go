@@ -272,3 +272,19 @@ func TestManagerPrepareFailsWithoutBuilder(t *testing.T) {
 		t.Fatalf("expected error when Builder is nil")
 	}
 }
+
+func TestManagerPrepareRejectsEmptyCacheBase(t *testing.T) {
+	t.Parallel()
+
+	mgr, _, _ := newTestManager(t, &fakeBuilder{})
+	mgr.CacheBase = ""
+
+	_, err := mgr.Prepare(context.Background(), "", "iOS 18.0")
+	if err == nil {
+		t.Fatalf("expected error when CacheBase is empty")
+	}
+
+	if !contains(err.Error(), "cache base") {
+		t.Errorf("expected error to mention cache base, got %q", err.Error())
+	}
+}
