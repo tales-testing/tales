@@ -48,6 +48,14 @@ func (s *Session) Close(ctx context.Context) error {
 		if err := s.DriverHandle.Stop(ctx); err != nil {
 			return fmt.Errorf("stop driver: %w", err)
 		}
+
+		// Belt-and-suspenders: kill the in-simulator XCUITest runner so
+		// it cannot squat the driver port for the next session. Only
+		// runs when Tales started the driver (DriverHandle non-nil) —
+		// external drivers are never touched.
+		if s.Lifecycle != nil {
+			_ = s.Lifecycle.TerminateDriverRunner(ctx, s.UDID)
+		}
 	}
 
 	return nil

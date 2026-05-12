@@ -40,8 +40,12 @@ func TestSessionCloseStopsInternalDriverHandle(t *testing.T) {
 	if got := handle.stops.Load(); got != 1 {
 		t.Fatalf("expected driver handle to stop once, got %d", got)
 	}
-	if got := lc.terminates.Load(); got != 1 {
-		t.Fatalf("expected app termination to be attempted once, got %d", got)
+	// Two simctl terminate calls expected:
+	//   1. the configured app bundle (graceful shutdown of the SUT).
+	//   2. the XCUITest runner bundle (defensive cleanup so the
+	//      in-simulator HTTP server cannot squat the driver port).
+	if got := lc.terminates.Load(); got != 2 {
+		t.Fatalf("expected app + runner termination (2 calls), got %d", got)
 	}
 }
 

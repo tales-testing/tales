@@ -3,9 +3,12 @@ package mobile
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
+	appledriver "github.com/hyperxlab/tales/drivers/apple"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
+	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/simctl"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
@@ -33,6 +36,7 @@ func appleSessionBuilder() SessionBuilder {
 		Simctl:     tool,
 		Xcodebuild: launcher,
 		NewDriver:  factory,
+		Embedded:   newEmbeddedManager(),
 	}
 
 	return SessionBuilderFunc(func(ctx context.Context, target apple.Target) (*Session, error) {
@@ -54,6 +58,43 @@ func appleSessionBuilder() SessionBuilder {
 			Lifecycle:    lifecycle,
 		}, nil
 	})
+}
+
+// newEmbeddedManager constructs the production embeddeddriver.Manager.
+// Source is taken from the appledriver embed.FS; CacheBase resolves to
+// the per-user cache (overridable via TALES_DRIVER_CACHE_DIR). If the
+// cache base cannot be resolved (a no-HOME environment), the lifecycle
+// runs without an embedded manager — embedded mode then surfaces a
+// clean error instead of crashing.
+func newEmbeddedManager() apple.EmbeddedDriverManager {
+	base, err := embeddeddriver.ResolveBase()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tales: embedded driver disabled (cache resolution failed: %v)\n", err)
+
+		return nil
+	}
+
+	return &embeddeddriver.Manager{
+		Source:     appledriver.FS(),
+		SourceRoot: appledriver.SourceRoot,
+		CacheBase:  base,
+		Builder:    &embeddeddriver.XcodebuildBuilder{Runner: embeddeddriver.ExecBuildRunner{}},
+		Runner:     execCommandRunner{},
+	}
+}
+
+// execCommandRunner adapts os/exec to embeddeddriver.CommandRunner so
+// xcode introspection (xcodebuild -version, xcrun --show-sdk-version,
+// xcode-select -p, sw_vers) can feed the cache key in production.
+type execCommandRunner struct{}
+
+func (execCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+	out, err := apple.ExecRunner{}.Run(ctx, name, args...)
+	if err != nil {
+		return out, fmt.Errorf("run %s: %w", name, err)
+	}
+
+	return out, nil
 }
 
 // simctlAdapter narrows the concrete simctl.Tool API into the smaller

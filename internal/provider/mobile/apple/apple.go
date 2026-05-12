@@ -163,6 +163,30 @@ func (l *Lifecycle) TerminateApp(ctx context.Context, udid string, target Target
 	return nil
 }
 
+// TerminateDriverRunner asks simctl to terminate the XCUITest runner
+// (.xctrunner) bundle that hosts the in-simulator HTTP server. Used as
+// a best-effort companion to xcodebuild process termination on Session
+// Close: even when the parent xcodebuild PID dies cleanly, the runner
+// child running inside the simulator can survive briefly and squat the
+// port the next session needs. Errors are not returned because this is
+// a defensive cleanup; the caller logs decisions about them.
+func (l *Lifecycle) TerminateDriverRunner(ctx context.Context, udid string) error {
+	if l == nil || l.Simctl == nil || udid == "" {
+		return nil
+	}
+
+	runnerBundle := RunnerBundleIDForHost(DriverHostBundleID)
+	if runnerBundle == "" {
+		return nil
+	}
+
+	if err := l.Simctl.Terminate(ctx, udid, runnerBundle); err != nil {
+		return fmt.Errorf("terminate driver runner %q: %w", runnerBundle, err)
+	}
+
+	return nil
+}
+
 // EnsureDriver returns a driver client connected to the running driver.
 //
 // Resolution order:
