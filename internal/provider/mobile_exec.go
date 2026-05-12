@@ -50,6 +50,15 @@ type MobileExpectExec struct {
 	Disabled   []MobileStateExpectationExec
 }
 
+// HasAny reports whether any expectation kind carries at least one entry.
+// Used by the provider to skip the expectation phase entirely when the step
+// has none.
+func (e MobileExpectExec) HasAny() bool {
+	return len(e.Visible) > 0 || len(e.NotVisible) > 0 ||
+		len(e.Text) > 0 || len(e.Value) > 0 ||
+		len(e.Enabled) > 0 || len(e.Disabled) > 0
+}
+
 // MobileVisibilityExec is a resolved visible / not_visible expectation.
 type MobileVisibilityExec struct {
 	ID       string

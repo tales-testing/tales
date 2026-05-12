@@ -65,6 +65,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 		if output != nil {
 			stepReport.Response = diagnostic.FromCTYMap(output.Response)
 			stepReport.Artifacts = artifactsFromOutput(output)
+			stepReport.Actions = actionsFromOutput(output)
 		}
 
 		stepReport.Duration = time.Since(start)
@@ -75,6 +76,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	stepReport.Request = mobileRequestSummary(exec)
 	stepReport.Response = diagnostic.FromCTYMap(output.Response)
 	stepReport.Artifacts = artifactsFromOutput(output)
+	stepReport.Actions = actionsFromOutput(output)
 
 	scope.Request = output.Request
 	scope.Response = output.Response
@@ -599,6 +601,43 @@ func mobileStateExpectationSummary(v provider.MobileStateExpectationExec) map[st
 	}
 
 	return entry
+}
+
+// actionsFromOutput copies provider.ActionResult into report.ActionResult.
+// The two structs are intentionally separate: provider stays free of the
+// report package (avoiding a downward dependency) and carries the raw Go
+// error, while the report variant carries a structured ErrorDetail ready for
+// JSON serialization.
+func actionsFromOutput(output *provider.Output) []*report.ActionResult {
+	if output == nil || len(output.ActionResults) == 0 {
+		return nil
+	}
+
+	out := make([]*report.ActionResult, 0, len(output.ActionResults))
+
+	for _, a := range output.ActionResults {
+		entry := &report.ActionResult{
+			Index:      a.Index,
+			Kind:       a.Kind,
+			Label:      a.Label,
+			SelectorID: a.SelectorID,
+			Secure:     a.Secure,
+			Value:      a.Value,
+			Status:     report.Status(a.Status),
+			Duration:   a.Duration,
+			Screenshot: a.Screenshot,
+			Hierarchy:  a.Hierarchy,
+			StartedAt:  a.StartedAt,
+		}
+
+		if a.Err != nil {
+			entry.Error = &report.ErrorDetail{Kind: "action", Message: a.Err.Error()}
+		}
+
+		out = append(out, entry)
+	}
+
+	return out
 }
 
 func artifactsFromOutput(output *provider.Output) []report.Artifact {

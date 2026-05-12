@@ -275,15 +275,67 @@ func (p *Provider) executeMobile(ctx context.Context, input provider.Input, sess
 		}
 	}
 
-	for i, action := range exec.Actions {
-		if err := p.handleAction(ctx, session, action); err != nil {
-			return fmt.Errorf("action %d (%s id=%q): %w", i, action.Kind, action.ID, err)
+	stepDir := artifactDir(p.artifactsBase, inputFile(input), input.Scenario, stepName(input), inputPhase(input), inputAttempt(input))
+
+	results, actionErr := p.runActionLoop(ctx, session, stepDir, exec.Actions)
+	if actionErr == nil && p.captureMode == CaptureSteps {
+		if endResult, ok := p.captureStepEnd(ctx, session, stepDir, len(results)); ok {
+			results = append(results, endResult)
 		}
 	}
 
-	if len(exec.Expect.Visible) > 0 || len(exec.Expect.NotVisible) > 0 ||
-		len(exec.Expect.Text) > 0 || len(exec.Expect.Value) > 0 ||
-		len(exec.Expect.Enabled) > 0 || len(exec.Expect.Disabled) > 0 {
+	output.ActionResults = results
+	output.Response["target"] = cty.StringVal(session.Target.Name)
+	output.Response["bundle_id"] = cty.StringVal(session.Target.BundleID)
+
+	if actionErr != nil {
+		return actionErr
+	}
+
+	return p.finalizeStep(ctx, session, exec, input)
+}
+
+// runActionLoop executes every queued action sequentially, building one
+// ActionResult per attempt. On failure it captures a best-effort screenshot
+// (when the mode allows) and records every remaining action as skipped so the
+// visual timeline shows what was queued but never ran.
+func (p *Provider) runActionLoop(ctx context.Context, session *Session, stepDir string, actions []provider.MobileActionExec) ([]provider.ActionResult, error) {
+	results := make([]provider.ActionResult, 0, len(actions))
+
+	for i, action := range actions {
+		started := time.Now()
+		result := initialActionResult(i, action, started)
+
+		err := p.handleAction(ctx, session, action)
+		result.Duration = time.Since(started)
+
+		if err != nil {
+			result.Status = actionStatusFail
+			result.Err = err
+
+			p.captureForAction(ctx, session, stepDir, &result, true)
+			results = append(results, result)
+
+			results = appendSkippedActions(results, actions[i+1:], i+1)
+
+			return results, fmt.Errorf("action %d (%s id=%q): %w", i, action.Kind, action.ID, err)
+		}
+
+		result.Status = actionStatusPass
+
+		p.captureForAction(ctx, session, stepDir, &result, false)
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// finalizeStep runs the post-action work: expectations, the end-of-step
+// hierarchy snapshot used by capture functions, and the optional terminate
+// directive. Extracted from executeMobile to keep its cyclomatic complexity
+// within the project lint budget.
+func (p *Provider) finalizeStep(ctx context.Context, session *Session, exec *provider.MobileExecution, input provider.Input) error {
+	if exec.Expect.HasAny() {
 		if err := p.handleExpect(ctx, session, exec.Expect); err != nil {
 			return fmt.Errorf("expect: %w", err)
 		}
@@ -300,10 +352,150 @@ func (p *Provider) executeMobile(ctx context.Context, input provider.Input, sess
 		}
 	}
 
-	output.Response["target"] = cty.StringVal(session.Target.Name)
-	output.Response["bundle_id"] = cty.StringVal(session.Target.BundleID)
-
 	return nil
+}
+
+// initialActionResult builds the partial result that wraps one queued mobile
+// action. The Value field is masked at this single boundary: every consumer
+// downstream (visual report, JSONL action events, console summary) reads from
+// this struct without re-masking.
+func initialActionResult(index int, action provider.MobileActionExec, started time.Time) provider.ActionResult {
+	result := provider.ActionResult{
+		Index:      index,
+		Kind:       string(action.Kind),
+		SelectorID: action.ID,
+		Secure:     action.Secure,
+		StartedAt:  started,
+	}
+
+	if action.Value != "" {
+		if action.Secure {
+			result.Value = "***"
+		} else {
+			result.Value = action.Value
+		}
+	}
+
+	result.Label = actionLabel(action.Kind, action.ID, result.Value, action.Secure)
+
+	return result
+}
+
+// appendSkippedActions records a "skipped" entry for every action that did
+// not run because an earlier action failed. The timeline can render them
+// grayed out so the user can see what was queued but never executed.
+func appendSkippedActions(results []provider.ActionResult, remaining []provider.MobileActionExec, startIndex int) []provider.ActionResult {
+	for offset, action := range remaining {
+		idx := startIndex + offset
+		skipped := initialActionResult(idx, action, time.Time{})
+		skipped.Status = actionStatusSkip
+		results = append(results, skipped)
+	}
+
+	return results
+}
+
+// captureForAction writes the per-action screenshot and hierarchy when the
+// capture mode requires it. forFailure is true when called from the action
+// failure path (best-effort capture even in CaptureSteps mode); on success
+// the capture only happens in CaptureActions mode.
+//
+// Capture errors are intentionally swallowed: they must not mask the action's
+// own status. The action result simply omits the screenshot/hierarchy paths.
+func (p *Provider) captureForAction(ctx context.Context, session *Session, stepDir string, result *provider.ActionResult, forFailure bool) {
+	if p.captureMode == CaptureNone {
+		return
+	}
+
+	if p.captureMode == CaptureFailures {
+		return
+	}
+
+	if !forFailure && p.captureMode != CaptureActions {
+		return
+	}
+
+	dir := actionArtifactDir(stepDir, result.Index, result.Kind, result.SelectorID)
+
+	if png, err := session.Driver.Screenshot(ctx); err == nil {
+		if a, werr := writeScreenshot(dir, png); werr == nil {
+			result.Screenshot = a.Path
+		}
+	} else if a, werr := writeScreenshotFallback(ctx, dir, session); werr == nil {
+		result.Screenshot = a.Path
+	}
+
+	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID); err == nil {
+		if a, werr := writeHierarchy(dir, hierarchy); werr == nil {
+			result.Hierarchy = a.Path
+		}
+	}
+}
+
+// captureStepEnd produces a synthetic "step_end" ActionResult that carries
+// the end-of-step screenshot and hierarchy. Used only by CaptureSteps mode.
+func (p *Provider) captureStepEnd(ctx context.Context, session *Session, stepDir string, index int) (provider.ActionResult, bool) {
+	dir := stepLevelArtifactDir(stepDir)
+	result := provider.ActionResult{
+		Index:     index,
+		Kind:      "step_end",
+		Label:     "Step end",
+		Status:    actionStatusPass,
+		StartedAt: time.Now(),
+	}
+
+	captured := false
+
+	if png, err := session.Driver.Screenshot(ctx); err == nil {
+		if a, werr := writeScreenshot(dir, png); werr == nil {
+			result.Screenshot = a.Path
+
+			captured = true
+		}
+	} else if a, werr := writeScreenshotFallback(ctx, dir, session); werr == nil {
+		result.Screenshot = a.Path
+		captured = true
+	}
+
+	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID); err == nil {
+		if a, werr := writeHierarchy(dir, hierarchy); werr == nil {
+			result.Hierarchy = a.Path
+
+			captured = true
+		}
+	}
+
+	if !captured {
+		return provider.ActionResult{}, false
+	}
+
+	return result, true
+}
+
+var actionLabels = map[model.MobileActionKind]string{
+	model.MobileActionTap:            "Tap",
+	model.MobileActionInputText:      "Input text",
+	model.MobileActionClearText:      "Clear text",
+	model.MobileActionWaitVisible:    "Wait visible",
+	model.MobileActionWaitNotVisible: "Wait not visible",
+}
+
+func actionLabel(kind model.MobileActionKind, id, maskedValue string, secure bool) string {
+	verb, ok := actionLabels[kind]
+	if !ok {
+		verb = string(kind)
+	}
+
+	switch {
+	case id == "" && maskedValue == "":
+		return verb
+	case maskedValue == "":
+		return fmt.Sprintf("%s %s", verb, id)
+	case secure:
+		return fmt.Sprintf("%s %s ***", verb, id)
+	default:
+		return fmt.Sprintf("%s %s %q", verb, id, maskedValue)
+	}
 }
 
 func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *provider.MobileLaunchExec) error {
@@ -657,6 +849,14 @@ func findElementByID(ctx context.Context, session *Session, id string) (*tree.Vi
 }
 
 func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Input, session *Session, output *provider.Output) {
+	// CaptureNone is strict: skip every screenshot/hierarchy capture, even
+	// on failure. The driver_log artifact is still surfaced from
+	// Execute() because it is the only diagnostic for a driver that never
+	// starts.
+	if p.captureMode == CaptureNone {
+		return
+	}
+
 	dir := artifactDir(p.artifactsBase, inputFile(input), input.Scenario, stepName(input), inputPhase(input), inputAttempt(input))
 	artifacts := make([]Artifact, 0, 2)
 

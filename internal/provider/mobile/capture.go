@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+// Status string constants that mirror report.Status values. They live here
+// to avoid pulling the report package into the provider layer (which would
+// introduce a downward dependency). Consumers (the runtime) translate these
+// back into report.Status when copying ActionResults into StepResult.Actions.
+const (
+	actionStatusPass = "pass"
+	actionStatusFail = "fail"
+	actionStatusSkip = "skipped"
+)
+
 // CaptureMode selects when the mobile provider captures screenshots and
 // hierarchy artifacts. The default for the binary is CaptureFailures, which
 // preserves the historical behavior (capture only on step failure).

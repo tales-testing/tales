@@ -84,6 +84,30 @@ func artifactHash(parts ...string) string {
 	return fmt.Sprintf("%08x", h.Sum64())[:8]
 }
 
+// actionArtifactDir returns the directory under stepDir where the artifacts
+// for one UI action are written. The layout nests under the existing mobile
+// scenario/step/phase/attempt directory so screenshots stay grouped with the
+// failure-path artifacts they belong to.
+//
+//	<stepDir>/actions/NNNN-<kind>-<safe(id)>/
+//
+// index is zero-padded to 4 digits. kind and id are sanitized via
+// safePathSegment so user-supplied IDs cannot escape the artifacts root.
+func actionArtifactDir(stepDir string, index int, kind, id string) string {
+	segment := fmt.Sprintf("%04d-%s-%s", index, safePathSegment(kind), safePathSegment(id))
+
+	return filepath.Join(stepDir, "actions", segment)
+}
+
+// stepLevelArtifactDir returns the directory used for the synthetic
+// end-of-step capture in CaptureSteps mode. It lives next to the per-action
+// directories so the artifacts root remains a single tree.
+//
+//	<stepDir>/step/
+func stepLevelArtifactDir(stepDir string) string {
+	return filepath.Join(stepDir, "step")
+}
+
 // writeScreenshot writes PNG bytes to <dir>/screenshot.png and returns its
 // path. Empty input or directory creation errors short-circuit to (nil, err).
 func writeScreenshot(dir string, png []byte) (Artifact, error) {
