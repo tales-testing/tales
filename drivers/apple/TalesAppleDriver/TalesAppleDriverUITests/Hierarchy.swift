@@ -4,11 +4,13 @@ import XCTest
 /// HierarchyEncoder turns an XCUIElement snapshot into the JSON shape the
 /// Tales mobile provider expects:
 ///
-///   { id, label, text, value, type, enabled, visible, bounds, children }
+///   { id, label, value, type, enabled, visible, bounds, children }
 ///
-/// Visible is approximated by `(exists && isHittable)` since XCUIElement only
-/// exposes those signals on live elements; the provider tolerates this
-/// approximation per docs/mobile/ios.md.
+/// `visible` is approximated from the snapshot via
+/// `isSelected || isKeyboardElement || frameIsHittable(frame)` — XCUIElement
+/// only exposes those signals on live elements, and snapshots do not carry
+/// real focus / hit-testing data. The provider tolerates this approximation
+/// per docs/mobile/ios.md.
 enum HierarchyEncoder {
     static func encode(snapshot: XCUIElementSnapshot) -> [String: Any] {
         let frame = snapshot.frame
@@ -18,7 +20,7 @@ enum HierarchyEncoder {
             "value": stringValue(snapshot.value),
             "type": elementTypeName(snapshot.elementType),
             "enabled": snapshot.isEnabled,
-            "visible": snapshot.isSelected || snapshot.hasFocus || frameIsHittable(frame),
+            "visible": snapshot.isSelected || snapshot.isKeyboardElement || frameIsHittable(frame),
             "bounds": [
                 "x": Double(frame.origin.x),
                 "y": Double(frame.origin.y),
@@ -68,10 +70,10 @@ enum HierarchyEncoder {
 }
 
 private extension XCUIElementSnapshot {
-    var hasFocus: Bool {
-        if let attributes = elementType as? XCUIElement.ElementType, attributes == .keyboard {
-            return true
-        }
-        return false
+    /// Returns true when the snapshot is the on-screen keyboard. XCUITest
+    /// snapshots do not expose real focus, so the closest reliable signal we
+    /// can use to bias `visible` is "is this the keyboard surface".
+    var isKeyboardElement: Bool {
+        return elementType == .keyboard
     }
 }

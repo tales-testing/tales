@@ -163,8 +163,9 @@ struct HTTPResponse {
     }
 
     static func error(_ message: String, status: Int = 500) -> HTTPResponse {
-        let body = Data("{\"error\":\"\(message.replacingOccurrences(of: "\"", with: "'"))\"}".utf8)
-        return HTTPResponse(status: status, reason: reasonPhrase(status), contentType: "application/json", body: body)
+        let data = (try? JSONSerialization.data(withJSONObject: ["error": message], options: []))
+            ?? Data("{\"error\":\"internal error\"}".utf8)
+        return HTTPResponse(status: status, reason: reasonPhrase(status), contentType: "application/json", body: data)
     }
 
     static func png(_ data: Data) -> HTTPResponse {

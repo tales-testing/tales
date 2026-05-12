@@ -52,9 +52,12 @@ final class TalesRouter {
             return HTTPResponse.error("expected {x, y}", status: 400)
         }
 
-        let app = XCUIApplication()
-        let normalized = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        let target = normalized.withOffset(CGVector(dx: x, dy: y))
+        // Anchor on the main screen (not on a specific XCUIApplication) so the
+        // (x, y) coordinates produced by the provider — which come from the
+        // snapshot's frame in screen space — land correctly even when the
+        // foreground app isn't the one this XCUITest bundle was built against.
+        let origin = XCUIScreen.main.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let target = origin.withOffset(CGVector(dx: x, dy: y))
         target.tap()
 
         return HTTPResponse.json(["ok": true])
