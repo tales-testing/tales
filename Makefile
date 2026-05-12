@@ -122,7 +122,11 @@ doctor-ios:
 	echo "  sudo xcodebuild -runFirstLaunch"; \
 	echo "  xcrun simctl shutdown all"; \
 	echo "  killall -9 com.apple.CoreSimulator.CoreSimulatorService || true"; \
-	echo "  xcrun simctl list devices"
+	echo "  xcrun simctl list devices"; \
+	echo; \
+	echo "For a richer view (cache state + Xcode + simctl) once Tales is built, run:"; \
+	echo "  ./build/tales doctor       # or 'tales doctor' after make install"; \
+	echo "  ./build/tales doctor --json  # machine-readable output for CI"
 
 .PHONY: build-ios-demo
 build-ios-demo: check-ios-host | $(BUILD_READY)
