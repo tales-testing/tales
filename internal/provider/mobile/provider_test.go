@@ -509,3 +509,122 @@ func TestTypeReturnsMobile(t *testing.T) {
 		t.Fatalf("expected mobile, got %q", p.Type())
 	}
 }
+
+func TestAcquireSessionBuildsConcurrentlyAcrossTargets(t *testing.T) {
+	t.Parallel()
+
+	// Use a builder that blocks until released, so we can prove two Builds
+	// can be in flight at the same time for two different targets.
+	release := make(chan struct{})
+	inFlight := make(chan string, 2)
+	released := make(chan string, 2)
+
+	builder := SessionBuilderFunc(func(_ context.Context, target apple.Target) (*Session, error) {
+		inFlight <- target.Name
+		<-release
+		released <- target.Name
+
+		return &Session{
+			Target:    target,
+			UDID:      "UDID-" + target.Name,
+			Driver:    &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}},
+			Lifecycle: (&fakeLifecycle{udid: "UDID-" + target.Name}).toAppleLifecycle(),
+		}, nil
+	})
+	p := New(WithSessionBuilder(builder), WithArtifactsBase(""))
+
+	type result struct {
+		sess *Session
+		err  error
+	}
+
+	out := make(chan result, 2)
+
+	for _, name := range []string{"iphone-a", "iphone-b"} {
+		go func(target string) {
+			sess, err := p.acquireSession(context.Background(), apple.Target{Name: target, Platform: "ios"})
+			out <- result{sess: sess, err: err}
+		}(name)
+	}
+
+	// Both Build calls should arrive before either is released — that's the
+	// property that fails under a global lock around Build.
+	got := map[string]bool{}
+	timeout := time.After(2 * time.Second)
+
+	for len(got) < 2 {
+		select {
+		case name := <-inFlight:
+			got[name] = true
+		case <-timeout:
+			t.Fatalf("only %d Build calls started concurrently: %v", len(got), got)
+		}
+	}
+
+	close(release)
+
+	for range 2 {
+		select {
+		case r := <-out:
+			if r.err != nil {
+				t.Fatalf("acquireSession returned error: %v", r.err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for acquireSession to return")
+		}
+	}
+
+	if len(released) != 2 {
+		t.Fatalf("expected 2 releases, got %d", len(released))
+	}
+}
+
+func TestAcquireSessionSerializesSameTarget(t *testing.T) {
+	t.Parallel()
+
+	// Two concurrent acquires for the same target must result in exactly one
+	// Build call: the second waits on the per-target lock, then sees the
+	// cached session on the post-lock double-check.
+	release := make(chan struct{})
+
+	var builds atomic.Int32
+
+	builder := SessionBuilderFunc(func(_ context.Context, target apple.Target) (*Session, error) {
+		builds.Add(1)
+		<-release
+
+		return &Session{
+			Target:    target,
+			UDID:      "UDID",
+			Driver:    &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}},
+			Lifecycle: (&fakeLifecycle{udid: "UDID"}).toAppleLifecycle(),
+		}, nil
+	})
+	p := New(WithSessionBuilder(builder), WithArtifactsBase(""))
+
+	target := apple.Target{Name: "iphone", Platform: "ios"}
+	done := make(chan struct{}, 2)
+
+	for range 2 {
+		go func() {
+			_, _ = p.acquireSession(context.Background(), target)
+			done <- struct{}{}
+		}()
+	}
+
+	// Give both goroutines time to reach the per-target lock.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+
+	for range 2 {
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for acquireSession to return")
+		}
+	}
+
+	if got := builds.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 Build call, got %d", got)
+	}
+}

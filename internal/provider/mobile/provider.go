@@ -35,9 +35,10 @@ const supportedPlatform = "ios"
 
 // Provider is the mobile step provider.
 type Provider struct {
-	mu       sync.Mutex
-	sessions map[string]*Session
-	builder  SessionBuilder
+	mu          sync.Mutex
+	sessions    map[string]*Session
+	targetLocks map[string]*sync.Mutex
+	builder     SessionBuilder
 
 	hierarchyMu sync.RWMutex
 	hierarchies map[string]*tree.ViewNode
@@ -66,6 +67,7 @@ func WithArtifactsBase(dir string) Option {
 func New(opts ...Option) *Provider {
 	p := &Provider{
 		sessions:      map[string]*Session{},
+		targetLocks:   map[string]*sync.Mutex{},
 		hierarchies:   map[string]*tree.ViewNode{},
 		artifactsBase: defaultArtifactsBase,
 	}
@@ -171,10 +173,18 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 }
 
 func (p *Provider) acquireSession(ctx context.Context, target apple.Target) (*Session, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	if sess, ok := p.lookupSession(target.Name); ok {
+		return sess, nil
+	}
 
-	if sess, ok := p.sessions[target.Name]; ok {
+	// Serialize concurrent Build calls per target without blocking other
+	// targets: p.builder.Build can take tens of seconds (booting simulators,
+	// starting xcodebuild) and we don't want target B to wait on target A.
+	lock := p.targetLock(target.Name)
+	lock.Lock()
+	defer lock.Unlock()
+
+	if sess, ok := p.lookupSession(target.Name); ok {
 		return sess, nil
 	}
 
@@ -183,9 +193,33 @@ func (p *Provider) acquireSession(ctx context.Context, target apple.Target) (*Se
 		return nil, fmt.Errorf("build session for %q: %w", target.Name, err)
 	}
 
+	p.mu.Lock()
 	p.sessions[target.Name] = sess
+	p.mu.Unlock()
 
 	return sess, nil
+}
+
+func (p *Provider) lookupSession(name string) (*Session, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	sess, ok := p.sessions[name]
+
+	return sess, ok
+}
+
+func (p *Provider) targetLock(name string) *sync.Mutex {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	lock, ok := p.targetLocks[name]
+	if !ok {
+		lock = &sync.Mutex{}
+		p.targetLocks[name] = lock
+	}
+
+	return lock
 }
 
 func (p *Provider) executeMobile(ctx context.Context, input provider.Input, session *Session, output *provider.Output) error {
