@@ -2,6 +2,7 @@ package apple
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
 )
@@ -40,16 +42,44 @@ type XcodebuildLauncher interface {
 	Start(ctx context.Context, opts xcodebuild.Options, pinger xcodebuild.Pinger) (*xcodebuild.Handle, error)
 }
 
+// EmbeddedDriverManager extracts, builds, and caches the embedded
+// XCUITest driver. *embeddeddriver.Manager satisfies it; tests fake it.
+type EmbeddedDriverManager interface {
+	Prepare(ctx context.Context, sourcePathOverride, iosRuntime string) (embeddeddriver.Prepared, error)
+	InvalidateBuild(key string) error
+}
+
 // DriverFactory builds a driver.Driver for the given base URL.
 type DriverFactory func(baseURL string) driver.Driver
 
 // Lifecycle aggregates simctl, xcodebuild, and the driver factory into the
-// operations the mobile provider needs.
+// operations the mobile provider needs. Embedded is optional; when nil,
+// targets that opt into embedded mode (no Project/Scheme, no SourcePath)
+// will be rejected with a clean error.
 type Lifecycle struct {
 	Simctl     SimctlTool
 	Xcodebuild XcodebuildLauncher
 	NewDriver  DriverFactory
+	Embedded   EmbeddedDriverManager
 }
+
+// RunnerBundleIDForHost returns the bundle identifier of the XCUITest
+// runner application that xcodebuild installs on the simulator next to
+// the host app. The runner is the process that actually owns the
+// in-simulator HTTP server, so terminating it is the surest belt-and-
+// suspenders cleanup when SIGTERM does not reach the test child tree.
+func RunnerBundleIDForHost(hostBundleID string) string {
+	if hostBundleID == "" {
+		return ""
+	}
+
+	return hostBundleID + ".xctrunner"
+}
+
+// DriverHostBundleID is the bundle identifier of the host app embedded
+// in the driver project. xcodebuild installs the matching .xctrunner
+// alongside it on the simulator at test time.
+const DriverHostBundleID = "com.hyperxlab.TalesAppleDriverHost"
 
 const driverLogsBase = "build/artifacts/mobile/driver"
 
@@ -133,12 +163,23 @@ func (l *Lifecycle) TerminateApp(ctx context.Context, udid string, target Target
 	return nil
 }
 
-// EnsureDriver returns a driver client connected to the running driver. In
-// external mode, only a health check is performed. Otherwise the XCUITest
-// runner is spawned via xcodebuild and Tales owns the handle.
-func (l *Lifecycle) EnsureDriver(ctx context.Context, udid string, target Target) (driver.Driver, DriverHandle, error) {
+// EnsureDriver returns a driver client connected to the running driver.
+//
+// Resolution order:
+//  1. driver.external = true → only health-check the configured URL.
+//  2. driver.project set     → legacy path: build+run the driver project
+//     directly with `xcodebuild test`.
+//  3. otherwise              → embedded mode: extract+build the embedded
+//     driver (or driver.source_path override), then run it via
+//     `xcodebuild test-without-building`.
+//
+// In embedded mode a single retry is attempted if the freshly built
+// driver fails to answer /health: the cached build is invalidated and
+// rebuilt from scratch before the second attempt, in case Xcode has
+// upgraded between Tales runs in a way the cache key did not capture.
+func (l *Lifecycle) EnsureDriver(ctx context.Context, device Device, target Target) (driver.Driver, DriverHandle, error) {
 	if l.NewDriver == nil {
-		return nil, nil, fmt.Errorf("driver factory is not configured")
+		return nil, nil, errors.New("driver factory is not configured")
 	}
 
 	client := l.NewDriver(target.Driver.BaseURL())
@@ -151,33 +192,95 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, udid string, target Target
 		return client, nil, nil
 	}
 
-	if target.Driver.Project == "" {
-		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.project is required when driver.external is false", target.Name)
+	if target.Driver.Project != "" {
+		return l.startLegacyDriver(ctx, device.UDID, target, client)
 	}
 
+	if target.Driver.Scheme != "" && target.Driver.Project == "" {
+		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.scheme requires driver.project (or remove both for embedded mode)", target.Name)
+	}
+
+	return l.startEmbeddedDriver(ctx, device, target, client)
+}
+
+func (l *Lifecycle) startLegacyDriver(ctx context.Context, udid string, target Target, client driver.Driver) (driver.Driver, DriverHandle, error) {
 	if target.Driver.Scheme == "" {
-		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.scheme is required when driver.external is false", target.Name)
+		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver.scheme is required alongside driver.project", target.Name)
 	}
 
-	logPath := driverLogPath(target.Name)
-
-	handle, err := l.Xcodebuild.Start(ctx, xcodebuild.Options{
+	opts := xcodebuild.Options{
 		UDID:        udid,
 		Project:     target.Driver.Project,
 		Scheme:      target.Driver.Scheme,
 		Destination: fmt.Sprintf("platform=iOS Simulator,id=%s", udid),
 		HealthURL:   target.Driver.BaseURL() + "/health",
-		LogPath:     logPath,
-		Env: map[string]string{
-			"TALES_DRIVER_HOST": target.Driver.Host,
-			"TALES_DRIVER_PORT": fmt.Sprintf("%d", target.Driver.Port),
-		},
-	}, client)
+		LogPath:     driverLogPath(target.Name),
+		Env:         driverEnv(target.Driver),
+	}
+
+	handle, err := l.Xcodebuild.Start(ctx, opts, client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start xcuitest driver: %w", err)
 	}
 
 	return client, handle, nil
+}
+
+func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, target Target, client driver.Driver) (driver.Driver, DriverHandle, error) {
+	if l.Embedded == nil {
+		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver: embedded mode requested but no embedded driver manager is configured; set driver.project for legacy mode, driver.external=true to connect to a manually started driver, or build Tales with the embedded driver wired up", target.Name)
+	}
+
+	prepared, err := l.Embedded.Prepare(ctx, target.Driver.SourcePath, device.Runtime)
+	if err != nil {
+		return nil, nil, fmt.Errorf("prepare embedded driver: %w", err)
+	}
+
+	logPath := driverLogPath(target.Name)
+	opts := xcodebuild.Options{
+		UDID:          device.UDID,
+		XCTestRunPath: prepared.XCTestRunPath,
+		Destination:   fmt.Sprintf("platform=iOS Simulator,id=%s", device.UDID),
+		HealthURL:     target.Driver.BaseURL() + "/health",
+		LogPath:       logPath,
+		Env:           driverEnv(target.Driver),
+	}
+
+	handle, startErr := l.Xcodebuild.Start(ctx, opts, client)
+	if startErr == nil {
+		return client, handle, nil
+	}
+
+	// Retry once: invalidate the cached build, force a rebuild, and try
+	// again. Covers the case where build.ok is still on disk but the
+	// .xctest is no longer launchable (Xcode upgrade without a cache-key
+	// input changing, CoreSimulator quirks, ...).
+	fmt.Fprintf(os.Stderr, "embedded driver failed to start (%v); invalidating cache %q and rebuilding\n", startErr, prepared.CacheKey)
+
+	if invErr := l.Embedded.InvalidateBuild(prepared.CacheKey); invErr != nil {
+		return nil, nil, fmt.Errorf("start xcuitest driver: %w (cache invalidation also failed: %w)", startErr, invErr)
+	}
+
+	rebuilt, prepErr := l.Embedded.Prepare(ctx, target.Driver.SourcePath, device.Runtime)
+	if prepErr != nil {
+		return nil, nil, fmt.Errorf("start xcuitest driver: %w (rebuild after invalidation failed: %w)", startErr, prepErr)
+	}
+
+	opts.XCTestRunPath = rebuilt.XCTestRunPath
+
+	retryHandle, retryErr := l.Xcodebuild.Start(ctx, opts, client)
+	if retryErr != nil {
+		return nil, nil, fmt.Errorf("start xcuitest driver after rebuild: %w (first attempt: %w)", retryErr, startErr)
+	}
+
+	return client, retryHandle, nil
+}
+
+func driverEnv(cfg DriverConfig) map[string]string {
+	return map[string]string{
+		"TALES_DRIVER_HOST": cfg.Host,
+		"TALES_DRIVER_PORT": fmt.Sprintf("%d", cfg.Port),
+	}
 }
 
 func driverLogPath(targetName string) string {
