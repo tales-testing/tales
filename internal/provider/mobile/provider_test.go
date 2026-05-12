@@ -639,6 +639,86 @@ func TestExecuteTextExpectationFailsCleanly(t *testing.T) {
 	}
 }
 
+func TestExecuteTextExpectationReportsElementNotFound(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{{ID: "root", Visible: true}}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Text: []provider.MobileValueExpectationExec{
+					{ID: "welcome.register", Expected: cty.StringVal("Welcome"), Timeout: 30 * time.Millisecond},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, `element "welcome.register" not found after`) {
+		t.Fatalf("expected not-found message, got %v", msg)
+	}
+
+	if strings.Contains(msg, `got=""`) {
+		t.Fatalf("not-found error should not surface a misleading got=\"\" mismatch: %v", msg)
+	}
+}
+
+func TestExecuteTextExpectationPreservesMatcherMessageOnTimeout(t *testing.T) {
+	t.Parallel()
+
+	node := newButtonNode()
+	node.Children[0].Text = "Bienvenue"
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{node}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Text: []provider.MobileValueExpectationExec{
+					{
+						ID: "welcome.register",
+						Expected: cty.ObjectVal(map[string]cty.Value{
+							"__tales_matcher": cty.StringVal("contains"),
+							"value":           cty.StringVal("Welcome"),
+						}),
+						Timeout: 30 * time.Millisecond,
+					},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected mismatch error")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, `text mismatch for "welcome.register"`) {
+		t.Fatalf("expected mismatch summary, got %v", msg)
+	}
+
+	if !strings.Contains(msg, "Welcome") {
+		t.Fatalf("expected matcher-specific detail (want=...): %v", msg)
+	}
+}
+
 func TestExecuteValueExpectationPasses(t *testing.T) {
 	t.Parallel()
 
