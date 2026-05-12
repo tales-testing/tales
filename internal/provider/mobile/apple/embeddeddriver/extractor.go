@@ -11,10 +11,10 @@ import (
 
 // Extract writes the contents of fsys rooted at srcRoot into dst. The
 // extraction is atomic: files are first written under "<dst>.tmp" and
-// then rename(2)'d into place once every file has been copied.
+// then rename(2)'d into place once every file has been copied. Missing
+// parent directories of dst are created on the fly.
 //
-// Path traversal attempts inside fsys are rejected. The destination's
-// parent must exist (the caller is responsible for MkdirAll on it).
+// Path traversal attempts inside fsys are rejected.
 func Extract(fsys fs.FS, srcRoot, dst string) error {
 	if fsys == nil {
 		return fmt.Errorf("extract: filesystem is nil")

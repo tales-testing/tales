@@ -3,7 +3,6 @@ package mobile
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	appledriver "github.com/hyperxlab/tales/drivers/apple"
@@ -62,16 +61,14 @@ func appleSessionBuilder() SessionBuilder {
 
 // newEmbeddedManager constructs the production embeddeddriver.Manager.
 // Source is taken from the appledriver embed.FS; CacheBase resolves to
-// the per-user cache (overridable via TALES_DRIVER_CACHE_DIR). If the
-// cache base cannot be resolved (a no-HOME environment), the lifecycle
-// runs without an embedded manager — embedded mode then surfaces a
-// clean error instead of crashing.
+// the per-user cache (overridable via TALES_DRIVER_CACHE_DIR). If
+// cache-base resolution fails (no HOME, sandboxed env, etc.), a
+// brokenManager is returned that surfaces the real cause on every call
+// so users get an actionable error instead of "rebuild Tales".
 func newEmbeddedManager() apple.EmbeddedDriverManager {
 	base, err := embeddeddriver.ResolveBase()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "tales: embedded driver disabled (cache resolution failed: %v)\n", err)
-
-		return nil
+		return brokenManager{cause: err}
 	}
 
 	return &embeddeddriver.Manager{
@@ -81,6 +78,23 @@ func newEmbeddedManager() apple.EmbeddedDriverManager {
 		Builder:    &embeddeddriver.XcodebuildBuilder{Runner: embeddeddriver.ExecBuildRunner{}},
 		Runner:     execCommandRunner{},
 	}
+}
+
+// brokenManager satisfies apple.EmbeddedDriverManager but returns the
+// init-time cause from every operation. It is wired in when the cache
+// base cannot be resolved, so embedded-mode targets fail with the real
+// underlying error (e.g. "cannot resolve user cache dir: $HOME is
+// undefined") instead of a generic "embedded driver not configured".
+type brokenManager struct {
+	cause error
+}
+
+func (b brokenManager) Prepare(_ context.Context, _, _ string) (embeddeddriver.Prepared, error) {
+	return embeddeddriver.Prepared{}, fmt.Errorf("embedded driver cache is unavailable: %w (try setting TALES_DRIVER_CACHE_DIR to a writable directory)", b.cause)
+}
+
+func (b brokenManager) InvalidateBuild(_ string) error {
+	return fmt.Errorf("embedded driver cache is unavailable: %w", b.cause)
 }
 
 // execCommandRunner adapts os/exec to embeddeddriver.CommandRunner so

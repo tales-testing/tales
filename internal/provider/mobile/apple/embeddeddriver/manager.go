@@ -44,6 +44,10 @@ type Prepared struct {
 // running. Pass sourcePathOverride to use a local source checkout
 // instead of the embedded filesystem (developer override).
 func (m *Manager) Prepare(ctx context.Context, sourcePathOverride, iosRuntime string) (Prepared, error) {
+	if m.CacheBase == "" {
+		return Prepared{}, fmt.Errorf("embedded driver manager has no cache base; set Manager.CacheBase or TALES_DRIVER_CACHE_DIR")
+	}
+
 	fsys, root := m.resolveSource(sourcePathOverride)
 	if fsys == nil {
 		return Prepared{}, fmt.Errorf("embedded driver source is not configured")

@@ -219,7 +219,7 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, device Device, target Targ
 
 func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, target Target, client driver.Driver) (driver.Driver, DriverHandle, error) {
 	if l.Embedded == nil {
-		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver: embedded driver manager is not configured; set driver.external = true to connect to a manually started driver, or rebuild Tales with the embedded driver wired up", target.Name)
+		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver: embedded driver manager is not configured on the apple.Lifecycle (set driver.external = true to connect to an already-running driver)", target.Name)
 	}
 
 	prepared, err := l.Embedded.Prepare(ctx, target.Driver.SourcePath, device.Runtime)
