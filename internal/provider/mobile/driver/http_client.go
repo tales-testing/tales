@@ -181,12 +181,8 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (*htt
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	transport := c.httpClient.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-
-	resp, err := transport.RoundTrip(req)
+	//nolint:gosec // G107: baseURL comes from the validated target.driver config, not from user-controlled input
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("call %s %s: %w", method, path, err)
 	}
