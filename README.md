@@ -224,6 +224,8 @@ Flags:
 - `--scenario <name>`: run one scenario by exact name.
 - `--report-junit <path>`: write JUnit XML.
 - `--report-jsonl <path>`: write JSONL events.
+- `--report-html <path>`: write a single-file visual HTML report (mobile screenshots replay).
+- `--capture-screenshots <mode>`: mobile screenshot capture mode. One of `none`, `failures`, `steps`, `actions`. Defaults to `failures`, or `actions` when `--report-html` is set.
 
 Examples:
 
@@ -331,12 +333,33 @@ Use `--report-junit <path>` for CI systems expecting JUnit.
 
 Use `--report-jsonl <path>` for lightweight tooling and LLM pipelines.
 
-Each line is one event (`scenario` or `step`) with fields like:
+Each line is one event (`scenario`, `step`, or `action`) with fields like:
 
 - `type`, `phase`, `status`
 - `file`, `scenario`, `step`, `provider`
 - `duration_ms`, `seed`
 - `error` (when failing)
+
+When per-action recording is on (any `--capture-screenshots` other than `none`), each step event is followed by one `"type":"action"` event per UI action. Action events carry `index`, `kind`, `label`, `selector_id`, `secure`, `value`, `status`, `duration_ms`, and optional `screenshot` / `hierarchy` paths. Secure values are masked to `"***"`.
+
+### Visual HTML
+
+Use `--report-html <path>` to produce a single offline HTML file that replays the mobile test action by action — screenshot on the left, vertical action timeline on the right with the active action highlighted, plus playback controls (Space, ←/→, speed selector). The file is self-contained: vanilla CSS + JS are inlined; screenshots are referenced by relative paths next to the report.
+
+Picking a capture mode:
+
+- `none` — no screenshots or hierarchy ever (failures included). `driver_log` artifact is still surfaced for non-starting drivers.
+- `failures` — default. Step-level screenshot + hierarchy only when a step fails (legacy behavior).
+- `steps` — one end-of-step screenshot per step.
+- `actions` — one screenshot per UI action. Required for a usable visual replay; selected automatically when `--report-html` is set.
+
+Per-action artifacts live under:
+
+```
+build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-<n>/actions/NNNN-<kind>-<id>/
+```
+
+See [docs/reports/visual.md](docs/reports/visual.md) for a full walk-through, security notes, and limitations.
 
 ## E2E and Mock Server
 
