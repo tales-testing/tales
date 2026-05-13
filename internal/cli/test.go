@@ -13,6 +13,7 @@ import (
 	keywordprovider "github.com/hyperxlab/tales/internal/provider/keyword"
 	mobileprovider "github.com/hyperxlab/tales/internal/provider/mobile"
 	"github.com/hyperxlab/tales/internal/report"
+	"github.com/hyperxlab/tales/internal/report/visual"
 	talesruntime "github.com/hyperxlab/tales/internal/runtime"
 	"github.com/urfave/cli/v2"
 )
@@ -32,9 +33,32 @@ func NewTestCommand() *cli.Command {
 			&cli.BoolFlag{Name: "no-progress", Usage: "Disable progress counters in console output"},
 			&cli.StringFlag{Name: "report-junit", Usage: "Write JUnit XML report"},
 			&cli.StringFlag{Name: "report-jsonl", Usage: "Write JSONL report"},
+			&cli.StringFlag{Name: "report-html", Usage: "Write single-file visual HTML report"},
+			&cli.StringFlag{Name: "capture-screenshots", Usage: "Mobile screenshot capture mode (none|failures|steps|actions)"},
 		},
 		Action: runTest,
 	}
+}
+
+// resolveCaptureMode picks the effective mobile capture mode from the CLI
+// flags. With no explicit flag it defaults to actions when --report-html is
+// set (so the visual replay has frames to show) and failures otherwise (the
+// historical behavior). An invalid explicit value produces a typed CLI error.
+func resolveCaptureMode(raw, htmlPath string) (mobileprovider.CaptureMode, error) {
+	if raw == "" {
+		if htmlPath != "" {
+			return mobileprovider.CaptureActions, nil
+		}
+
+		return mobileprovider.CaptureFailures, nil
+	}
+
+	mode, err := mobileprovider.ParseCaptureMode(raw)
+	if err != nil {
+		return "", fmt.Errorf("--capture-screenshots: %w", err)
+	}
+
+	return mode, nil
 }
 
 func runTest(c *cli.Context) error {
@@ -55,10 +79,17 @@ func runTest(c *cli.Context) error {
 		seed = time.Now().UnixNano()
 	}
 
+	htmlPath := c.String("report-html")
+
+	captureMode, err := resolveCaptureMode(c.String("capture-screenshots"), htmlPath)
+	if err != nil {
+		return cli.Exit(err.Error(), 2)
+	}
+
 	runner := talesruntime.NewRunner(provider.NewRegistry(
 		httpprovider.New(),
 		keywordprovider.New(),
-		mobileprovider.NewApple(),
+		mobileprovider.NewApple(mobileprovider.WithCaptureMode(captureMode)),
 	))
 
 	result, err := runner.Run(context.Background(), suite, talesruntime.Options{
@@ -96,6 +127,14 @@ func runTest(c *cli.Context) error {
 		if writeErr := report.WriteJSONL(jsonlPath, result); writeErr != nil {
 			return cli.Exit(fmt.Sprintf("write jsonl failed: %v", writeErr), 3)
 		}
+	}
+
+	if htmlPath != "" {
+		if writeErr := visual.Write(htmlPath, result); writeErr != nil {
+			return cli.Exit(fmt.Sprintf("write html failed: %v", writeErr), 3)
+		}
+
+		_, _ = fmt.Fprintf(os.Stdout, "HTML report: %s\n", htmlPath)
 	}
 
 	if result.Failed() {
