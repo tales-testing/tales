@@ -42,6 +42,7 @@ type StepResult struct {
 	Provider   string
 	Phase      string
 	Status     Status
+	StartedAt  time.Time
 	Duration   time.Duration
 	Request    map[string]interface{}
 	Response   map[string]interface{}
