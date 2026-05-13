@@ -159,6 +159,7 @@ e2e-ios: tales-bin build-ios-demo
 	echo "  driver:       $(IOS_DRIVER_HOST):$(IOS_DRIVER_PORT)"; \
 	echo "  JSONL report: $(BUILD_DIR)/reports/e2e-ios.jsonl"; \
 	echo "  JUnit report: $(BUILD_DIR)/reports/e2e-ios.junit.xml"; \
+	echo "  HTML report:  $(BUILD_DIR)/reports/e2e-ios.html"; \
 	echo "  artifacts:    $(BUILD_DIR)/artifacts/mobile"; \
 	IOS_APP_PATH="$$app_path" \
 	IOS_BUNDLE_ID="$(IOS_BUNDLE_ID)" \
@@ -168,7 +169,10 @@ e2e-ios: tales-bin build-ios-demo
 	$(TALES_BIN) test --seed 1234 --parallel 1 \
 		--report-junit $(BUILD_DIR)/reports/e2e-ios.junit.xml \
 		--report-jsonl $(BUILD_DIR)/reports/e2e-ios.jsonl \
-		$(IOS_PASS_SUITE) || { status=$$?; echo "iOS e2e failed. Run \`make doctor-ios\` for diagnostics."; exit $$status; }
+		--report-html $(BUILD_DIR)/reports/e2e-ios.html \
+		--capture-screenshots actions \
+		$(IOS_PASS_SUITE) || { status=$$?; echo "iOS e2e failed. Run \`make doctor-ios\` for diagnostics."; exit $$status; }; \
+	scripts/verify-ios-visual.sh "$(BUILD_DIR)/reports/e2e-ios.html" || { echo "visual report verification failed."; exit 1; }
 
 .PHONY: e2e-ios-failure
 e2e-ios-failure: tales-bin build-ios-demo
@@ -184,6 +188,7 @@ e2e-ios-failure: tales-bin build-ios-demo
 	echo "  driver:       $(IOS_DRIVER_HOST):$(IOS_DRIVER_PORT)"; \
 	echo "  JSONL report: $(BUILD_DIR)/reports/e2e-ios-failure.jsonl"; \
 	echo "  JUnit report: $(BUILD_DIR)/reports/e2e-ios-failure.junit.xml"; \
+	echo "  HTML report:  $(BUILD_DIR)/reports/e2e-ios-failure.html"; \
 	echo "  artifacts:    $(BUILD_DIR)/artifacts/mobile"; \
 	set +e; \
 	IOS_APP_PATH="$$app_path" \
@@ -194,11 +199,14 @@ e2e-ios-failure: tales-bin build-ios-demo
 	$(TALES_BIN) test --seed 1234 --parallel 1 \
 		--report-junit $(BUILD_DIR)/reports/e2e-ios-failure.junit.xml \
 		--report-jsonl $(BUILD_DIR)/reports/e2e-ios-failure.jsonl \
+		--report-html $(BUILD_DIR)/reports/e2e-ios-failure.html \
+		--capture-screenshots actions \
 		$(IOS_FAIL_SUITE); \
 	exit_code=$$?; \
 	set -e; \
 	if [ $$exit_code -ne 1 ]; then echo "expected Tales to exit 1, got $$exit_code"; exit 1; fi; \
-	scripts/verify-ios-failure.sh "$(BUILD_DIR)/reports/e2e-ios-failure.jsonl" "$(BUILD_DIR)/artifacts/mobile" || { echo "iOS failure verification failed. Run \`make doctor-ios\` for diagnostics."; exit 1; }
+	scripts/verify-ios-failure.sh "$(BUILD_DIR)/reports/e2e-ios-failure.jsonl" "$(BUILD_DIR)/artifacts/mobile" || { echo "iOS failure verification failed. Run \`make doctor-ios\` for diagnostics."; exit 1; }; \
+	scripts/verify-ios-visual.sh "$(BUILD_DIR)/reports/e2e-ios-failure.html" || { echo "visual report verification failed."; exit 1; }
 
 .PHONY: e2e-failure
 e2e-failure: build
