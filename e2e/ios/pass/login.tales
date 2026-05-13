@@ -1,0 +1,355 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+generator "email" "ios_login_email" {
+  prefix = "ios-login-"
+  domain = "example.com"
+}
+
+generator "password" "ios_login_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+}
+
+scenario "iOS login happy path" {
+  tags = ["ios", "mobile", "demo", "login"]
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    expect {
+      visible {
+        id      = "welcome.signin"
+        timeout = "20s"
+      }
+      text {
+        id    = "welcome.title"
+        value = "Tales Demo"
+      }
+    }
+  }
+
+  step "mobile" "open_login" {
+    depends_on = ["launch"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id = "login.screen"
+      }
+    }
+    expect {
+      visible {
+        id      = "login.screen"
+        timeout = "10s"
+      }
+      disabled {
+        id = "login.submit"
+      }
+    }
+  }
+
+  step "mobile" "fill_login" {
+    depends_on = ["open_login"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "login.email"
+        value = generate("ios_login_email")
+      }
+      input_text {
+        id     = "login.password"
+        value  = generate("ios_login_password")
+        secure = true
+      }
+    }
+    expect {
+      enabled {
+        id = "login.submit"
+      }
+      value {
+        id    = "login.email"
+        value = contains("@example.com")
+      }
+    }
+    capture {
+      email = value("login.email")
+    }
+  }
+
+  step "mobile" "submit_login" {
+    depends_on = ["fill_login"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "login.submit"
+      }
+      wait_visible {
+        id      = "tabbar.feed"
+        timeout = "15s"
+      }
+      wait_visible {
+        id      = "feed.screen"
+        timeout = "10s"
+      }
+    }
+    expect {
+      visible {
+        id      = "feed.list"
+        timeout = "5s"
+      }
+    }
+  }
+
+  step "mobile" "scroll_feed" {
+    depends_on = ["submit_login"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      wait_visible {
+        id      = "feed.item.5"
+        timeout = "15s"
+      }
+    }
+    expect {
+      text {
+        id    = "feed.item.5.title"
+        value = "Lorem ipsum item #5"
+      }
+    }
+  }
+
+  step "mobile" "open_detail" {
+    depends_on = ["scroll_feed"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "feed.item.5"
+      }
+      wait_visible {
+        id      = "feed.detail.screen"
+        timeout = "5s"
+      }
+    }
+    expect {
+      text {
+        id    = "feed.detail.title"
+        value = "Lorem ipsum item #5"
+      }
+      text {
+        id    = "feed.detail.body"
+        value = contains("body number 5")
+      }
+    }
+  }
+
+  step "mobile" "back_to_feed" {
+    depends_on = ["open_detail"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "feed.detail.back"
+      }
+      wait_visible {
+        id      = "feed.list"
+        timeout = "5s"
+      }
+    }
+    expect {
+      visible {
+        id = "feed.screen"
+      }
+    }
+  }
+
+  step "mobile" "goto_search" {
+    depends_on = ["back_to_feed"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "tabbar.search"
+      }
+      wait_visible {
+        id      = "search.screen"
+        timeout = "5s"
+      }
+    }
+    expect {
+      visible {
+        id = "search.field"
+      }
+      visible {
+        id = "search.empty"
+      }
+    }
+  }
+
+  step "mobile" "search_filter_match" {
+    depends_on = ["goto_search"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "search.field"
+        value = "item #5"
+      }
+      wait_visible {
+        id      = "search.results.count"
+        timeout = "5s"
+      }
+    }
+    expect {
+      text {
+        id    = "search.results.count"
+        value = matches("^\\d+ results$")
+      }
+      text {
+        id    = "search.item.0.title"
+        value = "Lorem ipsum item #5"
+      }
+    }
+  }
+
+  step "mobile" "search_no_results" {
+    depends_on = ["search_filter_match"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      clear_text {
+        id = "search.field"
+      }
+      input_text {
+        id    = "search.field"
+        value = "zzznomatch"
+      }
+      wait_visible {
+        id      = "search.empty"
+        timeout = "5s"
+      }
+    }
+    expect {
+      text {
+        id    = "search.empty"
+        value = "No results"
+      }
+    }
+  }
+
+  step "mobile" "goto_profile" {
+    depends_on = ["search_no_results"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "search.screen"
+      }
+      tap {
+        id = "tabbar.profile"
+      }
+      wait_visible {
+        id      = "profile.screen"
+        timeout = "10s"
+      }
+    }
+    expect {
+      text {
+        id    = "profile.email"
+        value = result.fill_login.email
+      }
+      text {
+        id    = "profile.notifications.label"
+        value = "On"
+      }
+    }
+  }
+
+  step "mobile" "toggle_notifications" {
+    depends_on = ["goto_profile"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "profile.notifications"
+      }
+    }
+    expect {
+      text {
+        id    = "profile.notifications.label"
+        value = "Off"
+      }
+    }
+  }
+
+  step "mobile" "sign_out" {
+    depends_on = ["toggle_notifications"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "profile.logout"
+      }
+      wait_visible {
+        id      = "welcome.signin"
+        timeout = "5s"
+      }
+    }
+    expect {
+      visible {
+        id = "welcome.title"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}
