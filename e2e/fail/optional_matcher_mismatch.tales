@@ -1,0 +1,39 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "optional matcher fails when present value mismatches" {
+  tags = ["matchers", "failure"]
+
+  step "http" "get_user_full" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users.v1.UserService/GetUser"
+
+      headers = {
+        Accept                   = "application/json"
+        Content-Type             = "application/json"
+        Connect-Protocol-Version = "1"
+      }
+
+      body {
+        json = {
+          id   = "user_123"
+          mode = "full"
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        # mock returns "ROLE_UNSPECIFIED" but we assert "ROLE_ADMIN".
+        # optional(...) still requires matching when the key is present.
+        role = optional("ROLE_ADMIN")
+      }
+    }
+  }
+}

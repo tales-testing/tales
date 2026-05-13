@@ -1,0 +1,73 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "ConnectRPC default fields can be omitted" {
+  tags = ["connect", "matchers"]
+
+  step "http" "get_user_minimal" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users.v1.UserService/GetUser"
+
+      headers = {
+        Accept                   = "application/json"
+        Content-Type             = "application/json"
+        Connect-Protocol-Version = "1"
+      }
+
+      body {
+        json = {
+          id   = "user_123"
+          mode = "minimal"
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        id           = required(is_string())
+        role         = optional("ROLE_UNSPECIFIED")
+        permissions  = optional([])
+        display_name = optional("")
+        metadata     = optional(any())
+      }
+    }
+  }
+
+  step "http" "get_user_full" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users.v1.UserService/GetUser"
+
+      headers = {
+        Accept                   = "application/json"
+        Content-Type             = "application/json"
+        Connect-Protocol-Version = "1"
+      }
+
+      body {
+        json = {
+          id   = "user_123"
+          mode = "full"
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        id           = required(is_string())
+        role         = optional("ROLE_UNSPECIFIED")
+        permissions  = optional([])
+        display_name = optional("")
+        metadata     = optional(any())
+      }
+    }
+  }
+}

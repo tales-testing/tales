@@ -75,6 +75,7 @@ func main() {
 	r.HandleFunc("/blog/posts/{id}", state.getPost).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts/{id}", state.deletePost).Methods(http.MethodDelete)
 	r.HandleFunc("/users.v1.UserService/CreateUser", state.connectCreateUser).Methods(http.MethodPost)
+	r.HandleFunc("/users.v1.UserService/GetUser", state.connectGetUser).Methods(http.MethodPost)
 
 	addr := ":" + port
 	server := &http.Server{
@@ -320,6 +321,50 @@ func (s *serverState) deletePost(w http.ResponseWriter, req *http.Request) {
 
 	delete(s.posts, id)
 	writeJSON(w, http.StatusNoContent, map[string]interface{}{"deleted": true})
+}
+
+// connectGetUser simulates a ConnectRPC / protobuf JSON response where
+// fields holding default values may be omitted from the JSON payload.
+// The `mode` field in the request body controls which shape is returned:
+//   - "minimal": id only (mimicking omitted defaults)
+//   - "full": id plus default-valued role, permissions, display_name, metadata.
+func (s *serverState) connectGetUser(w http.ResponseWriter, req *http.Request) {
+	if req.Header.Get("Connect-Protocol-Version") == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "missing Connect-Protocol-Version"})
+
+		return
+	}
+
+	payload := map[string]string{}
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	id := payload["id"]
+	if id == "" {
+		id = "user_123"
+	}
+
+	switch payload["mode"] {
+	case "full":
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"id":           id,
+			"role":         "ROLE_UNSPECIFIED",
+			"permissions":  []interface{}{},
+			"display_name": "",
+			"metadata":     map[string]interface{}{"source": "mock"},
+		})
+
+		return
+	default:
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"id": id,
+		})
+
+		return
+	}
 }
 
 func (s *serverState) connectCreateUser(w http.ResponseWriter, req *http.Request) {
