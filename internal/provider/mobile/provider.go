@@ -400,8 +400,9 @@ func appendSkippedActions(results []provider.ActionResult, remaining []provider.
 // failure path (best-effort capture even in CaptureSteps mode); on success
 // the capture only happens in CaptureActions mode.
 //
-// Capture errors are intentionally swallowed: they must not mask the action's
-// own status. The action result simply omits the screenshot/hierarchy paths.
+// Capture errors are intentionally swallowed: they must not mask the
+// action's own status. The action result simply omits the
+// screenshot/hierarchy paths in that case.
 func (p *Provider) captureForAction(ctx context.Context, session *Session, stepDir string, result *provider.ActionResult, forFailure bool) {
 	if p.captureMode == CaptureNone {
 		return
