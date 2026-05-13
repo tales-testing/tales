@@ -73,6 +73,86 @@ func TestRegexFindConvertsNonStringInput(t *testing.T) {
 	}
 }
 
+func TestOptionalMatcherProducesTaggedObject(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `optional("")`)
+	if !value.Type().IsObjectType() {
+		t.Fatalf("expected object, got %s", value.Type().FriendlyName())
+	}
+
+	name := value.GetAttr(matcherKey)
+	if name.AsString() != "optional" {
+		t.Fatalf("expected matcher name optional, got %s", name.AsString())
+	}
+
+	inner := value.GetAttr("value")
+	if inner.AsString() != "" {
+		t.Fatalf("expected empty inner, got %q", inner.AsString())
+	}
+}
+
+func TestRequiredMatcherProducesTaggedObject(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `required(is_string())`)
+	if !value.Type().IsObjectType() {
+		t.Fatalf("expected object, got %s", value.Type().FriendlyName())
+	}
+
+	if value.GetAttr(matcherKey).AsString() != "required" {
+		t.Fatalf("expected matcher name required")
+	}
+
+	inner := value.GetAttr("value")
+	if inner.GetAttr(matcherKey).AsString() != "is_string" {
+		t.Fatalf("expected inner is_string matcher, got %v", inner)
+	}
+}
+
+func TestAnyMatcherProducesTaggedObject(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `any()`)
+	if value.GetAttr(matcherKey).AsString() != "any" {
+		t.Fatalf("expected any matcher tag")
+	}
+}
+
+func TestOptionalAcceptsNullArgument(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `optional(null)`)
+	if value.GetAttr(matcherKey).AsString() != "optional" {
+		t.Fatalf("expected optional matcher tag")
+	}
+
+	inner := value.GetAttr("value")
+	if !inner.IsNull() {
+		t.Fatalf("expected inner to be null")
+	}
+}
+
+func TestOptionalRejectsArity(t *testing.T) {
+	t.Parallel()
+
+	if _, err := evalTestExpressionError(`optional()`); err == nil {
+		t.Fatalf("expected error for missing argument")
+	}
+
+	if _, err := evalTestExpressionError(`optional("", "x")`); err == nil {
+		t.Fatalf("expected error for too many arguments")
+	}
+}
+
+func TestAnyRejectsArguments(t *testing.T) {
+	t.Parallel()
+
+	if _, err := evalTestExpressionError(`any("x")`); err == nil {
+		t.Fatalf("expected error for extra argument")
+	}
+}
+
 func TestURLEncode(t *testing.T) {
 	t.Parallel()
 

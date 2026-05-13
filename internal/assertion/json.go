@@ -9,6 +9,10 @@ import (
 // Equal checks exact value equality with matcher support.
 func Equal(path string, expected, actual cty.Value) error {
 	if name, args, ok := isMatcher(expected); ok {
+		if name == matcherOptional || name == matcherRequired {
+			return Equal(path, args["value"], actual)
+		}
+
 		return applyMatcher(name, args, actual, path)
 	}
 
@@ -22,6 +26,10 @@ func Equal(path string, expected, actual cty.Value) error {
 // MatchJSON performs JSON assertion with partial object semantics by default.
 func MatchJSON(expected, actual cty.Value, strict bool, path string) error {
 	if name, args, ok := isMatcher(expected); ok {
+		if name == matcherOptional || name == matcherRequired {
+			return MatchJSON(args["value"], actual, strict, path)
+		}
+
 		return applyMatcher(name, args, actual, path)
 	}
 
@@ -62,7 +70,13 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 	actualMap := actual.AsValueMap()
 	for key, expVal := range expectedMap {
 		actVal, ok := actualMap[key]
+		isOpt, isReq, inner := unwrapFieldMatcher(expVal)
+
 		if !ok {
+			if isOpt {
+				continue
+			}
+
 			if name, _, is := isMatcher(expVal); is && name == matcherNotExists {
 				continue
 			}
@@ -71,10 +85,15 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 				return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "value does not exist"}
 			}
 
-			return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "missing field"}
+			return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "missing required field"}
 		}
 
-		if err := MatchJSON(expVal, actVal, strict, path+"."+key); err != nil {
+		target := expVal
+		if isOpt || isReq {
+			target = inner
+		}
+
+		if err := MatchJSON(target, actVal, strict, path+"."+key); err != nil {
 			return err
 		}
 	}

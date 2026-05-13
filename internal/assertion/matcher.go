@@ -12,6 +12,9 @@ const (
 	matcherKey       = "__tales_matcher"
 	matcherExists    = "exists"
 	matcherNotExists = "not_exists"
+	matcherOptional  = "optional"
+	matcherRequired  = "required"
+	matcherAny       = "any"
 )
 
 type matcherHandler func(args map[string]cty.Value, actual cty.Value, path string) error
@@ -27,6 +30,7 @@ var matcherHandlers = map[string]matcherHandler{
 	"contains":       matchContains,
 	"matches":        matchRegex,
 	"one_of":         matchOneOf,
+	matcherAny:       matchAny,
 }
 
 func isMatcher(value cty.Value) (string, map[string]cty.Value, bool) {
@@ -176,6 +180,32 @@ func matchRegex(args map[string]cty.Value, actual cty.Value, path string) error 
 	}
 
 	return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("%q does not match %q", actual.AsString(), patternVal.AsString())}
+}
+
+func matchAny(args map[string]cty.Value, actual cty.Value, path string) error {
+	_ = args
+	_ = actual
+	_ = path
+
+	return nil
+}
+
+// unwrapFieldMatcher returns inner matcher value when expVal is optional/required.
+// optional is reported via isOpt, required via isReq. Inner is unwrapped value.
+func unwrapFieldMatcher(expVal cty.Value) (isOpt, isReq bool, inner cty.Value) {
+	name, args, ok := isMatcher(expVal)
+	if !ok {
+		return false, false, expVal
+	}
+
+	switch name {
+	case matcherOptional:
+		return true, false, args["value"]
+	case matcherRequired:
+		return false, true, args["value"]
+	}
+
+	return false, false, expVal
 }
 
 func matchOneOf(args map[string]cty.Value, actual cty.Value, path string) error {

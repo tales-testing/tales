@@ -66,6 +66,26 @@ func matcherSingleArg(name string) function.Function {
 	})
 }
 
+func optionalFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType, AllowNull: true}},
+		Type:   function.StaticReturnType(cty.DynamicPseudoType),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			return matcherObject("optional", map[string]cty.Value{"value": args[0]}), nil
+		},
+	})
+}
+
+func requiredFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType, AllowNull: true}},
+		Type:   function.StaticReturnType(cty.DynamicPseudoType),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			return matcherObject("required", map[string]cty.Value{"value": args[0]}), nil
+		},
+	})
+}
+
 func matchesFunc() function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{{Name: "pattern", Type: cty.String}},
@@ -181,5 +201,8 @@ func baseFunctions() map[string]function.Function {
 		"is_object":  matcherNoArg("is_object"),
 		"one_of":     oneOfFunc(),
 		"can":        matcherSingleArg("can"),
+		"optional":   optionalFunc(),
+		"required":   requiredFunc(),
+		"any":        matcherNoArg("any"),
 	}
 }
