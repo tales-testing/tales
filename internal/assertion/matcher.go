@@ -190,22 +190,28 @@ func matchAny(args map[string]cty.Value, actual cty.Value, path string) error {
 	return nil
 }
 
-// unwrapFieldMatcher returns inner matcher value when expVal is optional/required.
-// optional is reported via isOpt, required via isReq. Inner is unwrapped value.
-func unwrapFieldMatcher(expVal cty.Value) (isOpt, isReq bool, inner cty.Value) {
-	name, args, ok := isMatcher(expVal)
-	if !ok {
-		return false, false, expVal
+// fieldWrapper returns the field-level wrapper kind (optional or required)
+// and its inner expectation when value is one of those matchers. Returns
+// ok=false when value is not a wrapper, or when the wrapper is malformed
+// (missing "value" attribute) — in that case callers should not try to
+// dereference inner and instead let applyMatcher surface a clean
+// "unknown matcher" error if the value is still treated as a matcher.
+func fieldWrapper(value cty.Value) (kind string, inner cty.Value, ok bool) {
+	name, args, isM := isMatcher(value)
+	if !isM {
+		return "", cty.NilVal, false
 	}
 
-	switch name {
-	case matcherOptional:
-		return true, false, args["value"]
-	case matcherRequired:
-		return false, true, args["value"]
+	if name != matcherOptional && name != matcherRequired {
+		return "", cty.NilVal, false
 	}
 
-	return false, false, expVal
+	inner, hasValue := args["value"]
+	if !hasValue {
+		return "", cty.NilVal, false
+	}
+
+	return name, inner, true
 }
 
 func matchOneOf(args map[string]cty.Value, actual cty.Value, path string) error {

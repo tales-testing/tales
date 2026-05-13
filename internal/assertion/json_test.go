@@ -562,6 +562,95 @@ func TestMatchJSONNestedRequiredOptional(t *testing.T) {
 	})
 }
 
+// Strict mode: missing optional key is fine, but unexpected extra key must
+// fail even when the actual key count happens to match the expected count.
+func TestMatchJSONStrictWithOptionalKeys(t *testing.T) {
+	t.Parallel()
+
+	expected := cty.ObjectVal(map[string]cty.Value{
+		"id":          requiredMatcher(isStringMatcher()),
+		"permissions": optionalMatcher(cty.TupleVal([]cty.Value{})),
+	})
+
+	t.Run("optional_absent_passes_strict", func(t *testing.T) {
+		t.Parallel()
+
+		actual := cty.ObjectVal(map[string]cty.Value{"id": cty.StringVal("u_1")})
+		if err := MatchJSON(expected, actual, true, "$"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("optional_absent_extra_present_fails_strict", func(t *testing.T) {
+		t.Parallel()
+
+		// Same key count as expected (2), but one of them is unknown and
+		// `permissions` is omitted. A naive length check would let this slip.
+		actual := cty.ObjectVal(map[string]cty.Value{
+			"id":    cty.StringVal("u_1"),
+			"extra": cty.StringVal("nope"),
+		})
+
+		err := MatchJSON(expected, actual, true, "$")
+		if err == nil {
+			t.Fatalf("expected strict mismatch on extra key")
+		}
+
+		if !strings.Contains(err.Error(), `"extra"`) {
+			t.Fatalf("expected error to mention extra key, got %v", err)
+		}
+	})
+
+	t.Run("optional_present_extra_present_fails_strict", func(t *testing.T) {
+		t.Parallel()
+
+		actual := cty.ObjectVal(map[string]cty.Value{
+			"id":          cty.StringVal("u_1"),
+			"permissions": cty.TupleVal([]cty.Value{}),
+			"extra":       cty.StringVal("nope"),
+		})
+
+		if err := MatchJSON(expected, actual, true, "$"); err == nil {
+			t.Fatalf("expected strict mismatch on extra key")
+		}
+	})
+
+	t.Run("all_expected_present_passes_strict", func(t *testing.T) {
+		t.Parallel()
+
+		actual := cty.ObjectVal(map[string]cty.Value{
+			"id":          cty.StringVal("u_1"),
+			"permissions": cty.TupleVal([]cty.Value{}),
+		})
+
+		if err := MatchJSON(expected, actual, true, "$"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+// Defensive: a literal HCL object tagged with __tales_matcher = "optional"
+// but missing the "value" attribute should produce a clean assertion error
+// rather than panic or propagate a zero cty.Value.
+func TestMatchJSONOptionalMissingInnerValueIsCleanError(t *testing.T) {
+	t.Parallel()
+
+	malformed := cty.ObjectVal(map[string]cty.Value{
+		matcherKey: cty.StringVal(matcherOptional),
+	})
+	expected := cty.ObjectVal(map[string]cty.Value{"role": malformed})
+	actual := cty.ObjectVal(map[string]cty.Value{"role": cty.StringVal("ADMIN")})
+
+	err := MatchJSON(expected, actual, false, "$")
+	if err == nil {
+		t.Fatalf("expected error for malformed optional matcher")
+	}
+
+	if strings.Contains(err.Error(), "cty.") {
+		t.Fatalf("error should not leak cty.* internals: %v", err)
+	}
+}
+
 // S: error formatting.
 func TestMatchJSONErrorFormatting(t *testing.T) {
 	t.Parallel()
