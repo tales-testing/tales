@@ -23,6 +23,18 @@ generator "email" "ios_email" {
   domain = "example.com"
 }
 
+# Policy generator for both register inputs. We can't call generate() twice in
+# the same step (different ExprPath produces different values), so the launch
+# step captures one value per password we need and downstream steps reference
+# it via result.launch.* — single source of truth for password policy.
+generator "password" "ios_register_password" {
+  length      = 12
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+}
+
 scenario "iOS register demo app" {
   tags = ["ios", "mobile", "demo", "register"]
 
@@ -44,6 +56,10 @@ scenario "iOS register demo app" {
         id    = "welcome.title"
         value = "Tales Demo"
       }
+    }
+    capture {
+      password          = generate("ios_register_password")
+      mismatch_password = generate("ios_register_password")
     }
   }
 
@@ -83,12 +99,12 @@ scenario "iOS register demo app" {
       }
       input_text {
         id     = "register.password"
-        value  = "ValidPass123!"
+        value  = result.launch.password
         secure = true
       }
       input_text {
         id     = "register.repeat_password"
-        value  = "ValidPass123!"
+        value  = result.launch.password
         secure = true
       }
       tap {
@@ -159,7 +175,7 @@ scenario "iOS register demo app" {
       }
       input_text {
         id     = "register.repeat_password"
-        value  = "Different123!"
+        value  = result.launch.mismatch_password
         secure = true
       }
       tap {
@@ -192,7 +208,7 @@ scenario "iOS register demo app" {
       }
       input_text {
         id     = "register.repeat_password"
-        value  = "ValidPass123!"
+        value  = result.launch.password
         secure = true
       }
       tap {
