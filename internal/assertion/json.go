@@ -8,11 +8,11 @@ import (
 
 // Equal checks exact value equality with matcher support.
 func Equal(path string, expected, actual cty.Value) error {
-	if name, args, ok := isMatcher(expected); ok {
-		if name == matcherOptional || name == matcherRequired {
-			return Equal(path, args["value"], actual)
-		}
+	if _, inner, ok := fieldWrapper(expected); ok {
+		return Equal(path, inner, actual)
+	}
 
+	if name, args, ok := isMatcher(expected); ok {
 		return applyMatcher(name, args, actual, path)
 	}
 
@@ -25,11 +25,11 @@ func Equal(path string, expected, actual cty.Value) error {
 
 // MatchJSON performs JSON assertion with partial object semantics by default.
 func MatchJSON(expected, actual cty.Value, strict bool, path string) error {
-	if name, args, ok := isMatcher(expected); ok {
-		if name == matcherOptional || name == matcherRequired {
-			return MatchJSON(args["value"], actual, strict, path)
-		}
+	if _, inner, ok := fieldWrapper(expected); ok {
+		return MatchJSON(inner, actual, strict, path)
+	}
 
+	if name, args, ok := isMatcher(expected); ok {
 		return applyMatcher(name, args, actual, path)
 	}
 
@@ -66,14 +66,15 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 	}
 
 	expectedMap := expected.AsValueMap()
-
 	actualMap := actual.AsValueMap()
+	allowedKeys := make(map[string]struct{}, len(expectedMap))
+
 	for key, expVal := range expectedMap {
 		actVal, ok := actualMap[key]
-		isOpt, isReq, inner := unwrapFieldMatcher(expVal)
+		kind, inner, isWrap := fieldWrapper(expVal)
 
 		if !ok {
-			if isOpt {
+			if isWrap && kind == matcherOptional {
 				continue
 			}
 
@@ -88,8 +89,10 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 			return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "missing required field"}
 		}
 
+		allowedKeys[key] = struct{}{}
+
 		target := expVal
-		if isOpt || isReq {
+		if isWrap {
 			target = inner
 		}
 
@@ -98,8 +101,12 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 		}
 	}
 
-	if strict && len(actualMap) != len(expectedMap) {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "object has extra fields"}
+	if strict {
+		for key := range actualMap {
+			if _, ok := allowedKeys[key]; !ok {
+				return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("object has unexpected field %q", key)}
+			}
+		}
 	}
 
 	return nil
