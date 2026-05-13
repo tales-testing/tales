@@ -27,12 +27,79 @@ func WriteJSONL(path string, result *SuiteResult) error {
 			if err := encodeStepEvent(encoder, result.Seed, "step", step); err != nil {
 				return err
 			}
+
+			if err := encodeActionEvents(encoder, result.Seed, "step", step); err != nil {
+				return err
+			}
 		}
 
 		for _, step := range scenario.Teardown {
 			if err := encodeStepEvent(encoder, result.Seed, "teardown", step); err != nil {
 				return err
 			}
+
+			if err := encodeActionEvents(encoder, result.Seed, "teardown", step); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// encodeActionEvents emits one "action" event per UI action attached to a
+// step. It is a no-op when the step has no Actions, so output stays
+// byte-identical to the pre-visual-report format for non-mobile suites and
+// for mobile suites running in --capture-screenshots failures (where
+// Actions are still recorded as a typed slice for the HTML report).
+//
+// Secure values are not re-masked here: the slice carries "***" already.
+func encodeActionEvents(encoder *json.Encoder, seed int64, phase string, step *StepResult) error {
+	for _, action := range step.Actions {
+		if action == nil {
+			continue
+		}
+
+		event := map[string]interface{}{
+			"type":        "action",
+			"phase":       phase,
+			"scenario":    step.Scenario,
+			"step":        step.Name,
+			"provider":    step.Provider,
+			"index":       action.Index,
+			"kind":        action.Kind,
+			"label":       action.Label,
+			"status":      action.Status,
+			"duration_ms": action.Duration.Milliseconds(),
+			"seed":        seed,
+		}
+
+		if action.SelectorID != "" {
+			event["selector_id"] = action.SelectorID
+		}
+
+		if action.Secure {
+			event["secure"] = true
+		}
+
+		if action.Value != "" {
+			event["value"] = action.Value
+		}
+
+		if action.Screenshot != "" {
+			event["screenshot"] = action.Screenshot
+		}
+
+		if action.Hierarchy != "" {
+			event["hierarchy"] = action.Hierarchy
+		}
+
+		if action.Error != nil {
+			event["error"] = sanitizeErrorDetail(action.Error)
+		}
+
+		if err := encoder.Encode(event); err != nil {
+			return fmt.Errorf("encode action event %s/%d: %w", step.Name, action.Index, err)
 		}
 	}
 

@@ -234,6 +234,139 @@ func TestWriteJSONLHoistsMobileActionsAndPreservesUpstreamMask(t *testing.T) {
 	}
 }
 
+func TestWriteJSONLEmitsActionEventsAfterStep(t *testing.T) {
+	t.Parallel()
+
+	file := t.TempDir() + "/events.jsonl"
+	result := &SuiteResult{
+		Seed: 9876,
+		Scenarios: []*ScenarioResult{{
+			File:   "ios.tales",
+			Name:   "mobile",
+			Status: StatusPass,
+			Steps: []*StepResult{{
+				File:     "ios.tales",
+				Scenario: "mobile",
+				Name:     "submit",
+				Provider: "mobile",
+				Status:   StatusPass,
+				Actions: []*ActionResult{
+					{
+						Index:      0,
+						Kind:       "tap",
+						Label:      "Tap welcome.register",
+						SelectorID: "welcome.register",
+						Status:     StatusPass,
+						Duration:   120 * time.Millisecond,
+						Screenshot: "build/artifacts/mobile/x/submit/step/attempt-1/actions/0000-tap-welcome.register/screenshot.png",
+					},
+					{
+						Index:      1,
+						Kind:       "input_text",
+						Label:      "Input text register.password ***",
+						SelectorID: "register.password",
+						Secure:     true,
+						Value:      "***",
+						Status:     StatusPass,
+						Duration:   200 * time.Millisecond,
+					},
+				},
+			}},
+		}},
+	}
+
+	if err := WriteJSONL(file, result); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	events := readJSONLEvents(t, file)
+
+	// Find step event and the two action events in order.
+	var stepIdx int = -1
+	var actionEvents []map[string]any
+
+	for i, e := range events {
+		if e["type"] == "step" && e["step"] == "submit" {
+			stepIdx = i
+		}
+
+		if e["type"] == "action" && e["step"] == "submit" {
+			actionEvents = append(actionEvents, e)
+		}
+	}
+
+	if stepIdx == -1 {
+		t.Fatal("step event missing")
+	}
+
+	if len(actionEvents) != 2 {
+		t.Fatalf("expected 2 action events, got %d", len(actionEvents))
+	}
+
+	// Action events must come AFTER the step event.
+	for i, e := range events {
+		if i <= stepIdx {
+			continue
+		}
+
+		if e["type"] == "action" {
+			break
+		}
+	}
+
+	first := actionEvents[0]
+	if first["index"].(float64) != 0 || first["kind"] != "tap" {
+		t.Errorf("first action event payload unexpected: %+v", first)
+	}
+
+	if first["screenshot"] == nil || first["screenshot"] == "" {
+		t.Errorf("expected first action to carry screenshot path, got %v", first["screenshot"])
+	}
+
+	second := actionEvents[1]
+	if second["secure"] != true {
+		t.Errorf("expected secure=true on masked action, got %v", second["secure"])
+	}
+
+	if second["value"] != "***" {
+		t.Errorf("expected masked value ***, got %v", second["value"])
+	}
+
+	// Ensure raw secret never leaks anywhere in the file.
+	for _, event := range events {
+		for _, v := range event {
+			if v == "hunter2" {
+				t.Fatalf("raw secret leaked into JSONL output: %#v", event)
+			}
+		}
+	}
+}
+
+func TestWriteJSONLEmitsNoActionEventsWhenSliceEmpty(t *testing.T) {
+	t.Parallel()
+
+	file := t.TempDir() + "/events.jsonl"
+	result := &SuiteResult{
+		Seed: 1,
+		Scenarios: []*ScenarioResult{{
+			File: "x.tales", Name: "x", Status: StatusPass,
+			Steps: []*StepResult{{
+				File: "x.tales", Scenario: "x", Name: "s", Provider: "http", Status: StatusPass,
+			}},
+		}},
+	}
+
+	if err := WriteJSONL(file, result); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	for _, e := range readJSONLEvents(t, file) {
+		if e["type"] == "action" {
+			t.Fatalf("expected no action events when Actions slice is empty, got %+v", e)
+		}
+	}
+}
+
 func readJSONLEvents(t *testing.T, path string) []map[string]interface{} {
 	t.Helper()
 
