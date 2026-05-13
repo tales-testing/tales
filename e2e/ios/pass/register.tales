@@ -12,12 +12,6 @@ config {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
           external = false
-          // Embedded mode: project/scheme omitted on purpose so Tales
-          // extracts the bundled driver source from the binary, builds
-          // it once into ~/Library/Caches/tales/apple-driver/<key>/, and
-          // reuses the cached build on subsequent runs. The released
-          // tales binary therefore does not require the repository at
-          // runtime.
         }
       }
     }
@@ -29,16 +23,8 @@ generator "email" "ios_email" {
   domain = "example.com"
 }
 
-generator "password" "ios_password" {
-  length      = 16
-  min_upper   = 1
-  min_lower   = 1
-  min_digit   = 1
-  min_special = 1
-}
-
 scenario "iOS register demo app" {
-  tags = ["ios", "mobile", "demo"]
+  tags = ["ios", "mobile", "demo", "register"]
 
   step "mobile" "launch" {
     platform = "ios"
@@ -48,8 +34,11 @@ scenario "iOS register demo app" {
     }
     expect {
       visible {
-        id      = "welcome.register"
+        id      = "welcome.signin"
         timeout = "20s"
+      }
+      visible {
+        id = "welcome.register"
       }
       text {
         id    = "welcome.title"
@@ -82,8 +71,8 @@ scenario "iOS register demo app" {
     }
   }
 
-  step "mobile" "submit_register" {
-    depends_on = ["clear_prefill"]
+  step "mobile" "fill_form" {
+    depends_on = ["open_register"]
 
     platform = "ios"
     target   = "iphone"
@@ -94,8 +83,16 @@ scenario "iOS register demo app" {
       }
       input_text {
         id     = "register.password"
-        value  = generate("ios_password")
+        value  = "ValidPass123!"
         secure = true
+      }
+      input_text {
+        id     = "register.repeat_password"
+        value  = "ValidPass123!"
+        secure = true
+      }
+      tap {
+        id = "register.accept_terms"
       }
     }
     expect {
@@ -112,78 +109,161 @@ scenario "iOS register demo app" {
     }
   }
 
-  step "mobile" "clear_prefill" {
-    depends_on = ["open_register"]
+  step "mobile" "submit_bad_email" {
+    depends_on = ["fill_form"]
 
     platform = "ios"
     target   = "iphone"
     actions {
-      input_text {
-        id    = "register.locale"
-        value = "fr_FR"
-      }
       clear_text {
-        id = "register.locale"
+        id = "register.email"
+      }
+      input_text {
+        id    = "register.email"
+        value = "foo@bar.com"
+      }
+      tap {
+        id = "register.submit"
+      }
+      wait_visible {
+        id      = "register.error"
+        timeout = "5s"
       }
     }
     expect {
-      disabled {
-        id = "register.submit"
+      visible {
+        id = "register.screen"
+      }
+      text {
+        id    = "register.error"
+        value = contains("@example.com")
       }
     }
   }
 
-  step "mobile" "submit_and_wait_verification" {
-    depends_on = ["submit_register"]
+  step "mobile" "submit_password_mismatch" {
+    depends_on = ["submit_bad_email"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      clear_text {
+        id = "register.email"
+      }
+      input_text {
+        id    = "register.email"
+        value = result.fill_form.email
+      }
+      clear_text {
+        id = "register.repeat_password"
+      }
+      input_text {
+        id     = "register.repeat_password"
+        value  = "Different123!"
+        secure = true
+      }
+      tap {
+        id = "register.submit"
+      }
+      wait_visible {
+        id      = "register.error"
+        timeout = "5s"
+      }
+    }
+    expect {
+      visible {
+        id = "register.screen"
+      }
+      text {
+        id    = "register.error"
+        value = contains("do not match")
+      }
+    }
+  }
+
+  step "mobile" "submit_no_terms" {
+    depends_on = ["submit_password_mismatch"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      clear_text {
+        id = "register.repeat_password"
+      }
+      input_text {
+        id     = "register.repeat_password"
+        value  = "ValidPass123!"
+        secure = true
+      }
+      tap {
+        id = "register.accept_terms"
+      }
+      tap {
+        id = "register.submit"
+      }
+      wait_visible {
+        id      = "register.error"
+        timeout = "5s"
+      }
+    }
+    expect {
+      visible {
+        id = "register.screen"
+      }
+      text {
+        id    = "register.error"
+        value = contains("accept the terms")
+      }
+    }
+  }
+
+  step "mobile" "submit_success" {
+    depends_on = ["submit_no_terms"]
 
     platform = "ios"
     target   = "iphone"
     actions {
       tap {
+        id = "register.accept_terms"
+      }
+      tap {
         id = "register.submit"
       }
-      wait_not_visible {
-        id      = "register.loading"
-        timeout = "5s"
+      wait_visible {
+        id      = "tabbar.feed"
+        timeout = "15s"
       }
       wait_visible {
-        id      = "verify.screen"
+        id      = "feed.screen"
         timeout = "10s"
       }
     }
     expect {
       visible {
-        id      = "verify.code"
-        timeout = "10s"
+        id      = "feed.list"
+        timeout = "5s"
       }
     }
   }
 
-  step "mobile" "verify_account" {
-    depends_on = ["submit_and_wait_verification"]
+  step "mobile" "verify_profile_email" {
+    depends_on = ["submit_success"]
 
     platform = "ios"
     target   = "iphone"
     actions {
-      input_text {
-        id    = "verify.code"
-        value = "A1B2C3"
-      }
       tap {
-        id = "verify.submit"
+        id = "tabbar.profile"
       }
       wait_visible {
-        id = "home.screen"
+        id      = "profile.screen"
+        timeout = "5s"
       }
     }
     expect {
       text {
-        id    = "home.title"
-        value = "Welcome"
-      }
-      text {
-        id    = "home.email"
-        value = result.submit_register.email
+        id    = "profile.email"
+        value = result.fill_form.email
       }
     }
   }
