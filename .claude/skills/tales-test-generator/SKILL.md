@@ -214,6 +214,14 @@ capture {
 - On failure Tales writes
   `build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-<n>/{screenshot.png,hierarchy.json}`
   and surfaces them in reports — do not encode these paths into the suite.
+- For a visual replay of the run, exercise the suite with
+  `tales test ./suite --report-html build/reports/visual.html`. This sets
+  `--capture-screenshots actions` automatically (one screenshot per UI
+  action). Other modes: `none` (strict, no captures even on failure),
+  `failures` (legacy step-level on failure only), `steps` (one capture per
+  step). See [docs/reports/visual.md](../../../docs/reports/visual.md).
+  Secure values flagged with `secure = true` are masked to `"***"` in every
+  rendered output (HTML, JSONL action events, console).
 - Validation: prefer `tales test ./suite --seed 1234 --parallel 1` for mobile
   suites; bump parallelism only when targets are distinct.
 
