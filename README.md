@@ -302,6 +302,49 @@ Matchers:
 - `is_object()`
 - `one_of(values)`
 - `can(expression)`
+- `optional(value)` — field-level matcher: passes when the key is absent, or
+  when present and the inner expectation matches.
+- `required(value)` — field-level matcher: explicit version of the default
+  behavior. Fails when the key is absent, otherwise delegates to the inner
+  expectation. Useful for readability when paired with `optional(...)`.
+- `any()` — value matcher: matches any present value (`null`, string, number,
+  bool, array, object). Does **not** make the field optional by itself —
+  combine with `optional(any())` to also accept omitted keys.
+
+### Optional fields (ConnectRPC / protobuf JSON)
+
+ConnectRPC and protobuf JSON often omit fields holding their default value
+(unspecified enums, empty arrays, empty strings, ...). Tales remains
+strict-by-default: a field declared in `expect.json` must be present.
+Wrap the expected value with `optional(...)` to allow the response to omit it:
+
+```hcl
+expect {
+  status = 200
+
+  json = {
+    id           = required(is_string())
+    role         = optional("ROLE_UNSPECIFIED")  # absent or equal to default
+    permissions  = optional([])                  # absent or empty array
+    display_name = optional("")                  # absent or empty string
+    metadata     = optional(any())               # absent or any value
+  }
+}
+```
+
+Semantics:
+
+- Object matching stays partial: extra fields on the actual response are
+  ignored unless `strict = true`.
+- Fields are required by default. `required(...)` is a no-op wrapper that
+  exists for readability when other fields in the same block use
+  `optional(...)`.
+- `optional(expected)` passes when the key is absent. When the key is present
+  the actual value must match `expected`.
+- `optional("")` does **not** match an actual `null`. Use `optional(null)` to
+  accept either `null` or a missing key.
+- `any()` alone still requires the key to be present. Use `optional(any())`
+  to also accept omitted keys.
 
 ## Determinism
 
