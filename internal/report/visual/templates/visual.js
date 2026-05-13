@@ -23,9 +23,11 @@
   var MIN_DURATION_MS = 500;
   var MAX_DURATION_MS = 3000;
 
+  var PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true"><path d="M7 4 L20 12 L7 20 Z"/></svg>';
+  var PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true"><rect x="6" y="5" width="3.5" height="14"/><rect x="14.5" y="5" width="3.5" height="14"/></svg>';
+
   var state = {
     scenarioIndex: 0,
-    stepIndex: 0,
     actionIndex: 0,
     playing: false,
     speed: 1,
@@ -36,7 +38,6 @@
 
   var els = {
     scenarioSelect: $('scenario-select'),
-    stepSelect: $('step-select'),
     overallStatus: $('overall-status'),
     screenshot: $('screenshot'),
     placeholder: $('screenshot-placeholder'),
@@ -54,7 +55,6 @@
   function init() {
     renderHeader();
     populateScenarios();
-    populateSteps();
     renderTimeline();
     renderMeta();
     wireControls();
@@ -101,27 +101,6 @@
     els.scenarioSelect.value = String(state.scenarioIndex);
     els.scenarioSelect.addEventListener('change', function (e) {
       state.scenarioIndex = parseInt(e.target.value, 10) || 0;
-      state.stepIndex = 0;
-      state.actionIndex = 0;
-      populateSteps();
-      renderTimeline();
-      renderMeta();
-    });
-  }
-
-  function populateSteps() {
-    els.stepSelect.innerHTML = '';
-    var sc = currentScenario();
-    var steps = sc && sc.steps ? sc.steps : [];
-    for (var i = 0; i < steps.length; i++) {
-      var opt = document.createElement('option');
-      opt.value = String(i);
-      opt.textContent = steps[i].name + ' — ' + steps[i].status;
-      els.stepSelect.appendChild(opt);
-    }
-    els.stepSelect.value = String(state.stepIndex);
-    els.stepSelect.addEventListener('change', function (e) {
-      state.stepIndex = parseInt(e.target.value, 10) || 0;
       state.actionIndex = 0;
       renderTimeline();
       renderMeta();
@@ -132,32 +111,92 @@
     return scenarios[state.scenarioIndex];
   }
 
-  function currentStep() {
+  // currentActions returns the scenario's actions flattened across steps,
+  // preserving execution order: every step runs its actions sequentially,
+  // and within a single scenario the runner serializes mobile steps. Each
+  // entry carries the owning step so the timeline can group rows by step.
+  function currentActions() {
     var sc = currentScenario();
     if (!sc || !sc.steps) {
-      return null;
+      return [];
     }
-    return sc.steps[state.stepIndex] || null;
-  }
 
-  function currentActions() {
-    var st = currentStep();
-    return st && st.actions ? st.actions : [];
+    var out = [];
+    for (var i = 0; i < sc.steps.length; i++) {
+      var step = sc.steps[i];
+      var actions = (step && step.actions) ? step.actions : [];
+      for (var j = 0; j < actions.length; j++) {
+        out.push({ step: step, stepIndex: i, action: actions[j], actionIndex: j });
+      }
+    }
+    return out;
   }
 
   function currentAction() {
-    return currentActions()[state.actionIndex] || null;
+    var entry = currentActions()[state.actionIndex];
+    return entry ? entry.action : null;
   }
 
   function renderTimeline() {
     els.timeline.innerHTML = '';
-    var actions = currentActions();
-    for (var i = 0; i < actions.length; i++) {
-      els.timeline.appendChild(renderActionRow(actions[i], i));
+    var sc = currentScenario();
+    if (!sc || !sc.steps) {
+      updateActiveRow();
+      renderScreenshot();
+      updateProgress();
+      return;
     }
+
+    // Single pass over the steps in execution order. We emit a header for
+    // every step — even those that recorded zero actions (e.g. `launch`
+    // with only a launch block, or a `terminate` teardown) — so the
+    // timeline reflects everything that ran, in the order it ran. The
+    // flat action index matches currentActions() so navigation stays in
+    // sync.
+    var flatIndex = 0;
+    for (var i = 0; i < sc.steps.length; i++) {
+      var step = sc.steps[i];
+      if (!step) {
+        continue;
+      }
+
+      els.timeline.appendChild(renderStepHeader(step));
+
+      var actions = step.actions || [];
+      for (var j = 0; j < actions.length; j++) {
+        els.timeline.appendChild(renderActionRow(actions[j], flatIndex));
+        flatIndex++;
+      }
+    }
+
     updateActiveRow();
     renderScreenshot();
     updateProgress();
+  }
+
+  function renderStepHeader(step) {
+    var li = document.createElement('li');
+    li.className = 'step-header';
+    li.setAttribute('role', 'presentation');
+
+    var name = document.createElement('span');
+    name.className = 'step-name';
+    name.textContent = step.name + (step.phase === 'teardown' ? ' · teardown' : '');
+
+    var meta = document.createElement('span');
+    meta.className = 'step-meta';
+    var status = document.createElement('span');
+    status.className = 'status-pill ' + (step.status || '');
+    status.textContent = step.status || 'unknown';
+    var duration = document.createElement('span');
+    duration.className = 'step-duration';
+    duration.textContent = formatDuration(step.duration_ms);
+
+    meta.appendChild(status);
+    meta.appendChild(duration);
+    li.appendChild(name);
+    li.appendChild(meta);
+    return li;
   }
 
   function renderActionRow(action, idx) {
@@ -236,13 +275,15 @@
   }
 
   function renderMeta() {
-    var action = currentAction();
+    var entry = currentActions()[state.actionIndex];
+    var action = entry ? entry.action : null;
     els.meta.innerHTML = '';
     if (!action) {
       return;
     }
 
     var fields = [
+      ['Step', entry.step ? entry.step.name : '—'],
       ['Kind', action.kind],
       ['Label', action.label],
       ['Selector', action.selector_id || '—'],
@@ -304,13 +345,13 @@
 
   function play() {
     state.playing = true;
-    els.play.textContent = '❚❚';
+    els.play.innerHTML = PAUSE_SVG;
     schedule();
   }
 
   function pause() {
     state.playing = false;
-    els.play.textContent = '▶';
+    els.play.innerHTML = PLAY_SVG;
     if (state.timer) {
       clearTimeout(state.timer);
       state.timer = null;

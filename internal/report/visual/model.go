@@ -12,6 +12,7 @@ package visual
 
 import (
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/hyperxlab/tales/internal/report"
@@ -110,23 +111,51 @@ func buildScenario(sc *report.ScenarioResult, htmlDir string) Scenario {
 		Steps:      make([]Step, 0, len(sc.Steps)+len(sc.Teardown)),
 	}
 
-	for _, st := range sc.Steps {
-		if st == nil {
-			continue
-		}
-
+	// The runner sorts sc.Steps alphabetically for stable console / JSONL
+	// output; the visual replay wants execution order instead so the user
+	// scrolls through the timeline in the order the test actually ran. Sort
+	// by StartedAt (populated by the runner before each step starts). Zero
+	// StartedAt sinks to the bottom — never crashes when the field is unset.
+	for _, st := range stepsInExecutionOrder(sc.Steps) {
 		scenario.Steps = append(scenario.Steps, buildStep(st, htmlDir))
 	}
 
-	for _, st := range sc.Teardown {
-		if st == nil {
-			continue
-		}
-
+	for _, st := range stepsInExecutionOrder(sc.Teardown) {
 		scenario.Steps = append(scenario.Steps, buildStep(st, htmlDir))
 	}
 
 	return scenario
+}
+
+func stepsInExecutionOrder(in []*report.StepResult) []*report.StepResult {
+	out := make([]*report.StepResult, 0, len(in))
+
+	for _, st := range in {
+		if st == nil {
+			continue
+		}
+
+		out = append(out, st)
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i].StartedAt, out[j].StartedAt
+		if a.IsZero() && b.IsZero() {
+			return false
+		}
+
+		if a.IsZero() {
+			return false
+		}
+
+		if b.IsZero() {
+			return true
+		}
+
+		return a.Before(b)
+	})
+
+	return out
 }
 
 func buildStep(st *report.StepResult, htmlDir string) Step {

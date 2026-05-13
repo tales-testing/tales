@@ -272,6 +272,9 @@ func (r *Runner) executeStepInPhase(ctx context.Context, evaluator *lang.Evaluat
 
 		if attemptResult.Status == report.StatusPass || attempt == retry.Attempts {
 			attemptResult.Duration = time.Since(start)
+			if attemptResult.StartedAt.IsZero() {
+				attemptResult.StartedAt = start
+			}
 
 			return attemptResult
 		}
@@ -289,11 +292,14 @@ func (r *Runner) executeStepInPhase(ctx context.Context, evaluator *lang.Evaluat
 
 	if lastResult != nil {
 		lastResult.Duration = time.Since(start)
+		if lastResult.StartedAt.IsZero() {
+			lastResult.StartedAt = start
+		}
 
 		return lastResult
 	}
 
-	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusFail, Attempts: retry.Attempts, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: "runtime", Message: "step was not executed"}}
+	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusFail, Attempts: retry.Attempts, StartedAt: start, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: "runtime", Message: "step was not executed"}}
 }
 
 func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string, attempt int) *report.StepResult {

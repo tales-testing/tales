@@ -19,8 +19,8 @@ import (
 const mobileProviderType = "mobile"
 
 func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string, attempt int) *report.StepResult {
-	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusPass}
 	start := time.Now()
+	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusPass, StartedAt: start}
 
 	if step.Mobile == nil {
 		stepReport.Status = report.StatusFail
