@@ -41,12 +41,13 @@ The HTML follows the brief literally — a macOS-Setup aesthetic:
 
 - dark gradient backdrop, centered light card with soft shadow
 - screenshot pane on the left
-- vertical action timeline on the right, with the active action centered and
+- vertical action timeline on the right, grouped by step: each step
+  contributes a header (name + status pill + duration) followed by its
+  actions in execution order; the active action is centered and
   highlighted, previous actions above, future actions below
 - playback controls below: previous / play-pause / next, speed selector
   (0.5×, 0.75×, 1×, 1.5×, 2×), progress bar
-- header has a scenario selector and a step selector plus an overall status
-  pill
+- header has a scenario selector plus an overall status pill
 
 Keyboard shortcuts:
 
@@ -146,9 +147,10 @@ several seconds per scenario. Recommendations:
 
 - CI: stick to `failures` unless you specifically want the visual replay.
 - Local debugging: run `--capture-screenshots actions` only when needed.
-- Capture errors never mask the underlying action error: they land in
-  `step.Response["capture_warning"]` (if present) and the action's own
-  result is reported faithfully.
+- Capture errors never mask the underlying action error. They are
+  silently dropped: the action's status, duration, and error reflect
+  the real operation, while the missing screenshot / hierarchy fields
+  on that action signal that the capture itself failed.
 
 ## Known limitations (v1)
 
