@@ -56,6 +56,11 @@ final class AuthStore: ObservableObject {
     func register(email: String, password: String, repeatPassword: String, acceptTerms: Bool) {
         registerError = ""
 
+        if email.isEmpty || !email.contains("@") {
+            registerError = "Enter a valid email"
+            return
+        }
+
         if !email.lowercased().hasSuffix("@example.com") {
             registerError = "Use an @example.com email"
             return
