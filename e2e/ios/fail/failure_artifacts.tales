@@ -32,7 +32,7 @@ scenario "iOS failure produces artifacts" {
     }
     expect {
       visible {
-        id      = "welcome.register"
+        id      = "welcome.signin"
         timeout = "20s"
       }
     }
