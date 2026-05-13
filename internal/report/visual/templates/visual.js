@@ -204,7 +204,12 @@
     li.className = 'action-row ' + (action.status || '');
     li.dataset.index = String(idx);
     li.setAttribute('role', 'option');
-    li.tabIndex = 0;
+
+    // Roving tabindex: only the active row participates in the tab
+    // sequence. Other rows can still be reached via the arrow keys
+    // (which the global key handler maps to selectAction). This keeps
+    // long timelines from exploding the tab stop count.
+    li.tabIndex = -1;
 
     var index = document.createElement('div');
     index.className = 'index';
@@ -254,7 +259,9 @@
   function updateActiveRow() {
     var rows = els.timeline.querySelectorAll('.action-row');
     for (var i = 0; i < rows.length; i++) {
-      rows[i].classList.toggle('active', i === state.actionIndex);
+      var isActive = i === state.actionIndex;
+      rows[i].classList.toggle('active', isActive);
+      rows[i].tabIndex = isActive ? 0 : -1;
     }
     var active = rows[state.actionIndex];
     if (active && active.scrollIntoView) {
@@ -404,15 +411,35 @@
   }
 
   function onKey(e) {
-    if (e.target && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) {
+    if (isInteractiveTarget(e.target)) {
       return;
     }
     switch (e.key) {
       case ' ': e.preventDefault(); togglePlay(); break;
-      case 'ArrowRight': selectAction(state.actionIndex + 1); break;
-      case 'ArrowLeft': selectAction(state.actionIndex - 1); break;
-      case 'Home': selectAction(0); break;
-      case 'End': selectAction(currentActions().length - 1); break;
+      case 'ArrowRight': e.preventDefault(); selectAction(state.actionIndex + 1); break;
+      case 'ArrowLeft': e.preventDefault(); selectAction(state.actionIndex - 1); break;
+      case 'Home': e.preventDefault(); selectAction(0); break;
+      case 'End': e.preventDefault(); selectAction(currentActions().length - 1); break;
     }
+  }
+
+  // isInteractiveTarget returns true when the event came from a control
+  // that handles its own keys (button activation on Space, text fields,
+  // anchors, etc.). The global shortcut handler must defer to those —
+  // otherwise Tab + Space on the Play button calls togglePlay() twice,
+  // and Tab + Space on Prev/Next surprises the user.
+  function isInteractiveTarget(node) {
+    if (!node || !node.tagName) {
+      return false;
+    }
+    switch (node.tagName) {
+      case 'BUTTON':
+      case 'SELECT':
+      case 'INPUT':
+      case 'TEXTAREA':
+      case 'A':
+        return true;
+    }
+    return node.isContentEditable === true;
   }
 })();
