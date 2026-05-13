@@ -1,0 +1,102 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+scenario "iOS login rejects bad@example.com" {
+  tags = ["ios", "mobile", "demo", "login", "auth-rejected"]
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    expect {
+      visible {
+        id      = "welcome.signin"
+        timeout = "20s"
+      }
+    }
+  }
+
+  step "mobile" "open_login" {
+    depends_on = ["launch"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id      = "login.screen"
+        timeout = "5s"
+      }
+    }
+    expect {
+      disabled {
+        id = "login.submit"
+      }
+    }
+  }
+
+  step "mobile" "submit_bad_account" {
+    depends_on = ["open_login"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "login.email"
+        value = "bad@example.com"
+      }
+      input_text {
+        id     = "login.password"
+        value  = "AnyPassword1!"
+        secure = true
+      }
+      tap {
+        id = "login.submit"
+      }
+      wait_visible {
+        id      = "login.error"
+        timeout = "5s"
+      }
+    }
+    expect {
+      visible {
+        id = "login.screen"
+      }
+      text {
+        id    = "login.error"
+        value = "Account locked. Contact support."
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}
