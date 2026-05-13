@@ -89,8 +89,9 @@ Use this skill when asked to:
 - Response headers are accessible by key, for example `response.headers["Content-Type"]`; lower-case lookup such as `response.headers["content-type"]` is supported for HTTP responses.
 - `retry.attempts` must be `>= 1`.
 - `retry.interval` must be a valid Go duration string such as `"100ms"`, `"500ms"`, or `"2s"`.
-- Matchers/functions available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`, `regex_find`, `url_encode`.
+- Matchers/functions available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`, `regex_find`, `url_encode`, `optional`, `required`, `any`.
 - Use `regex_find(value, pattern)` for full matches and `regex_find(value, pattern, group)` for capture groups.
+- For protobuf/ConnectRPC payloads that may omit fields holding default values, wrap the expected value with `optional(...)` (e.g. `role = optional("ROLE_UNSPECIFIED")`, `permissions = optional([])`, `metadata = optional(any())`). `required(...)` is a readability wrapper for fields that must be present. `any()` matches any value but does not make the field optional — combine with `optional(any())` if the key may be absent.
 
 ## Mobile provider (iOS V1)
 

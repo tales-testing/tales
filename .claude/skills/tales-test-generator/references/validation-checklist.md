@@ -28,6 +28,7 @@ Run this checklist before considering a `.tales` suite done.
 - Extracted tokens/codes use `regex_find(...)` with an explicit capture group when useful
 - HTTP response header captures use `response.headers["Header-Name"]`; lower-case lookup should also work for HTTP responses
 - Do not use `coalesce(...)` unless the local runtime explicitly documents lazy fallback support
+- For protobuf/ConnectRPC payloads that may omit default-valued fields (`""`, `0`, `[]`, unspecified enums), use `optional(...)` around the expected value; reserve `required(...)` as an explicit readability wrapper and `any()` for "must be present, any value"
 
 ## 4) Mobile (iOS) specifics
 
