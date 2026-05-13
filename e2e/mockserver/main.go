@@ -326,8 +326,10 @@ func (s *serverState) deletePost(w http.ResponseWriter, req *http.Request) {
 // connectGetUser simulates a ConnectRPC / protobuf JSON response where
 // fields holding default values may be omitted from the JSON payload.
 // The `mode` field in the request body controls which shape is returned:
-//   - "minimal": id only (mimicking omitted defaults)
-//   - "full": id plus default-valued role, permissions, display_name, metadata.
+//   - "minimal": id only (mimicking omitted default-valued fields).
+//   - "full":    id plus default-valued role ("ROLE_UNSPECIFIED"),
+//     permissions ([]), display_name (""), and a metadata object with a
+//     populated value — used to exercise optional(any()) on a present key.
 func (s *serverState) connectGetUser(w http.ResponseWriter, req *http.Request) {
 	if req.Header.Get("Connect-Protocol-Version") == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "missing Connect-Protocol-Version"})
