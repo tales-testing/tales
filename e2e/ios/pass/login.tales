@@ -132,7 +132,11 @@ scenario "iOS login happy path" {
     }
   }
 
-  step "mobile" "scroll_feed" {
+  # The 50-item feed list exercises lazy realization; this step only asserts
+  # the first realized item is in the tree. A real scroll requires a
+  # scroll/swipe DSL action that the iOS driver does not yet expose — see
+  # the open issue for tracking.
+  step "mobile" "wait_feed_item" {
     depends_on = ["submit_login"]
 
     platform = "ios"
@@ -152,7 +156,7 @@ scenario "iOS login happy path" {
   }
 
   step "mobile" "open_detail" {
-    depends_on = ["scroll_feed"]
+    depends_on = ["wait_feed_item"]
 
     platform = "ios"
     target   = "iphone"
