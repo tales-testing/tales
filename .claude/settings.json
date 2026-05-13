@@ -3,7 +3,7 @@
     "allow": [
       "Bash(gh pr *)",
       "Bash(gh api *)",
-      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
       "Bash(git add *)",
       "Bash(xcodebuild *)",
       "Edit(/.claude/skills/tales-test-generator/**)"
