@@ -2,9 +2,10 @@ package model
 
 // Scenario defines executable test flow.
 type Scenario struct {
-	Name     string
-	Tags     []string
-	File     string
-	Steps    []*Step
-	Teardown []*Step
+	Name      string
+	Tags      []string
+	File      string
+	Steps     []*Step
+	Teardown  []*Step
+	SkipRules []SkipRule
 }

@@ -89,12 +89,16 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 			teardownSteps = append(teardownSteps, steps...)
 		}
 
+		skipRules, scSkipDiags := decodeSkipRules(path, sc.SkipIf, sc.SkipUnless)
+		diags = append(diags, scSkipDiags...)
+
 		suite.Scenarios = append(suite.Scenarios, &model.Scenario{
-			Name:     sc.Name,
-			Tags:     sc.Tags,
-			File:     path,
-			Steps:    normalSteps,
-			Teardown: teardownSteps,
+			Name:      sc.Name,
+			Tags:      sc.Tags,
+			File:      path,
+			Steps:     normalSteps,
+			Teardown:  teardownSteps,
+			SkipRules: skipRules,
 		})
 	}
 
@@ -187,6 +191,10 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 				Detail:   fmt.Sprintf("Step %q has no provider label.", step.Name),
 			})
 		}
+
+		skipRules, skipDiags := decodeSkipRules(path, rs.SkipIf, rs.SkipUnless)
+		diags = append(diags, skipDiags...)
+		step.SkipRules = skipRules
 
 		steps = append(steps, step)
 	}
