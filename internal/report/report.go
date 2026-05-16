@@ -32,6 +32,9 @@ type ScenarioResult struct {
 	Teardown         []*StepResult
 	Failure          *ErrorDetail
 	TeardownFailures []*ErrorDetail
+	// SkipReason is set when Status == StatusSkip. Populated by scenario-
+	// level skip_if / skip_unless rules in the runtime; empty otherwise.
+	SkipReason string
 }
 
 // StepResult contains one step execution.
@@ -51,6 +54,11 @@ type StepResult struct {
 	Failure    *ErrorDetail
 	Artifacts  []Artifact
 	Actions    []*ActionResult
+	// SkipReason is set when Status == StatusSkip. Populated by step-
+	// level skip_if / skip_unless rules in the runtime, by the dependency
+	// cascade, or by teardown when its `when` predicate is false; empty
+	// otherwise.
+	SkipReason string
 }
 
 // ActionResult describes one UI action executed within a step (mobile today,
