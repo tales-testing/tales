@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -25,12 +26,17 @@ func main() {
 		Action: urfavecli.ShowAppHelp,
 	}
 	urfavecli.VersionPrinter = func(c *urfavecli.Context) {
-		_, _ = fmt.Fprintf(c.App.Writer, "%v version: %v (build: %v)\n", c.App.Name, c.App.Version, version.Get().BuildDate)
-		_, _ = fmt.Fprintf(c.App.Writer, "Go runtime version: %v\n", version.Get().GoVersion)
-		_, _ = fmt.Fprintf(c.App.Writer, "Platform: %v\n", version.Get().Platform)
+		printVersion(c.App.Writer, c.App.Name, version.Get())
 	}
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func printVersion(w io.Writer, appName string, info *version.Info) {
+	_, _ = fmt.Fprintf(w, "%v version: %v (build: %v)\n", appName, info.Version, info.BuildDate)
+	_, _ = fmt.Fprintf(w, "commit: %v\n", info.GitCommit)
+	_, _ = fmt.Fprintf(w, "Go runtime version: %v\n", info.GoVersion)
+	_, _ = fmt.Fprintf(w, "Platform: %v\n", info.Platform)
 }
