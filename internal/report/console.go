@@ -59,10 +59,11 @@ func PrintConsoleWithOptions(out io.Writer, result *SuiteResult, options Console
 
 	if _, err := fmt.Fprintf(
 		out,
-		"\n%s: scenarios %d passed / %d failed, steps %d passed / %d failed, skipped %d, duration %s, seed %d\n",
+		"\n%s: scenarios %d passed / %d failed / %d skipped, steps %d passed / %d failed, skipped %d, duration %s, seed %d\n",
 		summaryLabel,
 		stats.passedScenarios,
 		stats.failedScenarios,
+		stats.skippedScenarios,
 		stats.passedSteps,
 		stats.failedSteps,
 		stats.skippedSteps,
@@ -76,15 +77,16 @@ func PrintConsoleWithOptions(out io.Writer, result *SuiteResult, options Console
 }
 
 type consoleStats struct {
-	totalScenarios  int
-	totalSteps      int
-	currentScenario int
-	currentStep     int
-	passedScenarios int
-	failedScenarios int
-	passedSteps     int
-	failedSteps     int
-	skippedSteps    int
+	totalScenarios   int
+	totalSteps       int
+	currentScenario  int
+	currentStep      int
+	passedScenarios  int
+	failedScenarios  int
+	skippedScenarios int
+	passedSteps      int
+	failedSteps      int
+	skippedSteps     int
 }
 
 func newConsoleStats(result *SuiteResult) *consoleStats {
@@ -142,17 +144,10 @@ func (c colorPainter) colorizeStatus(value Status, rendered string) string {
 }
 
 func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *consoleStats, options ConsoleOptions, painter colorPainter) error {
-	if scenario.Status == StatusPass {
-		stats.passedScenarios++
-	} else {
-		stats.failedScenarios++
-	}
+	updateScenarioStats(stats, scenario.Status)
 
-	scenarioLabel := painter.paint(ansiCyan, "Scenario")
-	statusLabel := painter.status(scenario.Status)
-
-	if _, err := fmt.Fprintf(out, "%s %s (%s) %s in %s\n", scenarioLabel, scenario.Name, scenario.File, statusLabel, scenario.Duration); err != nil {
-		return fmt.Errorf("print scenario header: %w", err)
+	if err := printScenarioHeader(out, scenario, painter); err != nil {
+		return err
 	}
 
 	for _, step := range scenario.Steps {
@@ -237,6 +232,34 @@ func updateStepStats(stats *consoleStats, status Status) {
 	}
 }
 
+func updateScenarioStats(stats *consoleStats, status Status) {
+	switch status {
+	case StatusPass:
+		stats.passedScenarios++
+	case StatusSkip:
+		stats.skippedScenarios++
+	case StatusFail, StatusUnknown:
+		stats.failedScenarios++
+	}
+}
+
+func printScenarioHeader(out io.Writer, scenario *ScenarioResult, painter colorPainter) error {
+	scenarioLabel := painter.paint(ansiCyan, "Scenario")
+	statusLabel := painter.status(scenario.Status)
+
+	if _, err := fmt.Fprintf(out, "%s %s (%s) %s in %s\n", scenarioLabel, scenario.Name, scenario.File, statusLabel, scenario.Duration); err != nil {
+		return fmt.Errorf("print scenario header: %w", err)
+	}
+
+	if scenario.Status == StatusSkip && scenario.SkipReason != "" {
+		if _, err := fmt.Fprintf(out, "  reason: %s\n", scenario.SkipReason); err != nil {
+			return fmt.Errorf("print scenario skip reason: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func printStep(out io.Writer, label string, width int, step *StepResult, painter colorPainter) error {
 	statusLabel := painter.statusPadded(step.Status, 7)
 
@@ -247,6 +270,12 @@ func printStep(out io.Writer, label string, width int, step *StepResult, painter
 
 	if _, err := fmt.Fprintf(out, "  %s %-*s [%s] %s %s%s\n", label, width, step.Name, step.Provider, statusLabel, step.Duration, attempts); err != nil {
 		return fmt.Errorf("print line: %w", err)
+	}
+
+	if step.Status == StatusSkip && step.SkipReason != "" {
+		if _, err := fmt.Fprintf(out, "    reason: %s\n", step.SkipReason); err != nil {
+			return fmt.Errorf("print step skip reason: %w", err)
+		}
 	}
 
 	if step.Failure == nil {

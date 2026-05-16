@@ -15,6 +15,7 @@ type testsuiteXML struct {
 	Name      string        `xml:"name,attr"`
 	Tests     int           `xml:"tests,attr"`
 	Failures  int           `xml:"failures,attr"`
+	Skipped   int           `xml:"skipped,attr"`
 	Time      string        `xml:"time,attr"`
 	TestCases []testcaseXML `xml:"testcase"`
 }
@@ -24,11 +25,16 @@ type testcaseXML struct {
 	ClassName string      `xml:"classname,attr"`
 	Time      string      `xml:"time,attr"`
 	Failure   *failureXML `xml:"failure,omitempty"`
+	Skipped   *skippedXML `xml:"skipped,omitempty"`
 }
 
 type failureXML struct {
 	Message string `xml:"message,attr"`
 	Body    string `xml:",chardata"`
+}
+
+type skippedXML struct {
+	Message string `xml:"message,attr,omitempty"`
 }
 
 // WriteJUnit writes junit xml report with one testcase per scenario.
@@ -37,11 +43,19 @@ func WriteJUnit(path string, result *SuiteResult) error {
 
 	for _, scenario := range result.Scenarios {
 		tc := testcaseXML{Name: scenario.Name, ClassName: scenario.File, Time: seconds(scenario.Duration)}
-		if scenario.Status == StatusFail {
+
+		switch scenario.Status {
+		case StatusFail:
 			x.Failures++
 
 			message, body := buildJUnitFailure(result.Seed, scenario)
 			tc.Failure = &failureXML{Message: message, Body: body}
+		case StatusSkip:
+			x.Skipped++
+
+			tc.Skipped = &skippedXML{Message: scenario.SkipReason}
+		case StatusPass, StatusUnknown:
+			// nothing to add — clean run is the empty case
 		}
 
 		x.TestCases = append(x.TestCases, tc)
