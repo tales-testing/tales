@@ -16,6 +16,7 @@ type Step struct {
 	Keyword   *KeywordCall
 	Mobile    *MobileStep
 	Retry     *Retry
+	SkipRules []SkipRule
 }
 
 // Request holds provider-agnostic request inputs.
