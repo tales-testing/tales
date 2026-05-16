@@ -8,7 +8,7 @@ and write a `checksums.txt` file.
 
 ## Cutting a release
 
-1. Make sure `master` is green (lint + unit + e2e all pass in
+1. Make sure `master` is green (build, test, and lint all pass in
    [the dev CI workflow](../.github/workflows/go.yml)).
 2. Tag and push from `master`:
 
