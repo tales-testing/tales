@@ -14,6 +14,17 @@ CLAUDE_SKILLS_DIR ?= $(HOME)/.claude/skills
 
 UNIT_PKGS := ./internal/... ./cmd/tales ./drivers/...
 
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo none)
+GIT_STATE  ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo clean || echo dirty)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+VERSION_PKG := github.com/hyperxlab/tales/internal/version
+LDFLAGS := -s -w \
+	-X $(VERSION_PKG).version=$(VERSION) \
+	-X $(VERSION_PKG).gitCommit=$(GIT_COMMIT) \
+	-X $(VERSION_PKG).gitTreeState=$(GIT_STATE) \
+	-X $(VERSION_PKG).buildDate=$(BUILD_DATE)
+
 IOS_DEVICE_NAME ?= iPhone 17
 IOS_BUNDLE_ID ?= com.hyperxlab.tales.demo
 IOS_DRIVER_HOST ?= 127.0.0.1
@@ -33,8 +44,8 @@ $(BUILD_READY):
 	@touch $(BUILD_READY)
 
 tales-bin: | $(BUILD_READY)
-	@echo "Building $(TALES_BIN)..."
-	@go build -o $(TALES_BIN) ./cmd/tales
+	@echo "Building $(TALES_BIN) (version=$(VERSION) commit=$(GIT_COMMIT))..."
+	@go build -ldflags '$(LDFLAGS)' -o $(TALES_BIN) ./cmd/tales
 
 mock-bin: | $(BUILD_READY)
 	@go build -o $(MOCK_BIN) ./e2e/mockserver
@@ -232,3 +243,18 @@ e2e-failure: build
 	exit_code=$$?; \
 	set -e; \
 	test $$exit_code -eq 1
+
+.PHONY: release-check
+release-check:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser is required (https://goreleaser.com/install/)"; exit 1; }
+	@goreleaser check
+
+.PHONY: release-snapshot
+release-snapshot:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser is required (https://goreleaser.com/install/)"; exit 1; }
+	@goreleaser release --snapshot --clean
+
+.PHONY: release-build
+release-build:
+	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser is required (https://goreleaser.com/install/)"; exit 1; }
+	@goreleaser build --snapshot --clean
