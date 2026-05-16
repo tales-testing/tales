@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hyperxlab/tales/internal/model"
@@ -144,5 +145,107 @@ func TestStepSkippedDoesNotInvokeProvider(t *testing.T) {
 
 	if fp.calls[0] != "main" {
 		t.Fatalf("expected provider call for main, got %q", fp.calls[0])
+	}
+}
+
+func TestStepCascadeSkipsDownstream(t *testing.T) {
+	t.Parallel()
+
+	fp := &fakeProvider{failFor: map[string]bool{}}
+	runner := NewRunner(provider.NewRegistry(fp))
+
+	upstream := newHTTPStep("upstream")
+	upstream.SkipRules = []model.SkipRule{{
+		Kind:      model.SkipIf,
+		Condition: expr(`true`),
+		Reason:    expr(`"upstream skipped"`),
+	}}
+
+	downstream := newHTTPStep("downstream")
+	downstream.DependsOn = []string{"upstream"}
+	downstream.Request.URL = expr(`"http://example.test/${result.upstream.id}"`)
+
+	suite := &model.Suite{Scenarios: []*model.Scenario{{
+		Name:  "cascade",
+		File:  "x.tales",
+		Steps: []*model.Step{upstream, downstream},
+	}}}
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	scenarioResult := result.Scenarios[0]
+	if scenarioResult.Status != report.StatusPass {
+		t.Fatalf("scenario status = %s want pass (skip cascade should not fail the scenario)", scenarioResult.Status)
+	}
+
+	var downstreamResult *report.StepResult
+
+	for _, sr := range scenarioResult.Steps {
+		if sr.Name == "downstream" {
+			downstreamResult = sr
+		}
+	}
+
+	if downstreamResult == nil {
+		t.Fatalf("expected step result for downstream")
+	}
+
+	if downstreamResult.Status != report.StatusSkip {
+		t.Fatalf("downstream status = %s want skipped", downstreamResult.Status)
+	}
+
+	if downstreamResult.SkipReason == "" {
+		t.Fatalf("downstream skip reason must not be empty")
+	}
+
+	if !strings.Contains(downstreamResult.SkipReason, "upstream") {
+		t.Fatalf("downstream skip reason should mention upstream, got %q", downstreamResult.SkipReason)
+	}
+
+	if len(fp.calls) != 0 {
+		t.Fatalf("provider should not be invoked for either step, got %d calls: %v", len(fp.calls), fp.calls)
+	}
+}
+
+func TestStepCascadeFailedReason(t *testing.T) {
+	t.Parallel()
+
+	fp := &fakeProvider{failFor: map[string]bool{"main": true}}
+	runner := NewRunner(provider.NewRegistry(fp))
+
+	downstream := newHTTPStep("dependent")
+	downstream.DependsOn = []string{"main"}
+
+	suite := &model.Suite{Scenarios: []*model.Scenario{{
+		Name:  "cascade_failure",
+		File:  "x.tales",
+		Steps: []*model.Step{newHTTPStep("main"), downstream},
+	}}}
+
+	result, _ := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+
+	scenarioResult := result.Scenarios[0]
+
+	var dependent *report.StepResult
+
+	for _, sr := range scenarioResult.Steps {
+		if sr.Name == "dependent" {
+			dependent = sr
+		}
+	}
+
+	if dependent == nil {
+		t.Fatalf("expected step result for dependent")
+	}
+
+	if dependent.Status != report.StatusSkip {
+		t.Fatalf("dependent status = %s want skipped", dependent.Status)
+	}
+
+	if !strings.Contains(dependent.SkipReason, "failed") || !strings.Contains(dependent.SkipReason, "main") {
+		t.Fatalf("dependent skip reason should mention failed step main, got %q", dependent.SkipReason)
 	}
 }

@@ -158,8 +158,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		return sResult, orderErr
 	}
 
-	failedSteps := map[string]struct{}{}
-	failedStepsMu := sync.RWMutex{}
+	tracker := newDepTracker()
 	stepByName := map[string]*model.Step{}
 	depsByStep := map[string]map[string]struct{}{}
 
@@ -174,7 +173,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		depsByStep[step.Name] = deps
 	}
 
-	r.runScenarioLayers(ctx, scenario, sResult, layers, stepByName, depsByStep, failedSteps, &failedStepsMu, evaluator, suite, config, state)
+	r.runScenarioLayers(ctx, scenario, sResult, layers, stepByName, depsByStep, tracker, evaluator, suite, config, state)
 
 	for _, step := range scenario.Teardown {
 		stepResult := r.executeTeardownStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
@@ -197,9 +196,9 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 
 // runScenarioLayers executes the scenario's DAG layers, honoring
 // step-level skip rules, the dependency cascade, and per-layer
-// parallelism. Mutates sResult under mu; updates failedSteps under
-// failedStepsMu.
-func (r *Runner) runScenarioLayers(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, layers [][]string, stepByName map[string]*model.Step, depsByStep map[string]map[string]struct{}, failedSteps map[string]struct{}, failedStepsMu *sync.RWMutex, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
+// parallelism. Mutates sResult under mu; updates the dep tracker
+// under its own internal mutex.
+func (r *Runner) runScenarioLayers(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, layers [][]string, stepByName map[string]*model.Step, depsByStep map[string]map[string]struct{}, tracker *depTracker, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
 	for _, layer := range layers {
 		var wg sync.WaitGroup
 
@@ -213,7 +212,7 @@ func (r *Runner) runScenarioLayers(ctx context.Context, scenario *model.Scenario
 			go func(step *model.Step) {
 				defer wg.Done()
 
-				r.runOneStep(ctx, scenario, sResult, step, depsByStep, failedSteps, failedStepsMu, &mu, evaluator, suite, config, state)
+				r.runOneStep(ctx, scenario, sResult, step, depsByStep, tracker, &mu, evaluator, suite, config, state)
 			}(step)
 		}
 
@@ -223,23 +222,15 @@ func (r *Runner) runScenarioLayers(ctx context.Context, scenario *model.Scenario
 
 // runOneStep handles the lifecycle of a single step: dep-failure
 // cascade, skip-rule evaluation, provider execution, and bookkeeping.
-func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, step *model.Step, depsByStep map[string]map[string]struct{}, failedSteps map[string]struct{}, failedStepsMu *sync.RWMutex, mu *sync.Mutex, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
-	if hasFailedDependencyShared(step.Name, depsByStep, failedSteps, failedStepsMu) {
-		mu.Lock()
-
-		sResult.Steps = append(sResult.Steps, &report.StepResult{File: step.File, Scenario: scenario.Name, Name: step.Name, Provider: step.Provider, Phase: "step", Status: report.StatusSkip})
-
-		mu.Unlock()
-
-		failedStepsMu.Lock()
-		failedSteps[step.Name] = struct{}{}
-		failedStepsMu.Unlock()
+func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, step *model.Step, depsByStep map[string]map[string]struct{}, tracker *depTracker, mu *sync.Mutex, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
+	if blocker, failedDep, blocked := tracker.dependencyBlocker(depsByStep[step.Name]); blocked {
+		recordDepCascadeSkip(sResult, step, scenario.Name, blocker, failedDep, tracker, mu)
 
 		return
 	}
 
 	if stepSkip := evaluateStepSkip(evaluator, step, scenario.Name, state, config); stepSkip != nil {
-		recordStepSkipResult(sResult, stepSkip, step.Name, failedSteps, failedStepsMu, mu)
+		recordStepSkipResult(sResult, stepSkip, step.Name, tracker, mu)
 
 		return
 	}
@@ -251,9 +242,7 @@ func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResu
 	sResult.Steps = append(sResult.Steps, stepResult)
 
 	if stepResult.Status == report.StatusFail {
-		failedStepsMu.Lock()
-		failedSteps[step.Name] = struct{}{}
-		failedStepsMu.Unlock()
+		tracker.markFailed(step.Name)
 
 		if sResult.Failure == nil {
 			sResult.Failure = stepResult.Failure
@@ -264,10 +253,37 @@ func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResu
 	mu.Unlock()
 }
 
+// recordDepCascadeSkip emits a StatusSkip result for a step that is
+// being cascade-skipped because one of its dependencies did not
+// produce a result, and propagates the skip downstream by marking
+// the step as skipped in the tracker.
+func recordDepCascadeSkip(sResult *report.ScenarioResult, step *model.Step, scenarioName, blocker string, blockerFailed bool, tracker *depTracker, mu *sync.Mutex) {
+	reason := fmt.Sprintf("depends on skipped step %q", blocker)
+	if blockerFailed {
+		reason = fmt.Sprintf("depends on failed step %q", blocker)
+	}
+
+	mu.Lock()
+
+	sResult.Steps = append(sResult.Steps, &report.StepResult{
+		File:       step.File,
+		Scenario:   scenarioName,
+		Name:       step.Name,
+		Provider:   step.Provider,
+		Phase:      "step",
+		Status:     report.StatusSkip,
+		SkipReason: reason,
+	})
+
+	mu.Unlock()
+
+	tracker.markSkipped(step.Name)
+}
+
 // recordStepSkipResult appends a skip-or-skip-eval-failure result
 // to the scenario, propagating failure state when the rule itself
-// errored.
-func recordStepSkipResult(sResult *report.ScenarioResult, stepSkip *report.StepResult, stepName string, failedSteps map[string]struct{}, failedStepsMu *sync.RWMutex, mu *sync.Mutex) {
+// errored, or registering the cascade-skip otherwise.
+func recordStepSkipResult(sResult *report.ScenarioResult, stepSkip *report.StepResult, stepName string, tracker *depTracker, mu *sync.Mutex) {
 	mu.Lock()
 
 	sResult.Steps = append(sResult.Steps, stepSkip)
@@ -282,26 +298,12 @@ func recordStepSkipResult(sResult *report.ScenarioResult, stepSkip *report.StepR
 	mu.Unlock()
 
 	if stepSkip.Status == report.StatusFail {
-		failedStepsMu.Lock()
-		failedSteps[stepName] = struct{}{}
-		failedStepsMu.Unlock()
-	}
-}
+		tracker.markFailed(stepName)
 
-func hasFailedDependencyShared(stepName string, depsByStep map[string]map[string]struct{}, failedSteps map[string]struct{}, failedStepsMu *sync.RWMutex) bool {
-	for dep := range depsByStep[stepName] {
-		failedStepsMu.RLock()
-
-		_, failed := failedSteps[dep]
-
-		failedStepsMu.RUnlock()
-
-		if failed {
-			return true
-		}
+		return
 	}
 
-	return false
+	tracker.markSkipped(stepName)
 }
 
 func (r *Runner) executeStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
