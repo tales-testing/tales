@@ -60,6 +60,7 @@ func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData,
 			"request":  cty.ObjectVal(scope.Request),
 			"response": cty.ObjectVal(scope.Response),
 			"input":    cty.ObjectVal(scope.Input),
+			"host":     hostObject(),
 		},
 		Functions: map[string]function.Function{},
 	}
