@@ -1,0 +1,85 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# This scenario only runs when the user opts in by setting the
+# RUN_SLOW_SMOKE env var. Otherwise it is skipped cleanly — the
+# suite still passes and the SKIPPED status is visible in every
+# reporter.
+scenario "Env-gated smoke check" {
+  tags = ["skip", "smoke"]
+
+  skip_unless {
+    env = {
+      RUN_SLOW_SMOKE = "1"
+    }
+    reason = "Set RUN_SLOW_SMOKE=1 to opt in to this scenario"
+  }
+
+  step "http" "health" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}
+
+# Demonstrates step-level skip + the cascade behaviour: when the
+# first step is skipped by env, its dependent is also skipped with
+# an explanatory reason rather than failing on a missing capture.
+scenario "Step-level skip cascades to dependent" {
+  tags = ["skip", "cascade"]
+
+  step "http" "ping_first" {
+    skip_unless {
+      env_set = ["RUN_DEEP_PING"]
+      reason  = "Set RUN_DEEP_PING to opt into the deep ping step"
+    }
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    capture {
+      ok = response.json.ok
+    }
+  }
+
+  step "http" "ping_dependent" {
+    depends_on = ["ping_first"]
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz?prev=${result.ping_first.ok}"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}
+
+# Sanity scenario — always runs so the rest of the e2e remains
+# representative of normal traffic and confirms unrelated skips
+# don't bleed into other scenarios.
+scenario "Always-on health check" {
+  tags = ["skip", "always"]
+
+  step "http" "health" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}

@@ -34,6 +34,12 @@ generator "password" "ios_login_password" {
 scenario "iOS login happy path" {
   tags = ["ios", "mobile", "demo", "login"]
 
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
   step "mobile" "launch" {
     platform = "ios"
     target   = "iphone"
