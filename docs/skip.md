@@ -1,0 +1,194 @@
+# Skip system
+
+Tales scenarios and steps can declare `skip_if` / `skip_unless` blocks
+that gate execution on the host OS, architecture, environment
+variables, or any HCL expression. A triggered rule marks the
+scenario or step `skipped` and never reaches the provider; the suite
+still exits with code 0 unless something else fails.
+
+The system is generic — its first user is the mobile/iOS suite, which
+can only run on macOS — but it applies to any conditional fixture.
+
+## Where rules live
+
+Skip blocks are accepted at two levels:
+
+- `scenario { skip_if { ... } }` — gates the entire scenario. Steps
+  and `teardown` blocks do not run.
+- `step "<provider>" "<name>" { skip_if { ... } }` — gates a single
+  step. Other steps in the scenario keep running. Dependents of a
+  skipped step cascade to skipped (see [Cascade](#cascade)).
+
+A block may be `skip_if` (skip when the condition is true) or
+`skip_unless` (skip when the condition is not true). The two are
+inverses; pick whichever reads more naturally for the rule you are
+expressing.
+
+A scenario or step may declare any number of skip blocks. They are
+evaluated in order, and the first one that triggers wins. Within a
+single block, every populated attribute must match (AND); across
+blocks, any triggering block causes a skip (OR).
+
+`skip_if` rules are evaluated before `skip_unless` rules. Source
+order is preserved within each kind.
+
+## Attributes
+
+Every attribute is optional, but a block must declare at least one
+of `condition`, `os`, `arch`, `env_set`, or `env`. A block with only
+`reason` is a parse error.
+
+| Attribute   | Type                    | Semantics                                                                  |
+| ----------- | ----------------------- | -------------------------------------------------------------------------- |
+| `condition` | bool expression         | The block matches when the expression is `true`.                           |
+| `os`        | list of strings         | The block matches when `host.os` is in the list.                           |
+| `arch`      | list of strings         | The block matches when `host.arch` is in the list.                         |
+| `env_set`   | list of strings         | The block matches when every listed env var is set and non-empty.          |
+| `env`       | map of string to string | The block matches when every listed env var equals the expected value.    |
+| `reason`    | string expression       | Human-readable explanation. Falls back to an auto-built reason if absent. |
+
+The `host` object exposes:
+
+- `host.os` — `runtime.GOOS` (e.g. `"darwin"`, `"linux"`, `"windows"`).
+- `host.arch` — `runtime.GOARCH` (e.g. `"amd64"`, `"arm64"`).
+
+The existing `env(name, default)` HCL function remains available inside
+`condition` expressions and elsewhere.
+
+## Examples
+
+### Skip on a non-macOS host
+
+```hcl
+scenario "iOS register demo app" {
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH", "IOS_BUNDLE_ID"]
+    reason  = "iOS tests require macOS and a simulator-built app"
+  }
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch { clear_state = true }
+  }
+}
+```
+
+### Opt-in scenario
+
+```hcl
+scenario "Production smoke check" {
+  skip_unless {
+    env = {
+      RUN_PROD_SMOKE = "1"
+    }
+    reason = "Set RUN_PROD_SMOKE=1 to run the production smoke check"
+  }
+
+  step "http" "ping" {
+    request {
+      method = "GET"
+      url    = "https://prod.example.com/healthz"
+    }
+    expect {
+      status = 200
+    }
+  }
+}
+```
+
+### Step-level skip
+
+```hcl
+step "http" "debug_endpoint" {
+  skip_unless {
+    env_set = ["ENABLE_DEBUG"]
+    reason  = "Set ENABLE_DEBUG to exercise the debug endpoint"
+  }
+
+  request {
+    method = "GET"
+    url    = "${config.base_url}/debug"
+  }
+  expect {
+    status = 200
+  }
+}
+```
+
+### Expression-based skip with the host object
+
+```hcl
+skip_if {
+  condition = host.arch == "arm64"
+  reason    = "temporarily disabled on arm64 until upstream fix lands"
+}
+
+skip_unless {
+  condition = env("RUN_E2E", "0") == "1"
+  reason    = "Set RUN_E2E=1 to run e2e tests"
+}
+```
+
+## Cascade
+
+When a step is skipped, every dependent step (`depends_on = ["X"]`
+or any expression referencing `result.X.*`) is automatically marked
+skipped with a reason of the form `depends on skipped step "X"`. The
+dependent's provider is never called, so it cannot fail on a missing
+capture.
+
+The pre-existing dependent-of-failed-step cascade now carries an
+explicit `depends on failed step "X"` reason for the same UX
+reasons.
+
+## Effect on reports
+
+Every reporter surfaces the skip status and reason:
+
+- **Console**
+
+  ```text
+  Scenario iOS register demo app (e2e/ios/pass/register.tales) SKIPPED in 1ms
+    reason: iOS tests require macOS and a simulator-built app
+
+  Summary: scenarios 3 passed / 0 failed / 1 skipped, steps ...
+  ```
+
+- **JSONL** — scenario and step events gain a `skip_reason` field
+  when the status is `skipped`. The field is omitted otherwise so
+  existing consumers see no schema change for the pass/fail majority.
+
+- **JUnit** — the `<testsuite>` element gains a `skipped="N"`
+  attribute; each skipped scenario emits a `<skipped message="…"/>`
+  child on its `<testcase>`. Compatible with Surefire / JUnit5
+  conventions.
+
+- **Visual HTML** — the `skip_reason` is exposed in the JSON
+  payload at both scenario and step level (`omitempty`). The
+  rendered HTML surfaces a step-level reason as a tooltip on the
+  step header.
+
+## Exit code
+
+Skipped scenarios and steps do not fail the suite. The CLI exit
+code stays at `0` when every scenario either passed or was
+skipped. The matrix is unchanged:
+
+| State                                    | Exit code |
+| ---------------------------------------- | --------- |
+| All scenarios passed or skipped          | `0`       |
+| At least one scenario failed             | `1`       |
+| Parse or validation error                | `2`       |
+| Runtime or reporting fatal error         | `3`       |
+
+There is currently no `--fail-on-all-skipped` flag.
+
+## Provider behaviour
+
+Skip is a user-facing mechanism, not a provider escape hatch. The
+mobile provider, for example, still fails loudly when an iOS step
+is asked to run on a non-darwin host **without** an explicit skip
+rule. This prevents silent skips from masking real coverage gaps —
+if you want a scenario to be skipped on Linux, declare it.

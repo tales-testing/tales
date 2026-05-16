@@ -173,6 +173,17 @@ config {
 }
 
 scenario "iOS register demo app" {
+  # Guard the scenario so cross-platform CI runs do not try to
+  # exercise the mobile provider on Linux / Windows. The provider
+  # itself stays strict — running an iOS step on a non-darwin host
+  # without a skip rule still fails loudly so silent skips never
+  # mask real coverage gaps.
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
   step "mobile" "launch" {
     platform = "ios"
     target   = "iphone"
