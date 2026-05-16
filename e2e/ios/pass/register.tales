@@ -38,6 +38,12 @@ generator "password" "ios_register_password" {
 scenario "iOS register demo app" {
   tags = ["ios", "mobile", "demo", "register"]
 
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
   step "mobile" "launch" {
     platform = "ios"
     target   = "iphone"

@@ -21,6 +21,12 @@ config {
 scenario "iOS login rejects bad@example.com" {
   tags = ["ios", "mobile", "demo", "login", "auth-rejected"]
 
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
   step "mobile" "launch" {
     platform = "ios"
     target   = "iphone"
