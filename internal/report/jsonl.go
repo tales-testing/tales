@@ -119,6 +119,10 @@ func encodeScenarioEvent(encoder *json.Encoder, seed int64, scenario *ScenarioRe
 		event["error"] = sanitizeErrorDetail(scenario.Failure)
 	}
 
+	if scenario.Status == StatusSkip && scenario.SkipReason != "" {
+		event["skip_reason"] = scenario.SkipReason
+	}
+
 	if err := encoder.Encode(event); err != nil {
 		return fmt.Errorf("encode scenario event %q: %w", scenario.Name, err)
 	}
@@ -148,6 +152,10 @@ func encodeStepEvent(encoder *json.Encoder, seed int64, phase string, step *Step
 
 	if step.Failure != nil {
 		stepEvent["error"] = sanitizeErrorDetail(step.Failure)
+	}
+
+	if step.Status == StatusSkip && step.SkipReason != "" {
+		stepEvent["skip_reason"] = step.SkipReason
 	}
 
 	if len(step.Request) > 0 {

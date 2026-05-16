@@ -178,6 +178,10 @@
     var li = document.createElement('li');
     li.className = 'step-header';
     li.setAttribute('role', 'presentation');
+    // Surface a skip reason as a tooltip; the CSS pill keeps the color.
+    if (step.status === 'skipped' && step.skip_reason) {
+      li.title = step.skip_reason;
+    }
 
     var name = document.createElement('span');
     name.className = 'step-name';

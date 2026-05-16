@@ -34,6 +34,7 @@ type Scenario struct {
 	File       string `json:"file"`
 	Status     string `json:"status"`
 	DurationMS int64  `json:"duration_ms"`
+	SkipReason string `json:"skip_reason,omitempty"`
 	Steps      []Step `json:"steps"`
 }
 
@@ -45,6 +46,7 @@ type Step struct {
 	Phase      string   `json:"phase,omitempty"`
 	Status     string   `json:"status"`
 	DurationMS int64    `json:"duration_ms"`
+	SkipReason string   `json:"skip_reason,omitempty"`
 	Actions    []Action `json:"actions"`
 }
 
@@ -108,6 +110,7 @@ func buildScenario(sc *report.ScenarioResult, htmlDir string) Scenario {
 		File:       sc.File,
 		Status:     string(sc.Status),
 		DurationMS: sc.Duration.Milliseconds(),
+		SkipReason: sc.SkipReason,
 		Steps:      make([]Step, 0, len(sc.Steps)+len(sc.Teardown)),
 	}
 
@@ -165,6 +168,7 @@ func buildStep(st *report.StepResult, htmlDir string) Step {
 		Phase:      st.Phase,
 		Status:     string(st.Status),
 		DurationMS: st.Duration.Milliseconds(),
+		SkipReason: st.SkipReason,
 		Actions:    make([]Action, 0, len(st.Actions)),
 	}
 
