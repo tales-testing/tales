@@ -53,6 +53,14 @@ Or:
 make build
 ```
 
+## Release
+
+Tagged releases (`v*`) are built by [the release workflow](.github/workflows/release.yml)
+and published to GitHub Releases. Pre-built binaries are provided for
+`linux/{amd64,arm64}` and `darwin/{amd64,arm64}`, with a `checksums.txt`
+file alongside. See [docs/release.md](docs/release.md) for the release
+process and how to verify a downloaded binary.
+
 ## Quick Start
 
 Create a file like `tests/blog.tales`:
