@@ -39,6 +39,7 @@ Use this skill when asked to:
 - `step "http" "name" { optional retry { ... } request { ... } expect { ... } capture { ... } }`
 - optional `teardown { step ... }`
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
+- optional `skip_if { ... }` / `skip_unless { ... }` on a `scenario` or `step` to gate execution on `host.os` / `host.arch`, env vars, or any bool expression. Attribute set: `condition`, `reason`, `os`, `arch`, `env_set`, `env`. Skipped scenarios skip their steps and teardown; skipped steps cascade-skip their dependents. See [docs/skip.md](../../../docs/skip.md).
 
 3. Enforce reliability conventions:
 - One business action per step.
@@ -90,6 +91,7 @@ Use this skill when asked to:
 - `retry.attempts` must be `>= 1`.
 - `retry.interval` must be a valid Go duration string such as `"100ms"`, `"500ms"`, or `"2s"`.
 - Matchers/functions available: `contains`, `matches`, `exists`, `not_exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`, `one_of`, `can`, `regex_find`, `url_encode`, `optional`, `required`, `any`.
+- Top-level variables available in expressions: `config`, `result`, `request`, `response`, `input`, and `host` (`host.os` = Go `runtime.GOOS`, `host.arch` = Go `runtime.GOARCH`). Use `host.os == "darwin"` etc. inside a `skip_if` / `skip_unless` `condition`.
 - Use `regex_find(value, pattern)` for full matches and `regex_find(value, pattern, group)` for capture groups.
 - For protobuf/ConnectRPC payloads that may omit fields holding default values, wrap the expected value with `optional(...)` (e.g. `role = optional("ROLE_UNSPECIFIED")`, `permissions = optional([])`, `metadata = optional(any())`). `required(...)` is a readability wrapper for fields that must be present. `any()` matches any value but does not make the field optional — combine with `optional(any())` if the key may be absent.
 

@@ -265,6 +265,7 @@ Exit codes:
 - `generator "email"`, `generator "password"`, `generator "timezone"`, `generator "locale"`, `generator "person"`, `generator "mac_address"`, and `generator "bytes"` for deterministic test data.
 - `teardown { ... }` for deterministic cleanup.
 - `keyword \"...\" { ... }` for reusable flows.
+- `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/skip.md](docs/skip.md).
 
 Backward-compatible aliases currently accepted:
 
@@ -296,6 +297,12 @@ General:
 - `generate(name)`
 - `jsonencode(value)`
 - `url_encode(value)`
+
+Top-level expression variables:
+
+- `host.os` — `runtime.GOOS` (e.g. `"darwin"`, `"linux"`, `"windows"`)
+- `host.arch` — `runtime.GOARCH` (e.g. `"amd64"`, `"arm64"`)
+- `config.<key>`, `result.<step>.<field>`, plus `request`, `response`, `input` in step scope
 
 Matchers:
 
