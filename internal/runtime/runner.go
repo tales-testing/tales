@@ -463,7 +463,15 @@ func sleepWithContext(ctx context.Context, duration time.Duration) bool {
 
 func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
 	if !evalWhen(step.When, evaluator, lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}, scenarioName, step.Name) {
-		return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: "teardown", Status: report.StatusSkip}
+		return &report.StepResult{
+			File:       step.File,
+			Scenario:   scenarioName,
+			Name:       step.Name,
+			Provider:   step.Provider,
+			Phase:      "teardown",
+			Status:     report.StatusSkip,
+			SkipReason: "when condition evaluated to false",
+		}
 	}
 
 	return r.executeStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, "teardown")

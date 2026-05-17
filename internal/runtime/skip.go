@@ -114,10 +114,11 @@ type skipDecision struct {
 // so callers control which variables (config, result, host, ...) are
 // in scope for the rule's `condition`.
 //
-// Errors are returned only for unexpected evaluator failures: bad
-// types, panics, missing variables. In those cases the rule is
-// treated as not-triggering for safety — callers may surface the
-// error in a step/scenario report.
+// Evaluator errors (non-bool `condition`, non-list `os` / `arch` /
+// `env_set`, non-string `env` value, ...) are propagated to the
+// caller. The runner translates them into a failed scenario/step
+// with kind="skip", because silently passing on a malformed rule
+// would mask user-visible misconfiguration.
 func evaluateSkipRules(evaluator *lang.Evaluator, rules []model.SkipRule, scope lang.ScopeData, meta lang.GenerateMeta) (bool, string, error) {
 	for i := range rules {
 		decision, err := evaluateSkipRule(evaluator, rules[i], scope, meta)
