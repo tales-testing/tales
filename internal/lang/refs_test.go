@@ -72,3 +72,121 @@ func TestStepDependenciesIncludesBasicAuth(t *testing.T) {
 		t.Fatalf("missing auth implicit dep")
 	}
 }
+
+func TestStepDependenciesIncludesMobileAction(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "login_flow",
+		Provider: "mobile",
+		Mobile: &model.MobileStep{
+			Actions: []model.MobileAction{
+				{
+					Kind:  model.MobileActionInputText,
+					ID:    parseExpr(t, `"auth.login.email"`),
+					Value: parseExpr(t, `result.user.email`),
+				},
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["user"]; !ok {
+		t.Fatalf("missing implicit dep on user from mobile action value: %#v", deps)
+	}
+}
+
+func TestStepDependenciesIncludesMobileExpect(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "verify_profile",
+		Provider: "mobile",
+		Mobile: &model.MobileStep{
+			Expect: model.MobileExpect{
+				Text: []model.MobileValueExpectation{
+					{
+						ID:       parseExpr(t, `"profile.name"`),
+						Expected: parseExpr(t, `result.profile.name`),
+					},
+				},
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["profile"]; !ok {
+		t.Fatalf("missing implicit dep on profile from mobile expect.text: %#v", deps)
+	}
+}
+
+func TestStepDependenciesIncludesMobilePlatformAndLaunch(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "boot",
+		Provider: "mobile",
+		Mobile: &model.MobileStep{
+			Platform: parseExpr(t, `result.cfg.platform`),
+			Launch: &model.MobileLaunch{
+				ClearState: parseExpr(t, `result.flags.clear`),
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["cfg"]; !ok {
+		t.Fatalf("missing implicit dep on cfg from mobile platform: %#v", deps)
+	}
+
+	if _, ok := deps["flags"]; !ok {
+		t.Fatalf("missing implicit dep on flags from mobile launch.clear_state: %#v", deps)
+	}
+}
+
+func TestStepDependenciesIncludesSkipRule(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "guarded",
+		Provider: "http",
+		Request: &model.Request{
+			URL: parseExpr(t, `"http://example.test"`),
+		},
+		SkipRules: []model.SkipRule{
+			{
+				Kind:      model.SkipIf,
+				Condition: parseExpr(t, `result.precond.ready`),
+			},
+			{
+				Kind:   model.SkipUnless,
+				Reason: parseExpr(t, `"blocked by ${result.ticket.id}"`),
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["precond"]; !ok {
+		t.Fatalf("missing implicit dep on precond from skip_if condition: %#v", deps)
+	}
+
+	if _, ok := deps["ticket"]; !ok {
+		t.Fatalf("missing implicit dep on ticket from skip_unless reason: %#v", deps)
+	}
+}
