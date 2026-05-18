@@ -58,33 +58,8 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 		collect(step.When)
 	}
 
-	if step.Request != nil {
-		collect(step.Request.Method)
-		collect(step.Request.URL)
-		collect(step.Request.Headers)
-		collect(step.Request.Query)
-
-		if step.Request.Body != nil {
-			collect(step.Request.Body.JSON)
-			collect(step.Request.Body.Form)
-			collect(step.Request.Body.Raw)
-		}
-
-		if step.Request.Auth != nil && step.Request.Auth.Basic != nil {
-			collect(step.Request.Auth.Basic.Username)
-			collect(step.Request.Auth.Basic.Password)
-		}
-
-		collect(step.Request.Timeout)
-	}
-
-	if step.Expect != nil {
-		collect(step.Expect.Status)
-		collect(step.Expect.Headers)
-		collect(step.Expect.JSON)
-		collect(step.Expect.Body)
-		collect(step.Expect.Strict)
-	}
+	collectRequestRefs(step.Request, collect)
+	collectExpectRefs(step.Expect, collect)
 
 	for _, capExpr := range step.Capture {
 		collect(capExpr)
@@ -95,6 +70,9 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 		collect(step.Keyword.Inputs)
 	}
 
+	collectMobileRefs(step.Mobile, collect)
+	collectSkipRefs(step.SkipRules, collect)
+
 	delete(deps, step.Name)
 
 	for dep := range deps {
@@ -104,4 +82,114 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 	}
 
 	return deps, nil
+}
+
+func collectRequestRefs(req *model.Request, collect func(model.Expression)) {
+	if req == nil {
+		return
+	}
+
+	collect(req.Method)
+	collect(req.URL)
+	collect(req.Headers)
+	collect(req.Query)
+
+	if req.Body != nil {
+		collect(req.Body.JSON)
+		collect(req.Body.Form)
+		collect(req.Body.Raw)
+	}
+
+	if req.Auth != nil && req.Auth.Basic != nil {
+		collect(req.Auth.Basic.Username)
+		collect(req.Auth.Basic.Password)
+	}
+
+	collect(req.Timeout)
+}
+
+func collectExpectRefs(expect *model.Expect, collect func(model.Expression)) {
+	if expect == nil {
+		return
+	}
+
+	collect(expect.Status)
+	collect(expect.Headers)
+	collect(expect.JSON)
+	collect(expect.Body)
+	collect(expect.Strict)
+}
+
+func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
+	if mob == nil {
+		return
+	}
+
+	collect(mob.Platform)
+	collect(mob.Target)
+
+	if mob.Launch != nil {
+		collect(mob.Launch.ClearState)
+	}
+
+	for _, action := range mob.Actions {
+		collect(action.ID)
+		collect(action.Value)
+		collect(action.Secure)
+		collect(action.Timeout)
+		collect(action.Interval)
+	}
+
+	collectMobileExpectRefs(mob.Expect, collect)
+}
+
+func collectMobileExpectRefs(expect model.MobileExpect, collect func(model.Expression)) {
+	for _, v := range expect.Visible {
+		collect(v.ID)
+		collect(v.Timeout)
+		collect(v.Interval)
+	}
+
+	for _, v := range expect.NotVisible {
+		collect(v.ID)
+		collect(v.Timeout)
+		collect(v.Interval)
+	}
+
+	for _, v := range expect.Text {
+		collect(v.ID)
+		collect(v.Expected)
+		collect(v.Timeout)
+		collect(v.Interval)
+	}
+
+	for _, v := range expect.Value {
+		collect(v.ID)
+		collect(v.Expected)
+		collect(v.Timeout)
+		collect(v.Interval)
+	}
+
+	for _, v := range expect.Enabled {
+		collect(v.ID)
+		collect(v.Timeout)
+		collect(v.Interval)
+	}
+
+	for _, v := range expect.Disabled {
+		collect(v.ID)
+		collect(v.Timeout)
+		collect(v.Interval)
+	}
+}
+
+func collectSkipRefs(rules []model.SkipRule, collect func(model.Expression)) {
+	for _, rule := range rules {
+		collect(rule.Condition)
+		collect(rule.Reason)
+		collect(rule.OS)
+		collect(rule.Arch)
+		collect(rule.EnvSet)
+		collect(rule.Env)
+	}
 }
