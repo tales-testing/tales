@@ -29,7 +29,7 @@ func main() {
 		printVersion(c.App.Writer, c.App.Name, version.Get())
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(reorderArgs(os.Args, collectBoolFlags(app))); err != nil {
 		log.Fatal(err)
 	}
 }
