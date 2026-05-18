@@ -60,8 +60,10 @@ changelog:
       - 'Merge branch'
 
 release:
-  github:
-    owner: hyperxlab
-    name: tales
+  # owner / name are intentionally omitted so GoReleaser auto-detects
+  # them from the workflow git remote. Hardcoding them broke v0.1.0-rc.2
+  # after the repo moved from hyperxlab/tales to tales-testing/tales:
+  # GitHub redirects API GETs across the rename but POSTs (asset upload)
+  # drop the body on 307, so binary upload silently failed.
   draft: false
   prerelease: auto
