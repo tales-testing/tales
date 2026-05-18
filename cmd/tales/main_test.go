@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/hyperxlab/tales/internal/version"
-	urfavecli "github.com/urfave/cli/v2"
+	urfavecli "github.com/urfave/cli/v3"
 )
 
 func TestPrintVersion(t *testing.T) {
@@ -45,15 +46,14 @@ func TestPrintVersion(t *testing.T) {
 
 // TestTagFilterParsedRegardlessOfFlagPosition is the regression test
 // for the bug where `tales test <path> --tag X` silently dropped the
-// --tag filter because urfave/cli/v2 stops parsing flags at the first
-// positional argument. The fix is the reorderArgs pre-parser plumbed
-// in main(); this test reproduces the same plumbing at a smaller scale
-// and asserts that the StringSliceFlag value is received whether the
-// flag is placed before or after the positional path.
+// --tag filter. urfave/cli/v3 implements its own argv parser that
+// supports interspersed flags and positionals out of the box, so we
+// assert here that the StringSliceFlag value reaches the action
+// whether --tag is placed before or after the positional path.
 func TestTagFilterParsedRegardlessOfFlagPosition(t *testing.T) {
-	// Intentionally not parallel: urfave/cli/v2's StringSliceFlag stores
-	// its value on the flag struct itself, which would race across
-	// parallel sub-tests sharing the same App definition.
+	// Intentionally not parallel: urfave/cli reuses the same flag
+	// structs across sub-tests, so concurrent Run() calls race on the
+	// underlying flag value storage.
 	cases := []struct {
 		name string
 		args []string
@@ -78,7 +78,8 @@ func TestTagFilterParsedRegardlessOfFlagPosition(t *testing.T) {
 
 			var capturedArgs []string
 
-			app := &urfavecli.App{
+			app := &urfavecli.Command{
+				Name: "tales",
 				Commands: []*urfavecli.Command{{
 					Name: "test",
 					Flags: []urfavecli.Flag{
@@ -86,16 +87,16 @@ func TestTagFilterParsedRegardlessOfFlagPosition(t *testing.T) {
 						&urfavecli.BoolFlag{Name: "no-progress"},
 						&urfavecli.Int64Flag{Name: "seed"},
 					},
-					Action: func(c *urfavecli.Context) error {
-						capturedTags = c.StringSlice("tag")
-						capturedArgs = c.Args().Slice()
+					Action: func(_ context.Context, cmd *urfavecli.Command) error {
+						capturedTags = cmd.StringSlice("tag")
+						capturedArgs = cmd.Args().Slice()
 
 						return nil
 					},
 				}},
 			}
 
-			if err := app.Run(reorderArgs(tc.args, collectBoolFlags(app))); err != nil {
+			if err := app.Run(context.Background(), tc.args); err != nil {
 				t.Fatalf("app.Run: %v", err)
 			}
 
