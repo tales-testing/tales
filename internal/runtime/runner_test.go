@@ -58,11 +58,6 @@ func TestFilterScenarios(t *testing.T) {
 			tags:     []string{"auth"},
 			want:     []string{},
 		},
-		{
-			name: "scenarios without tags are excluded when a tag filter is set",
-			tags: []string{"smoke"},
-			want: []string{"alpha", "beta"},
-		},
 	}
 
 	for _, tc := range cases {

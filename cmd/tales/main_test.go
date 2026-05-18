@@ -51,9 +51,8 @@ func TestPrintVersion(t *testing.T) {
 // assert here that the StringSliceFlag value reaches the action
 // whether --tag is placed before or after the positional path.
 func TestTagFilterParsedRegardlessOfFlagPosition(t *testing.T) {
-	// Intentionally not parallel: urfave/cli reuses the same flag
-	// structs across sub-tests, so concurrent Run() calls race on the
-	// underlying flag value storage.
+	t.Parallel()
+
 	cases := []struct {
 		name string
 		args []string
@@ -74,6 +73,8 @@ func TestTagFilterParsedRegardlessOfFlagPosition(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var capturedTags []string
 
 			var capturedArgs []string
