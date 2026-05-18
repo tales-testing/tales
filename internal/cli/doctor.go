@@ -12,7 +12,7 @@ import (
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/hyperxlab/tales/internal/version"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // NewDoctorCommand returns the `tales doctor` subcommand, which prints
@@ -100,23 +100,23 @@ type SimctlDevice struct {
 	IsAvailable bool   `json:"is_available"`
 }
 
-func runDoctor(c *cli.Context) error {
-	snapshot := collectSnapshot(c.Context)
+func runDoctor(ctx context.Context, cmd *cli.Command) error {
+	snapshot := collectSnapshot(ctx)
 
-	if c.Bool("json") {
+	if cmd.Bool("json") {
 		data, err := json.MarshalIndent(snapshot, "", "  ")
 		if err != nil {
 			return cli.Exit(fmt.Sprintf("marshal doctor snapshot: %v", err), 3)
 		}
 
-		if _, err := fmt.Fprintln(c.App.Writer, string(data)); err != nil {
+		if _, err := fmt.Fprintln(cmd.Root().Writer, string(data)); err != nil {
 			return cli.Exit(fmt.Sprintf("write doctor output: %v", err), 3)
 		}
 
 		return nil
 	}
 
-	if err := formatTextSnapshot(c.App.Writer, snapshot); err != nil {
+	if err := formatTextSnapshot(cmd.Root().Writer, snapshot); err != nil {
 		return cli.Exit(fmt.Sprintf("format doctor output: %v", err), 3)
 	}
 

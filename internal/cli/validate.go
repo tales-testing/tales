@@ -1,11 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/hyperxlab/tales/internal/parser"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // NewValidateCommand returns validation command.
@@ -14,10 +15,10 @@ func NewValidateCommand() *cli.Command {
 		Name:      "validate",
 		Usage:     "Validate .tales files",
 		ArgsUsage: "<path>",
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			path := "."
-			if c.NArg() > 0 {
-				path = c.Args().First()
+			if cmd.NArg() > 0 {
+				path = cmd.Args().First()
 			}
 
 			_, diags := parser.LoadPath(path)

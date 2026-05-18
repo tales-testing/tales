@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -9,12 +10,12 @@ import (
 
 	"github.com/hyperxlab/tales/internal/cli"
 	"github.com/hyperxlab/tales/internal/version"
-	urfavecli "github.com/urfave/cli/v2"
+	urfavecli "github.com/urfave/cli/v3"
 )
 
 func main() {
 	binName := filepath.Base(os.Args[0])
-	app := &urfavecli.App{
+	app := &urfavecli.Command{
 		Name:    binName,
 		Usage:   "Declarative integration and e2e testing with .tales files",
 		Version: version.Get().Version,
@@ -23,13 +24,15 @@ func main() {
 			cli.NewValidateCommand(),
 			cli.NewDoctorCommand(),
 		},
-		Action: urfavecli.ShowAppHelp,
+		Action: func(ctx context.Context, cmd *urfavecli.Command) error {
+			return urfavecli.ShowAppHelp(cmd)
+		},
 	}
-	urfavecli.VersionPrinter = func(c *urfavecli.Context) {
-		printVersion(c.App.Writer, c.App.Name, version.Get())
+	urfavecli.VersionPrinter = func(cmd *urfavecli.Command) {
+		printVersion(cmd.Root().Writer, cmd.Root().Name, version.Get())
 	}
 
-	if err := app.Run(reorderArgs(os.Args, collectBoolFlags(app))); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		log.Fatal(err)
 	}
 }

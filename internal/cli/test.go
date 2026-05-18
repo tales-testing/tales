@@ -15,7 +15,7 @@ import (
 	"github.com/hyperxlab/tales/internal/report"
 	"github.com/hyperxlab/tales/internal/report/visual"
 	talesruntime "github.com/hyperxlab/tales/internal/runtime"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // NewTestCommand returns test command.
@@ -61,10 +61,10 @@ func resolveCaptureMode(raw, htmlPath string) (mobileprovider.CaptureMode, error
 	return mode, nil
 }
 
-func runTest(c *cli.Context) error {
+func runTest(ctx context.Context, cmd *cli.Command) error {
 	path := "."
-	if c.NArg() > 0 {
-		path = c.Args().First()
+	if cmd.NArg() > 0 {
+		path = cmd.Args().First()
 	}
 
 	suite, diags := parser.LoadPath(path)
@@ -74,14 +74,14 @@ func runTest(c *cli.Context) error {
 		return cli.Exit("parse failed", 2)
 	}
 
-	seed := c.Int64("seed")
+	seed := cmd.Int64("seed")
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
 
-	htmlPath := c.String("report-html")
+	htmlPath := cmd.String("report-html")
 
-	captureMode, err := resolveCaptureMode(c.String("capture-screenshots"), htmlPath)
+	captureMode, err := resolveCaptureMode(cmd.String("capture-screenshots"), htmlPath)
 	if err != nil {
 		return cli.Exit(err.Error(), 2)
 	}
@@ -92,11 +92,11 @@ func runTest(c *cli.Context) error {
 		mobileprovider.NewApple(mobileprovider.WithCaptureMode(captureMode)),
 	))
 
-	result, err := runner.Run(context.Background(), suite, talesruntime.Options{
+	result, err := runner.Run(ctx, suite, talesruntime.Options{
 		Seed:     seed,
-		Parallel: c.Int("parallel"),
-		Tags:     c.StringSlice("tag"),
-		Scenario: c.String("scenario"),
+		Parallel: cmd.Int("parallel"),
+		Tags:     cmd.StringSlice("tag"),
+		Scenario: cmd.String("scenario"),
 	})
 	if err != nil && result == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "runtime failed: %v\n", err)
@@ -105,11 +105,11 @@ func runTest(c *cli.Context) error {
 	}
 
 	consoleOptions := report.DefaultConsoleOptions(os.Stdout)
-	if c.Bool("no-color") {
+	if cmd.Bool("no-color") {
 		consoleOptions.Color = false
 	}
 
-	if c.Bool("no-progress") {
+	if cmd.Bool("no-progress") {
 		consoleOptions.Progress = false
 	}
 
@@ -117,13 +117,13 @@ func runTest(c *cli.Context) error {
 		return cli.Exit(printErr.Error(), 3)
 	}
 
-	if junitPath := c.String("report-junit"); junitPath != "" {
+	if junitPath := cmd.String("report-junit"); junitPath != "" {
 		if writeErr := report.WriteJUnit(junitPath, result); writeErr != nil {
 			return cli.Exit(fmt.Sprintf("write junit failed: %v", writeErr), 3)
 		}
 	}
 
-	if jsonlPath := c.String("report-jsonl"); jsonlPath != "" {
+	if jsonlPath := cmd.String("report-jsonl"); jsonlPath != "" {
 		if writeErr := report.WriteJSONL(jsonlPath, result); writeErr != nil {
 			return cli.Exit(fmt.Sprintf("write jsonl failed: %v", writeErr), 3)
 		}
