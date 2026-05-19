@@ -152,10 +152,15 @@ final class TalesRouter {
 
             // Strategy 1: tap the QuickType "Paste" key that iOS adds to
             // the keyboard accessory bar when the pasteboard holds fresh
-            // content. Works for most text fields including SecureField on
-            // standard content types, and is locale-aware via the label
-            // list below.
-            if tapPasteCandidate(in: app.keyboards.buttons) {
+            // content. iOS 26 places this affordance in different element
+            // roots depending on locale and content type, so probe the
+            // keyboard accessory, the toolbar, and the top-level button
+            // collection before giving up.
+            if tapPasteCandidate(inAny: [
+                app.keyboards.buttons,
+                app.toolbars.buttons,
+                app.buttons,
+            ]) {
                 dismissKeyboardIfPresent(in: app)
 
                 return HTTPResponse.json(["ok": true])
@@ -166,7 +171,7 @@ final class TalesRouter {
             // is suppressed (e.g. when the Strong Password sheet has
             // claimed the accessory view).
             element.press(forDuration: 1.0)
-            if tapPasteCandidate(in: app.menuItems) {
+            if tapPasteCandidate(inAny: [app.menuItems, app.buttons]) {
                 dismissKeyboardIfPresent(in: app)
 
                 return HTTPResponse.json(["ok": true])
@@ -194,24 +199,23 @@ final class TalesRouter {
         return HTTPResponse.json(["ok": true])
     }
 
-    /// Types `text` into `element` in two phases so the iOS strong-password
-    /// banner installation does not eat the leading characters. The first
-    /// keystroke triggers the banner; the sleep gives it time to finish
-    /// animating; the remainder is delivered against a stable first
-    /// responder. Uses `element.typeText` so XCUITest re-asserts focus
-    /// before each phase rather than relying on the app-level focus.
+    /// Types `text` one character at a time with a small delay between
+    /// keystrokes via app-level typeText (focus has already been
+    /// established by the caller). The autofill banner installation
+    /// and the SwiftUI / keyboard transitions that swallow a multi-char
+    /// burst on SecureField(.newPassword) cannot trip a single-char
+    /// call — by the time the next char is delivered iOS has settled.
+    /// App-level typeText is used instead of element-scoped because the
+    /// element variant re-checks hittability on every call, which on a
+    /// ScrollView under a soft keyboard adds enough latency to overflow
+    /// the HTTP request budget on a 12-16 char password.
     private func typeWithAutofillWarmup(_ text: String, on element: XCUIElement, app: XCUIApplication) {
         guard !text.isEmpty else { return }
 
-        let first = String(text.prefix(1))
-        let rest = String(text.dropFirst())
-
-        element.typeText(first)
-
-        guard !rest.isEmpty else { return }
-
-        Thread.sleep(forTimeInterval: 0.5)
-        element.typeText(rest)
+        for character in text {
+            app.typeText(String(character))
+            Thread.sleep(forTimeInterval: 0.04)
+        }
     }
 
     /// Locales covered by iOS contextual / QuickType paste actions.
@@ -257,6 +261,19 @@ final class TalesRouter {
         return false
     }
 
+    /// Same as `tapPasteCandidate(in:)` but tries each query in order so
+    /// callers can search several element roots without duplicating the
+    /// locale loop. Returns true on the first successful tap.
+    private func tapPasteCandidate(inAny queries: [XCUIElementQuery]) -> Bool {
+        for query in queries {
+            if tapPasteCandidate(in: query) {
+                return true
+            }
+        }
+
+        return false
+    }
+
     /// Routes a tap to the most specific affordance inside an element.
     /// SwiftUI Toggle exposes itself as `.switch` but contains a nested
     /// `.switch` child for the actual UISwitch when the label embeds
@@ -284,12 +301,27 @@ final class TalesRouter {
     }
 
     private func dismissPasswordAssistant(in app: XCUIApplication) {
-        for label in TalesRouter.passwordAssistantDismissLabels {
-            let btn = app.buttons[label]
-            if btn.exists && btn.isHittable {
-                btn.tap()
+        // iOS 26 surfaces the password assistant in different element
+        // roots depending on whether it is rendered as a sheet, an alert
+        // overlay, or a keyboard accessory. Scan the realistic ones; the
+        // first hittable (root, label) match wins.
+        let queries: [XCUIElementQuery] = [
+            app.buttons,
+            app.sheets.buttons,
+            app.alerts.buttons,
+            app.keyboards.buttons,
+            app.toolbars.buttons,
+            app.otherElements.buttons,
+        ]
 
-                return
+        for query in queries {
+            for label in TalesRouter.passwordAssistantDismissLabels {
+                let btn = query[label]
+                if btn.exists && btn.isHittable {
+                    btn.tap()
+
+                    return
+                }
             }
         }
     }
