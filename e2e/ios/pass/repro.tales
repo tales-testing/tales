@@ -1,0 +1,152 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+scenario "iOS UI driver quirk diagnostic" {
+  tags = ["ios", "mobile", "demo", "diagnostic"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
+  # Open the diagnostic view from the welcome screen. Kept as a thin
+  # navigation-only step so the SecureField + Toggle exercise below
+  # starts from a clean state with no keyboard up.
+  step "mobile" "open_repro" {
+    platform = "ios"
+    target   = "iphone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.repro"
+        timeout = "20s"
+      }
+      tap {
+        id = "welcome.repro"
+      }
+      wait_visible {
+        id      = "repro.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  # First focus on a SecureField(.newPassword). Done in an isolated step
+  # so the keyboard it opens stays present when the next step runs —
+  # this mirrors how Sealway's signup_inputs leaves the keyboard up
+  # between scenario steps and exposes the autofill banner truncation
+  # observed on the second focus.
+  step "mobile" "secure_field_first_focus" {
+    depends_on = ["open_repro"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      input_text {
+        id     = "repro.password"
+        value  = "Aa1!Aa1!Aa1!Aa1!"
+        secure = true
+      }
+    }
+
+    expect {
+      text {
+        id    = "repro.status.password_len"
+        value = "password_len=16"
+      }
+    }
+  }
+
+  # Mirrors Sealway's signup_finish step verbatim: a single Tales step
+  # that types the second SecureField .newPassword AND then immediately
+  # taps three Toggles whose bounding boxes sit under the soft keyboard
+  # the previous input opened. Reproduces both:
+  #   1) the deterministic 5/16 truncation on the second SecureField
+  #      because the autofill banner inherited from the first focus
+  #      eats the leading keystrokes;
+  #   2) the silent tap failures on Toggles whose y position is below
+  #      the keyboard's top edge — the tap reaches the keyboard, not
+  #      the switch.
+  step "mobile" "signup_finish_pattern" {
+    depends_on = ["secure_field_first_focus"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      input_text {
+        id     = "repro.password_confirm"
+        value  = "Aa1!Aa1!Aa1!Aa1!"
+        secure = true
+      }
+      tap {
+        id = "repro.toggle.accept_terms"
+      }
+      tap {
+        id = "repro.toggle.accept_privacy"
+      }
+      tap {
+        id = "repro.toggle.accept_marketing"
+      }
+    }
+
+    expect {
+      text {
+        id    = "repro.status.confirm_len"
+        value = "confirm_len=16"
+      }
+      text {
+        id    = "repro.status.match"
+        value = "match=1"
+      }
+      not_visible {
+        id = "repro.mismatch_error"
+      }
+      text {
+        id    = "repro.status.terms"
+        value = "terms=1"
+      }
+      text {
+        id    = "repro.status.privacy"
+        value = "privacy=1"
+      }
+      text {
+        id    = "repro.status.marketing"
+        value = "marketing=1"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}
