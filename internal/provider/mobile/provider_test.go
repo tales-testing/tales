@@ -373,6 +373,53 @@ func TestExecuteClearTextUsesValueLength(t *testing.T) {
 	}
 }
 
+func TestExecuteClearTextSkipsEmptySecureField(t *testing.T) {
+	t.Parallel()
+
+	root := &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{
+				ID:      "auth.signup.password_confirm",
+				Type:    "secure_text_field",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 10, Y: 20, Width: 100, Height: 40},
+			},
+		},
+	}
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{root}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("clear"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionClearText, ID: "auth.signup.password_confirm"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.taps) != 0 {
+		t.Fatalf("clear_text on empty SecureField should not focus-tap (would leak deletes via strong-password group), got %d taps", len(drv.taps))
+	}
+
+	if len(drv.erases) != 0 {
+		t.Fatalf("clear_text on empty SecureField should not erase, got %d erase calls", len(drv.erases))
+	}
+}
+
 func TestExecuteExpectVisibleSucceeds(t *testing.T) {
 	t.Parallel()
 

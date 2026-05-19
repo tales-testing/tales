@@ -181,10 +181,143 @@ struct WelcomeView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("welcome.register")
+
+            NavigationLink {
+                ReproView()
+            } label: {
+                Text("Diagnostic")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("welcome.repro")
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+    }
+}
+
+// MARK: - Repro
+
+/// Isolated playground for the iOS UI quirks that broke real-world
+/// scenarios. Each control is paired with a status mirror whose plain
+/// text reflects state, so XCUITest can assert without inferring from
+/// SecureField bullets or KVO-only `value` properties.
+struct ReproView: View {
+    @State private var acceptTerms = false
+    @State private var acceptPrivacy = false
+    @State private var acceptMarketing = false
+
+    @State private var password = ""
+    @State private var confirmPassword = ""
+    @State private var existingPassword = ""
+
+    private var passwordsMatch: Bool {
+        !confirmPassword.isEmpty && password == confirmPassword
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Diagnostic")
+                    .font(.title.bold())
+                    .accessibilityIdentifier("repro.screen")
+
+                togglesSection
+                Divider()
+                secureFieldsSection
+            }
+            .padding(24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+    }
+
+    private var togglesSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // SwiftUI Toggle whose label embeds multiple Links — center
+            // tap risks hitting one of the Links instead of the UISwitch.
+            Toggle(isOn: $acceptTerms) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("I accept the terms of service.")
+                    HStack(spacing: 12) {
+                        Link("Sales terms", destination: URL(string: "https://example.com/sales")!)
+                        Link("General terms", destination: URL(string: "https://example.com/terms")!)
+                    }
+                    .font(.caption)
+                }
+            }
+            .accessibilityIdentifier("repro.toggle.accept_terms")
+
+            Toggle(isOn: $acceptPrivacy) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("I acknowledge the privacy policy.")
+                    Link("Read policy", destination: URL(string: "https://example.com/privacy")!)
+                        .font(.caption)
+                }
+            }
+            .accessibilityIdentifier("repro.toggle.accept_privacy")
+
+            // Control: no interactive child in the label. Must always work
+            // even when the other two regress — proves the bug is link-
+            // related, not a general tap regression.
+            Toggle(isOn: $acceptMarketing) {
+                Text("I accept marketing communications.")
+            }
+            .accessibilityIdentifier("repro.toggle.accept_marketing")
+
+            Group {
+                Text("terms=\(acceptTerms ? "1" : "0")")
+                    .accessibilityIdentifier("repro.status.terms")
+                Text("privacy=\(acceptPrivacy ? "1" : "0")")
+                    .accessibilityIdentifier("repro.status.privacy")
+                Text("marketing=\(acceptMarketing ? "1" : "0")")
+                    .accessibilityIdentifier("repro.status.marketing")
+            }
+            .monospaced()
+        }
+    }
+
+    private var secureFieldsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // .newPassword triggers the iOS "Use Strong Password" overlay
+            // that intercepts soft-keyboard input on second focus.
+            SecureField("Password", text: $password)
+                .textContentType(.newPassword)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("repro.password")
+
+            SecureField("Confirm password", text: $confirmPassword)
+                .textContentType(.newPassword)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("repro.password_confirm")
+
+            // Control: .password does not trigger the strong-password
+            // overlay. Should always type the full string regardless of
+            // focus order.
+            SecureField("Existing password", text: $existingPassword)
+                .textContentType(.password)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("repro.existing_password")
+
+            if !confirmPassword.isEmpty && !passwordsMatch {
+                Text("Passwords do not match.")
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("repro.mismatch_error")
+            }
+
+            Group {
+                Text("password_len=\(password.count)")
+                    .accessibilityIdentifier("repro.status.password_len")
+                Text("confirm_len=\(confirmPassword.count)")
+                    .accessibilityIdentifier("repro.status.confirm_len")
+                Text("existing_len=\(existingPassword.count)")
+                    .accessibilityIdentifier("repro.status.existing_len")
+                Text("match=\(passwordsMatch ? "1" : "0")")
+                    .accessibilityIdentifier("repro.status.match")
+            }
+            .monospaced()
+        }
     }
 }
 

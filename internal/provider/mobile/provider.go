@@ -473,6 +473,12 @@ func (p *Provider) captureStepEnd(ctx context.Context, session *Session, stepDir
 	return result, true
 }
 
+// secureTextFieldType identifies SwiftUI SecureField in the normalized
+// view tree. iOS handles these specially: typing surfaces an autofill
+// QuickType bar that intercepts keystrokes, and clearing an empty one
+// can leak deletes across the strong-password group.
+const secureTextFieldType = "secure_text_field"
+
 // usePasteInput reports whether an input_text action should use the
 // pasteboard-based driver path instead of keyboard typing. SwiftUI
 // SecureField(.newPassword) inputs surface an autofill QuickType bar
@@ -483,7 +489,7 @@ func usePasteInput(node *tree.ViewNode) bool {
 		return false
 	}
 
-	return node.Type == "secure_text_field"
+	return node.Type == secureTextFieldType
 }
 
 var actionLabels = map[model.MobileActionKind]string{
@@ -566,11 +572,23 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 			return fmt.Errorf("input text: %w", err)
 		}
 	case model.MobileActionClearText:
+		count := len([]rune(tree.Value(node)))
+
+		// SecureField on iOS exposes its value as one "•" per typed
+		// character. An empty value therefore means the field is truly
+		// empty and no delete keys are required. Sending the default
+		// fallback in that case leaks deletes via app.typeText, which on
+		// .newPassword fields routes through the iOS strong-password
+		// group and erases a sibling SecureField instead of the targeted
+		// (already empty) one.
+		if count == 0 && node.Type == secureTextFieldType {
+			return nil
+		}
+
 		if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
 			return fmt.Errorf("focus element: %w", err)
 		}
 
-		count := len([]rune(tree.Value(node)))
 		if count == 0 {
 			count = defaultClearTextErase
 		}
