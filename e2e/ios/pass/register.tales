@@ -116,6 +116,9 @@ scenario "iOS register demo app" {
       tap {
         id = "register.accept_terms"
       }
+      tap {
+        id = "register.accept_privacy"
+      }
     }
     expect {
       enabled {
@@ -124,6 +127,29 @@ scenario "iOS register demo app" {
       value {
         id    = "register.email"
         value = contains("@example.com")
+      }
+      # SecureField exposes its value as one "•" per typed character.
+      # Pins bug #1 (SecureField + .newPassword): if iOS autofill swallowed
+      # any keystroke the bullet count is wrong and this assertion fails.
+      value {
+        id    = "register.password"
+        value = matches("^•{12}$")
+      }
+      value {
+        id    = "register.repeat_password"
+        value = matches("^•{12}$")
+      }
+      # Pins bug #2 (Toggle with Link in label): a center-coordinate tap
+      # hits the Link inside the label, leaving value = "0". Both toggles
+      # must flip to "1" — the second one is the canary that exposes the
+      # silent failure observed on multi-Toggle screens.
+      value {
+        id    = "register.accept_terms"
+        value = "1"
+      }
+      value {
+        id    = "register.accept_privacy"
+        value = "1"
       }
     }
     capture {
@@ -217,6 +243,8 @@ scenario "iOS register demo app" {
         value  = result.launch.password
         secure = true
       }
+      # Flip terms off (privacy stays on from fill_form) to trigger the
+      # "accept the terms" branch of the validator.
       tap {
         id = "register.accept_terms"
       }
@@ -236,6 +264,14 @@ scenario "iOS register demo app" {
         id    = "register.error"
         value = contains("accept the terms")
       }
+      value {
+        id    = "register.accept_terms"
+        value = "0"
+      }
+      value {
+        id    = "register.accept_privacy"
+        value = "1"
+      }
     }
   }
 
@@ -245,6 +281,8 @@ scenario "iOS register demo app" {
     platform = "ios"
     target   = "iphone"
     actions {
+      # Re-enable terms (privacy already on). The validator now requires
+      # both toggles, so this also covers the registration happy path.
       tap {
         id = "register.accept_terms"
       }

@@ -118,16 +118,39 @@ final class TalesRouter {
                 return HTTPResponse.error("element \(id) not found", status: 404)
             }
 
-            // Focus the field, then paste via a simulated hardware-keyboard
-            // Cmd+V. Hardware-keyboard events bypass the soft keyboard and
-            // its QuickType / "Use Strong Password" overlay entirely, so
-            // SecureField(.newPassword) receives every character of the
-            // pasted string. Contextual paste menus are avoided because
-            // SecureField commonly blocks them for security reasons and
-            // their labels are locale-dependent.
-            element.tap()
+            // Pasting into SecureField(.newPassword) is fragile because iOS
+            // installs a "Use Strong Password" QuickType overlay that
+            // intercepts soft-keyboard keystrokes and Cmd+V from a
+            // disconnected hardware keyboard is silently dropped. Stage the
+            // pasteboard once, then walk a cascade of strategies that
+            // covers the realistic input paths, ending on a typeText
+            // fallback so the field never ends up completely empty.
             UIPasteboard.general.string = text
-            element.typeKey("v", modifierFlags: .command)
+            element.tap()
+
+            // Strategy 1: tap the QuickType "Paste" key that iOS adds to
+            // the keyboard accessory bar when the pasteboard holds fresh
+            // content. Works for most text fields including SecureField on
+            // standard content types, and is locale-aware via the label
+            // list below.
+            if tapPasteCandidate(in: app.keyboards.buttons) {
+                return HTTPResponse.json(["ok": true])
+            }
+
+            // Strategy 2: long-press the field to surface the system edit
+            // menu, then tap Paste. This catches the case where QuickType
+            // is suppressed (e.g. when the Strong Password sheet has
+            // claimed the accessory view).
+            element.press(forDuration: 1.0)
+            if tapPasteCandidate(in: app.menuItems) {
+                return HTTPResponse.json(["ok": true])
+            }
+
+            // Strategy 3: type via the soft keyboard as a best-effort
+            // fallback. The autofill banner may still eat the first
+            // keystrokes on a second focus, but at least the first focus
+            // of the session lands characters in the field.
+            app.typeText(text)
 
             return HTTPResponse.json(["ok": true])
         }
@@ -135,6 +158,31 @@ final class TalesRouter {
         app.typeText(text)
 
         return HTTPResponse.json(["ok": true])
+    }
+
+    /// Locales covered by iOS contextual / QuickType paste actions.
+    private static let pasteLabels = [
+        "Paste", "Coller", "Pegar", "Einfügen", "Incolla", "Inserir",
+        "Vložit", "Beillesztés", "Plak", "Wklej",
+    ]
+
+    /// Walks `pasteLabels` against an XCUIElementQuery (keyboards.buttons
+    /// or menuItems) and taps the first hittable match. Returns false if
+    /// none surfaces within a short settle window.
+    private func tapPasteCandidate(in query: XCUIElementQuery) -> Bool {
+        // Wait briefly on the canonical English label so the keyboard /
+        // menu has time to render before we scan the locale fallbacks.
+        _ = query["Paste"].waitForExistence(timeout: 1.0)
+
+        for label in TalesRouter.pasteLabels {
+            let item = query[label]
+            if item.exists && item.isHittable {
+                item.tap()
+                return true
+            }
+        }
+
+        return false
     }
 
     private func handleEraseText(request: HTTPRequest) -> HTTPResponse {

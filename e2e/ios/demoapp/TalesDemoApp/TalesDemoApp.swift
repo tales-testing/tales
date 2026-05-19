@@ -53,7 +53,7 @@ final class AuthStore: ObservableObject {
         }
     }
 
-    func register(email: String, password: String, repeatPassword: String, acceptTerms: Bool) {
+    func register(email: String, password: String, repeatPassword: String, acceptTerms: Bool, acceptPrivacy: Bool) {
         registerError = ""
 
         if email.isEmpty || !email.contains("@") {
@@ -78,6 +78,11 @@ final class AuthStore: ObservableObject {
 
         if !acceptTerms {
             registerError = "You must accept the terms"
+            return
+        }
+
+        if !acceptPrivacy {
+            registerError = "You must accept the privacy policy"
             return
         }
 
@@ -257,6 +262,7 @@ struct RegisterView: View {
     @State private var password = ""
     @State private var repeatPassword = ""
     @State private var acceptTerms = false
+    @State private var acceptPrivacy = false
 
     var body: some View {
         ScrollView {
@@ -276,30 +282,37 @@ struct RegisterView: View {
                     .textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("register.email")
 
+                // Reproduces the production signup quirk: .newPassword content
+                // type makes iOS show the "Use Strong Password" QuickType banner,
+                // which intercepts soft-keyboard keystrokes on second focus.
                 SecureField("Password", text: $password)
+                    .textContentType(.newPassword)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("register.password")
 
                 SecureField("Repeat password", text: $repeatPassword)
+                    .textContentType(.newPassword)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("register.repeat_password")
 
-                Button {
-                    acceptTerms.toggle()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: acceptTerms ? "checkmark.square.fill" : "square")
-                            .foregroundStyle(acceptTerms ? Color.accentColor : Color.secondary)
-                        Text("I accept the terms and conditions")
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.leading)
-                        Spacer()
+                // Real SwiftUI Toggle whose label embeds a Link.
+                // XCUITest hit-tests at the toggle center, which lands on the
+                // Link inside the label rather than the UISwitch on the right.
+                Toggle(isOn: $acceptTerms) {
+                    HStack(spacing: 4) {
+                        Text("I accept the")
+                        Link("terms and conditions", destination: URL(string: "https://example.com/terms")!)
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .accessibilityIdentifier("register.accept_terms")
-                .accessibilityValue(acceptTerms ? "1" : "0")
+
+                Toggle(isOn: $acceptPrivacy) {
+                    HStack(spacing: 4) {
+                        Text("I accept the")
+                        Link("privacy policy", destination: URL(string: "https://example.com/privacy")!)
+                    }
+                }
+                .accessibilityIdentifier("register.accept_privacy")
 
                 if !auth.registerError.isEmpty {
                     Text(auth.registerError)
@@ -317,7 +330,8 @@ struct RegisterView: View {
                         email: email,
                         password: password,
                         repeatPassword: repeatPassword,
-                        acceptTerms: acceptTerms
+                        acceptTerms: acceptTerms,
+                        acceptPrivacy: acceptPrivacy
                     )
                 } label: {
                     Text("Register")
