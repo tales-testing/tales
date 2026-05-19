@@ -15,7 +15,12 @@ import (
 )
 
 const (
-	defaultRequestTimeout = 10 * time.Second
+	// defaultRequestTimeout covers every driver endpoint. The /inputText
+	// path can take a few seconds when the driver falls back to
+	// char-by-char typing to dodge the iOS strong-password autofill
+	// banner on SecureField(.newPassword). 30s leaves headroom without
+	// hiding genuine driver hangs.
+	defaultRequestTimeout = 30 * time.Second
 	bodySnippetLimit      = 256
 )
 
