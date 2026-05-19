@@ -29,12 +29,12 @@ func (s *stubMobileDriver) Health(_ context.Context) error { return nil }
 func (s *stubMobileDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
 	return s.hierarchy, nil
 }
-func (s *stubMobileDriver) Tap(_ context.Context, _ string, _, _ float64) error {
+func (s *stubMobileDriver) Tap(_ context.Context, _, _ string, _, _ float64) error {
 	s.taps.Add(1)
 
 	return nil
 }
-func (s *stubMobileDriver) InputText(_ context.Context, _ string, t string) error {
+func (s *stubMobileDriver) InputText(_ context.Context, _, _, t string, _ bool) error {
 	s.inputs = append(s.inputs, t)
 
 	return nil

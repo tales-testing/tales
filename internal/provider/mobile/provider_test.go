@@ -17,13 +17,24 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+type fakeTap struct {
+	id   string
+	x, y float64
+}
+
+type fakeInput struct {
+	id    string
+	text  string
+	paste bool
+}
+
 type fakeDriverAll struct {
 	mu              sync.Mutex
 	hierarchies     []*tree.ViewNode
 	hierarchyErr    error
-	taps            []struct{ x, y float64 }
+	taps            []fakeTap
 	tapErr          error
-	inputs          []string
+	inputs          []fakeInput
 	erases          []int
 	screenshotPNG   []byte
 	screenshotErr   error
@@ -71,20 +82,20 @@ func (f *fakeDriverAll) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, 
 	return node, nil
 }
 
-func (f *fakeDriverAll) Tap(_ context.Context, _ string, x, y float64) error {
+func (f *fakeDriverAll) Tap(_ context.Context, _, id string, x, y float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.taps = append(f.taps, struct{ x, y float64 }{x, y})
+	f.taps = append(f.taps, fakeTap{id: id, x: x, y: y})
 
 	return f.tapErr
 }
 
-func (f *fakeDriverAll) InputText(_ context.Context, _ string, text string) error {
+func (f *fakeDriverAll) InputText(_ context.Context, _, id, text string, paste bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.inputs = append(f.inputs, text)
+	f.inputs = append(f.inputs, fakeInput{id: id, text: text, paste: paste})
 
 	return nil
 }
@@ -238,6 +249,65 @@ func TestExecuteTapFindsCenterAndSends(t *testing.T) {
 	if drv.taps[0].x != 60 || drv.taps[0].y != 40 {
 		t.Fatalf("unexpected tap coordinates %+v", drv.taps[0])
 	}
+
+	if drv.taps[0].id != "welcome.register" {
+		t.Fatalf("expected tap to carry node id, got %q", drv.taps[0].id)
+	}
+}
+
+func TestExecuteInputTextOnSecureFieldUsesPasteAndSkipsFocusTap(t *testing.T) {
+	t.Parallel()
+
+	secure := &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{
+				ID:      "auth.signup.password",
+				Type:    "secure_text_field",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 10, Y: 20, Width: 100, Height: 40},
+			},
+		},
+	}
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{secure}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("type"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionInputText, ID: "auth.signup.password", Value: "p@ssw0rd!"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.taps) != 0 {
+		t.Fatalf("paste mode should not emit a focus tap, got %d taps", len(drv.taps))
+	}
+
+	if len(drv.inputs) != 1 {
+		t.Fatalf("expected 1 input call, got %d", len(drv.inputs))
+	}
+
+	if !drv.inputs[0].paste {
+		t.Fatalf("expected paste=true on secure_text_field, got %+v", drv.inputs[0])
+	}
+
+	if drv.inputs[0].id != "auth.signup.password" || drv.inputs[0].text != "p@ssw0rd!" {
+		t.Fatalf("unexpected input payload: %+v", drv.inputs[0])
+	}
 }
 
 func TestExecuteInputTextTapsThenTypes(t *testing.T) {
@@ -267,7 +337,7 @@ func TestExecuteInputTextTapsThenTypes(t *testing.T) {
 		t.Fatalf("expected one focusing tap, got %d", len(drv.taps))
 	}
 
-	if len(drv.inputs) != 1 || drv.inputs[0] != "hello" {
+	if len(drv.inputs) != 1 || drv.inputs[0].text != "hello" || drv.inputs[0].paste {
 		t.Fatalf("unexpected inputs: %v", drv.inputs)
 	}
 }

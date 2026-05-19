@@ -107,13 +107,27 @@ func (c *Client) Hierarchy(ctx context.Context, bundleID string) (*tree.ViewNode
 }
 
 // Tap posts to /tap.
-func (c *Client) Tap(ctx context.Context, bundleID string, x, y float64) error {
-	return c.postJSON(ctx, "/tap", map[string]any{"bundleId": bundleID, "x": x, "y": y})
+func (c *Client) Tap(ctx context.Context, bundleID, id string, x, y float64) error {
+	payload := map[string]any{"bundleId": bundleID, "x": x, "y": y}
+	if id != "" {
+		payload["id"] = id
+	}
+
+	return c.postJSON(ctx, "/tap", payload)
 }
 
 // InputText posts to /inputText.
-func (c *Client) InputText(ctx context.Context, bundleID string, text string) error {
-	return c.postJSON(ctx, "/inputText", map[string]string{"bundleId": bundleID, "text": text})
+func (c *Client) InputText(ctx context.Context, bundleID, id, text string, paste bool) error {
+	payload := map[string]any{"bundleId": bundleID, "text": text}
+	if id != "" {
+		payload["id"] = id
+	}
+
+	if paste {
+		payload["paste"] = true
+	}
+
+	return c.postJSON(ctx, "/inputText", payload)
 }
 
 // EraseText posts to /eraseText.
