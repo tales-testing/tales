@@ -126,68 +126,28 @@ final class TalesRouter {
                 return HTTPResponse.error("element \(id) not found", status: 404)
             }
 
-            // Pasting into SecureField(.newPassword) is fragile because iOS
-            // installs a "Use Strong Password" QuickType overlay that
-            // intercepts soft-keyboard keystrokes and Cmd+V from a
-            // disconnected hardware keyboard is silently dropped. Stage the
-            // pasteboard once, then walk a cascade of strategies that
-            // covers the realistic input paths, ending on a typeText
-            // fallback so the field never ends up completely empty.
-            UIPasteboard.general.string = text
+            // SecureField(.newPassword) is the canonical case where every
+            // high-level XCUITest typing API loses characters: the input
+            // listener that autocorrection and the "Use Strong Password"
+            // banner both hook eats multi-character bursts. Pasting via
+            // UIPasteboard also fails because iOS often disables clipboard
+            // paste on .newPassword for security.
+            //
+            // Tap to focus, wait for the keyboard, then go straight to
+            // the synthesize path — it dispatches XCSynthesizedEventRecord
+            // through the daemon proxy, fully bypassing the input listener.
+            // No pasteboard fiddling, no contextual menu probing — both
+            // were observed to either fail silently or paste partially on
+            // iOS 26.
             element.tap()
-
-            // Wait for the soft keyboard to be fully presented before
-            // probing any strategy. On a second focus from a previously
-            // focused field, iOS animates the keyboard transition and any
-            // keystroke sent during that window is silently swallowed —
-            // the classic stable "N chars out of M" truncation pattern.
             _ = app.keyboards.firstMatch.waitForExistence(timeout: 2.0)
 
-            // Best-effort: if the iOS "Use Strong Password" sheet has
-            // claimed the keyboard accessory, dismiss it so paste / type
-            // strategies can interact with the field directly. Labels are
-            // locale-dependent so this is intentionally a quick scan with
-            // a short timeout — the cascade still works without it.
-            dismissPasswordAssistant(in: app)
-
-            // Strategy 1: tap the QuickType "Paste" key that iOS adds to
-            // the keyboard accessory bar when the pasteboard holds fresh
-            // content. iOS 26 places this affordance in different element
-            // roots depending on locale and content type, so probe the
-            // keyboard accessory, the toolbar, and the top-level button
-            // collection before giving up.
-            if tapPasteCandidate(inAny: [
-                app.keyboards.buttons,
-                app.toolbars.buttons,
-                app.buttons,
-            ]) {
-                dismissKeyboardIfPresent(in: app)
-
-                return HTTPResponse.json(["ok": true])
+            do {
+                try typeWithEventSynthesis(text)
+            } catch {
+                return HTTPResponse.error("synthesize text failed: \(error.localizedDescription)", status: 500)
             }
 
-            // Strategy 2: long-press the field to surface the system edit
-            // menu, then tap Paste. This catches the case where QuickType
-            // is suppressed (e.g. when the Strong Password sheet has
-            // claimed the accessory view).
-            element.press(forDuration: 1.0)
-            if tapPasteCandidate(inAny: [app.menuItems, app.buttons]) {
-                dismissKeyboardIfPresent(in: app)
-
-                return HTTPResponse.json(["ok": true])
-            }
-
-            // Strategy 3: type via the soft keyboard as a best-effort
-            // fallback. SecureField(.newPassword) installs the iOS
-            // "Use Strong Password" autofill banner only after the first
-            // keystroke, and the field briefly loses first-responder
-            // during the banner slide-in (~300ms). Sending the whole
-            // string in one shot deterministically loses 11+ chars in
-            // that window — observed as the stable 5/16, 3/16 patterns.
-            // Type one warm-up char, wait for the banner to settle, then
-            // type the rest via the element-scoped API so first responder
-            // stays anchored on the target.
-            typeWithAutofillWarmup(text, on: element, app: app)
             dismissKeyboardIfPresent(in: app)
 
             return HTTPResponse.json(["ok": true])
@@ -211,98 +171,47 @@ final class TalesRouter {
     /// Mirrors Maestro's TextInputHelper strategy: dispatch the first
     /// character at typing speed 1 (very slow), wait 500ms for the input
     /// listener to settle around the new field, then dispatch the
-    /// remainder at typing speed 30. The synchronous synthesize call
-    /// runs on a background queue so the main-thread handler does not
-    /// deadlock against the daemon completion.
-    private func typeWithAutofillWarmup(_ text: String, on element: XCUIElement, app: XCUIApplication) {
+    /// remainder at typing speed 30.
+    private func typeWithEventSynthesis(_ text: String) throws {
         guard !text.isEmpty else { return }
 
         let chars = Array(text)
         let firstChar = String(chars[0])
         let remainder = chars.count > 1 ? String(chars[1...]) : ""
 
-        synthesizeText(firstChar, typingSpeed: 1)
+        try synthesizeText(firstChar, typingSpeed: 1)
 
         if !remainder.isEmpty {
             Thread.sleep(forTimeInterval: 0.5)
-            synthesizeText(remainder, typingSpeed: 30)
+            try synthesizeText(remainder, typingSpeed: 30)
         }
     }
 
     /// One shot of event-record synthesis. Runs the sync daemon call on
     /// the global queue so the semaphore wait never blocks the same
-    /// thread the completion would target.
-    private func synthesizeText(_ text: String, typingSpeed: Int) {
+    /// thread the completion would target. Errors propagate so the HTTP
+    /// handler can return a real 500 to Tales instead of pretending the
+    /// input succeeded.
+    private func synthesizeText(_ text: String, typingSpeed: Int) throws {
+        var caught: Error?
         DispatchQueue.global(qos: .userInitiated).sync {
-            var path = PointerEventPath.pathForTextInput()
-            path.type(text: text, typingSpeed: typingSpeed)
-
-            let orientation = UIInterfaceOrientation.portrait
-            let record = EventRecord(orientation: orientation)
-            record.add(path)
-
             do {
+                var path = PointerEventPath.pathForTextInput()
+                path.type(text: text, typingSpeed: typingSpeed)
+
+                let orientation = UIInterfaceOrientation.portrait
+                let record = EventRecord(orientation: orientation)
+                record.add(path)
+
                 try RunnerDaemonProxy().synthesizeSync(eventRecord: record)
             } catch {
-                NSLog("[tales-driver] synthesizeText failed: \(error)")
-            }
-        }
-    }
-
-    /// Locales covered by iOS contextual / QuickType paste actions.
-    private static let pasteLabels = [
-        "Paste", "Coller", "Pegar", "Einfügen", "Incolla", "Inserir",
-        "Vložit", "Beillesztés", "Plak", "Wklej",
-    ]
-
-    /// Labels iOS uses on the "Use Strong Password" assistant sheet to
-    /// let the user opt out and enter their own password. Tapping any of
-    /// these dismisses the assistant and frees the keyboard accessory.
-    private static let passwordAssistantDismissLabels = [
-        "Choose My Own Password",
-        "Saisir mon mot de passe",
-        "Selbst auswählen",
-        "Inserisci tu la password",
-        "Escolher minha própria senha",
-        "Elegir mi propia contraseña",
-        "Not Now",
-        "Pas maintenant",
-        "Nicht jetzt",
-        "Non ora",
-        "Agora não",
-        "Ahora no",
-    ]
-
-    /// Walks `pasteLabels` against an XCUIElementQuery (keyboards.buttons
-    /// or menuItems) and taps the first hittable match. Returns false if
-    /// none surfaces within a short settle window.
-    private func tapPasteCandidate(in query: XCUIElementQuery) -> Bool {
-        // Wait briefly on the canonical English label so the keyboard /
-        // menu has time to render before we scan the locale fallbacks.
-        _ = query["Paste"].waitForExistence(timeout: 1.0)
-
-        for label in TalesRouter.pasteLabels {
-            let item = query[label]
-            if item.exists && item.isHittable {
-                item.tap()
-                return true
+                caught = error
             }
         }
 
-        return false
-    }
-
-    /// Same as `tapPasteCandidate(in:)` but tries each query in order so
-    /// callers can search several element roots without duplicating the
-    /// locale loop. Returns true on the first successful tap.
-    private func tapPasteCandidate(inAny queries: [XCUIElementQuery]) -> Bool {
-        for query in queries {
-            if tapPasteCandidate(in: query) {
-                return true
-            }
+        if let caught {
+            throw caught
         }
-
-        return false
     }
 
     /// Routes a tap to the most specific affordance inside an element.
@@ -329,32 +238,6 @@ final class TalesRouter {
         }
 
         element.tap()
-    }
-
-    private func dismissPasswordAssistant(in app: XCUIApplication) {
-        // iOS 26 surfaces the password assistant in different element
-        // roots depending on whether it is rendered as a sheet, an alert
-        // overlay, or a keyboard accessory. Scan the realistic ones; the
-        // first hittable (root, label) match wins.
-        let queries: [XCUIElementQuery] = [
-            app.buttons,
-            app.sheets.buttons,
-            app.alerts.buttons,
-            app.keyboards.buttons,
-            app.toolbars.buttons,
-            app.otherElements.buttons,
-        ]
-
-        for query in queries {
-            for label in TalesRouter.passwordAssistantDismissLabels {
-                let btn = query[label]
-                if btn.exists && btn.isHittable {
-                    btn.tap()
-
-                    return
-                }
-            }
-        }
     }
 
     /// Labels iOS uses on the keyboard's return / done / continue key.
