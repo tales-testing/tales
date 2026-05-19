@@ -473,6 +473,19 @@ func (p *Provider) captureStepEnd(ctx context.Context, session *Session, stepDir
 	return result, true
 }
 
+// usePasteInput reports whether an input_text action should use the
+// pasteboard-based driver path instead of keyboard typing. SwiftUI
+// SecureField(.newPassword) inputs surface an autofill QuickType bar
+// that intercepts the first keystrokes; pasting from the system
+// pasteboard sidesteps the keyboard entirely.
+func usePasteInput(node *tree.ViewNode) bool {
+	if node == nil {
+		return false
+	}
+
+	return node.Type == "secure_text_field"
+}
+
 var actionLabels = map[model.MobileActionKind]string{
 	model.MobileActionTap:            "Tap",
 	model.MobileActionInputText:      "Input text",
@@ -533,19 +546,27 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 
 	switch action.Kind {
 	case model.MobileActionTap:
-		if err := session.Driver.Tap(ctx, session.Target.BundleID, x, y); err != nil {
+		if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
 			return fmt.Errorf("tap: %w", err)
 		}
 	case model.MobileActionInputText:
-		if err := session.Driver.Tap(ctx, session.Target.BundleID, x, y); err != nil {
+		if usePasteInput(node) {
+			if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, true); err != nil {
+				return fmt.Errorf("input text: %w", err)
+			}
+
+			break
+		}
+
+		if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
 			return fmt.Errorf("focus element: %w", err)
 		}
 
-		if err := session.Driver.InputText(ctx, session.Target.BundleID, action.Value); err != nil {
+		if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, false); err != nil {
 			return fmt.Errorf("input text: %w", err)
 		}
 	case model.MobileActionClearText:
-		if err := session.Driver.Tap(ctx, session.Target.BundleID, x, y); err != nil {
+		if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
 			return fmt.Errorf("focus element: %w", err)
 		}
 

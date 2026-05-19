@@ -139,19 +139,45 @@ func TestClientTapSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.Tap(context.Background(), "com.example.MyApp", 12.5, 34.25); err != nil {
+	if err := client.Tap(context.Background(), "com.example.MyApp", "", 12.5, 34.25); err != nil {
 		t.Fatalf("tap: %v", err)
 	}
 
 	if captured["bundleId"] != "com.example.MyApp" || captured["x"] != 12.5 || captured["y"] != 34.25 {
 		t.Fatalf("unexpected payload: %v", captured)
 	}
+
+	if _, hasID := captured["id"]; hasID {
+		t.Fatalf("payload should omit empty id, got %v", captured)
+	}
+}
+
+func TestClientTapIncludesIDWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.Tap(context.Background(), "com.example.MyApp", "auth.signup.accept_terms", 12.5, 34.25); err != nil {
+		t.Fatalf("tap: %v", err)
+	}
+
+	if captured["id"] != "auth.signup.accept_terms" {
+		t.Fatalf("payload missing id, got %v", captured)
+	}
 }
 
 func TestClientInputTextSendsPayload(t *testing.T) {
 	t.Parallel()
 
-	var captured map[string]string
+	var captured map[string]any
 
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/inputText" {
@@ -165,12 +191,46 @@ func TestClientInputTextSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.InputText(context.Background(), "com.example.MyApp", "hello@example.com"); err != nil {
+	if err := client.InputText(context.Background(), "com.example.MyApp", "", "hello@example.com", false); err != nil {
 		t.Fatalf("inputText: %v", err)
 	}
 
 	if captured["bundleId"] != "com.example.MyApp" || captured["text"] != "hello@example.com" {
 		t.Fatalf("unexpected payload %v", captured)
+	}
+
+	if _, hasID := captured["id"]; hasID {
+		t.Fatalf("payload should omit empty id, got %v", captured)
+	}
+
+	if _, hasPaste := captured["paste"]; hasPaste {
+		t.Fatalf("payload should omit paste=false, got %v", captured)
+	}
+}
+
+func TestClientInputTextIncludesIDAndPasteWhenSet(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.InputText(context.Background(), "com.example.MyApp", "auth.signup.password", "p@ssw0rd!", true); err != nil {
+		t.Fatalf("inputText: %v", err)
+	}
+
+	if captured["id"] != "auth.signup.password" {
+		t.Fatalf("payload missing id, got %v", captured)
+	}
+
+	if captured["paste"] != true {
+		t.Fatalf("payload missing paste=true, got %v", captured)
 	}
 }
 

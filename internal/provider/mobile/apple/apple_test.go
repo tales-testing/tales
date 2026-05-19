@@ -93,10 +93,10 @@ func (f *fakeDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, err
 	return &tree.ViewNode{ID: "root"}, nil
 }
 
-func (f *fakeDriver) Tap(_ context.Context, _ string, _, _ float64) error { return nil }
-func (f *fakeDriver) InputText(_ context.Context, _, _ string) error      { return nil }
-func (f *fakeDriver) EraseText(_ context.Context, _ string, _ int) error  { return nil }
-func (f *fakeDriver) Screenshot(_ context.Context) ([]byte, error)        { return []byte{}, nil }
+func (f *fakeDriver) Tap(_ context.Context, _, _ string, _, _ float64) error    { return nil }
+func (f *fakeDriver) InputText(_ context.Context, _, _, _ string, _ bool) error { return nil }
+func (f *fakeDriver) EraseText(_ context.Context, _ string, _ int) error        { return nil }
+func (f *fakeDriver) Screenshot(_ context.Context) ([]byte, error)              { return []byte{}, nil }
 
 type fakeXcodebuild struct {
 	calls    atomic.Int32
