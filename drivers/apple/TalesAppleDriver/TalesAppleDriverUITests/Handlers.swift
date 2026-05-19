@@ -199,22 +199,53 @@ final class TalesRouter {
         return HTTPResponse.json(["ok": true])
     }
 
-    /// Types `text` one character at a time with a small delay between
-    /// keystrokes via app-level typeText (focus has already been
-    /// established by the caller). The autofill banner installation
-    /// and the SwiftUI / keyboard transitions that swallow a multi-char
-    /// burst on SecureField(.newPassword) cannot trip a single-char
-    /// call — by the time the next char is delivered iOS has settled.
-    /// App-level typeText is used instead of element-scoped because the
-    /// element variant re-checks hittability on every call, which on a
-    /// ScrollView under a soft keyboard adds enough latency to overflow
-    /// the HTTP request budget on a 12-16 char password.
+    /// Types `text` by feeding XCSynthesizedEventRecord straight to the
+    /// testmanagerd daemon via the private RunnerDaemonProxy. The
+    /// high-level XCUIApplication.typeText path runs through the iOS
+    /// input listener that interferes with autocorrection and the
+    /// strong-password QuickType banner — under those conditions multi-
+    /// character bursts deterministically lose 11-13 keystrokes on
+    /// SecureField(.newPassword). Going through the event-synthesis
+    /// pipeline bypasses that listener entirely.
+    ///
+    /// Mirrors Maestro's TextInputHelper strategy: dispatch the first
+    /// character at typing speed 1 (very slow), wait 500ms for the input
+    /// listener to settle around the new field, then dispatch the
+    /// remainder at typing speed 30. The synchronous synthesize call
+    /// runs on a background queue so the main-thread handler does not
+    /// deadlock against the daemon completion.
     private func typeWithAutofillWarmup(_ text: String, on element: XCUIElement, app: XCUIApplication) {
         guard !text.isEmpty else { return }
 
-        for character in text {
-            app.typeText(String(character))
-            Thread.sleep(forTimeInterval: 0.04)
+        let chars = Array(text)
+        let firstChar = String(chars[0])
+        let remainder = chars.count > 1 ? String(chars[1...]) : ""
+
+        synthesizeText(firstChar, typingSpeed: 1)
+
+        if !remainder.isEmpty {
+            Thread.sleep(forTimeInterval: 0.5)
+            synthesizeText(remainder, typingSpeed: 30)
+        }
+    }
+
+    /// One shot of event-record synthesis. Runs the sync daemon call on
+    /// the global queue so the semaphore wait never blocks the same
+    /// thread the completion would target.
+    private func synthesizeText(_ text: String, typingSpeed: Int) {
+        DispatchQueue.global(qos: .userInitiated).sync {
+            var path = PointerEventPath.pathForTextInput()
+            path.type(text: text, typingSpeed: typingSpeed)
+
+            let orientation = UIInterfaceOrientation.portrait
+            let record = EventRecord(orientation: orientation)
+            record.add(path)
+
+            do {
+                try RunnerDaemonProxy().synthesizeSync(eventRecord: record)
+            } catch {
+                NSLog("[tales-driver] synthesizeText failed: \(error)")
+            }
         }
     }
 
