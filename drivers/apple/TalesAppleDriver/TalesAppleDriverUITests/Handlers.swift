@@ -173,9 +173,16 @@ final class TalesRouter {
             }
 
             // Strategy 3: type via the soft keyboard as a best-effort
-            // fallback. The keyboard wait above already covered the focus
-            // transition so the full string should land on the field.
-            app.typeText(text)
+            // fallback. SecureField(.newPassword) installs the iOS
+            // "Use Strong Password" autofill banner only after the first
+            // keystroke, and the field briefly loses first-responder
+            // during the banner slide-in (~300ms). Sending the whole
+            // string in one shot deterministically loses 11+ chars in
+            // that window — observed as the stable 5/16, 3/16 patterns.
+            // Type one warm-up char, wait for the banner to settle, then
+            // type the rest via the element-scoped API so first responder
+            // stays anchored on the target.
+            typeWithAutofillWarmup(text, on: element, app: app)
             dismissKeyboardIfPresent(in: app)
 
             return HTTPResponse.json(["ok": true])
@@ -185,6 +192,26 @@ final class TalesRouter {
         dismissKeyboardIfPresent(in: app)
 
         return HTTPResponse.json(["ok": true])
+    }
+
+    /// Types `text` into `element` in two phases so the iOS strong-password
+    /// banner installation does not eat the leading characters. The first
+    /// keystroke triggers the banner; the sleep gives it time to finish
+    /// animating; the remainder is delivered against a stable first
+    /// responder. Uses `element.typeText` so XCUITest re-asserts focus
+    /// before each phase rather than relying on the app-level focus.
+    private func typeWithAutofillWarmup(_ text: String, on element: XCUIElement, app: XCUIApplication) {
+        guard !text.isEmpty else { return }
+
+        let first = String(text.prefix(1))
+        let rest = String(text.dropFirst())
+
+        element.typeText(first)
+
+        guard !rest.isEmpty else { return }
+
+        Thread.sleep(forTimeInterval: 0.5)
+        element.typeText(rest)
     }
 
     /// Locales covered by iOS contextual / QuickType paste actions.
