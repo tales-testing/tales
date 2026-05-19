@@ -12,6 +12,7 @@
 		AA0000000000000000000051 /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000021 /* HTTPServer.swift */; };
 		AA0000000000000000000052 /* Handlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000022 /* Handlers.swift */; };
 		AA0000000000000000000053 /* Hierarchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000023 /* Hierarchy.swift */; };
+		AA0000000000000000000054 /* XCTestPrivate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000025 /* XCTestPrivate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +33,7 @@
 		AA0000000000000000000022 /* Handlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Handlers.swift; sourceTree = "<group>"; };
 		AA0000000000000000000023 /* Hierarchy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Hierarchy.swift; sourceTree = "<group>"; };
 		AA0000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA0000000000000000000025 /* XCTestPrivate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XCTestPrivate.swift; sourceTree = "<group>"; };
 		AA0000000000000000000030 /* TalesAppleDriverHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TalesAppleDriverHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000031 /* TalesAppleDriverUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TalesAppleDriverUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -79,6 +81,7 @@
 				AA0000000000000000000021 /* HTTPServer.swift */,
 				AA0000000000000000000022 /* Handlers.swift */,
 				AA0000000000000000000023 /* Hierarchy.swift */,
+				AA0000000000000000000025 /* XCTestPrivate.swift */,
 				AA0000000000000000000024 /* Info.plist */,
 			);
 			path = TalesAppleDriverUITests;
@@ -203,6 +206,7 @@
 				AA0000000000000000000051 /* HTTPServer.swift in Sources */,
 				AA0000000000000000000052 /* Handlers.swift in Sources */,
 				AA0000000000000000000053 /* Hierarchy.swift in Sources */,
+				AA0000000000000000000054 /* XCTestPrivate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
