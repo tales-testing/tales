@@ -232,6 +232,84 @@ func TestClientDoubleTapSendsPayload(t *testing.T) {
 	}
 }
 
+func TestClientPressKeySendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/pressKey" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.PressKey(context.Background(), "com.example.MyApp", "return"); err != nil {
+		t.Fatalf("pressKey: %v", err)
+	}
+
+	if captured["bundleId"] != "com.example.MyApp" || captured["key"] != "return" {
+		t.Fatalf("unexpected pressKey payload: %v", captured)
+	}
+}
+
+func TestClientPressButtonSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/pressButton" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.PressButton(context.Background(), "com.example.MyApp", "home"); err != nil {
+		t.Fatalf("pressButton: %v", err)
+	}
+
+	if captured["bundleId"] != "com.example.MyApp" || captured["button"] != "home" {
+		t.Fatalf("unexpected pressButton payload: %v", captured)
+	}
+}
+
+func TestClientSetOrientationSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/orientation" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.SetOrientation(context.Background(), "landscape_left"); err != nil {
+		t.Fatalf("setOrientation: %v", err)
+	}
+
+	if captured["orientation"] != "landscape_left" {
+		t.Fatalf("unexpected setOrientation payload: %v", captured)
+	}
+}
+
 func TestClientTapIncludesIDWhenProvided(t *testing.T) {
 	t.Parallel()
 

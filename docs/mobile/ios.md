@@ -222,6 +222,16 @@ Supported V1 actions:
   `direction` is the content direction to reveal (the finger travels the
   opposite way). Accepts the same optional `distance` / `duration` as `swipe`.
 
+Device-level actions take no `id`:
+
+- `press_key { key = "return" }` — presses a hardware keyboard key. `key` is
+  one of `return`, `enter`, `tab`, `space`, `escape`, `delete`.
+- `press_button { button = "home" }` — presses a device button (`home` or
+  `lock`).
+- `set_orientation { orientation = "landscape_left" }` — rotates the device.
+  `orientation` is one of `portrait`, `landscape_left`, `landscape_right`,
+  `upside_down`.
+
 Actions have an implicit wait of `10s` with `250ms` polling. Each action may
 also set `timeout = "2s"`.
 

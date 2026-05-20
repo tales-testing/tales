@@ -563,6 +563,12 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, false)
 	}
 
+	// Device-level actions target no element, so they skip the
+	// wait-for-element step entirely.
+	if handled, err := handleDeviceAction(ctx, session, action); handled {
+		return err
+	}
+
 	node, err := p.waitForActionElement(ctx, session, action)
 	if err != nil {
 		return err
@@ -583,11 +589,47 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 		return executeSwipe(ctx, session, action, node, false)
 	case model.MobileActionScroll:
 		return executeSwipe(ctx, session, action, node, true)
-	case model.MobileActionWaitVisible, model.MobileActionWaitNotVisible:
+	case model.MobileActionWaitVisible, model.MobileActionWaitNotVisible,
+		model.MobileActionPressKey, model.MobileActionPressButton, model.MobileActionSetOrientation:
+		// Handled before element resolution (wait_* and the device-level
+		// actions); never reached here.
 		return nil
 	default:
 		return fmt.Errorf("unsupported action kind %q", action.Kind)
 	}
+}
+
+// handleDeviceAction runs the device-level actions (press_key,
+// press_button, set_orientation) that operate on the device rather than
+// an element. The first return value reports whether the action kind was
+// a device action; when false the caller continues with element-based
+// handling.
+func handleDeviceAction(ctx context.Context, session *Session, action provider.MobileActionExec) (bool, error) {
+	if action.Kind == model.MobileActionPressKey {
+		if err := session.Driver.PressKey(ctx, session.Target.BundleID, action.Value); err != nil {
+			return true, fmt.Errorf("press key: %w", err)
+		}
+
+		return true, nil
+	}
+
+	if action.Kind == model.MobileActionPressButton {
+		if err := session.Driver.PressButton(ctx, session.Target.BundleID, action.Value); err != nil {
+			return true, fmt.Errorf("press button: %w", err)
+		}
+
+		return true, nil
+	}
+
+	if action.Kind == model.MobileActionSetOrientation {
+		if err := session.Driver.SetOrientation(ctx, action.Value); err != nil {
+			return true, fmt.Errorf("set orientation: %w", err)
+		}
+
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func executeTap(ctx context.Context, session *Session, node *tree.ViewNode) error {

@@ -118,12 +118,83 @@ scenario "iOS gesture actions" {
     }
   }
 
-  # scroll repeatedly pulls the LazyVStack content up. A row far down the
-  # list is absent from the accessibility tree until scrolling realizes
-  # it, so wait_visible only passes once the scroll actually moved the
-  # content.
-  step "mobile" "scroll_action" {
+  # press_key sends a hardware Return key; the focused TextField's
+  # onSubmit handler bumps the counter. Runs before scroll_action so the
+  # key field is still on screen.
+  step "mobile" "press_key_action" {
     depends_on = ["swipe_action"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      tap {
+        id = "gestures.keyfield"
+      }
+      press_key {
+        key = "return"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.submit"
+        value = "submit=1"
+      }
+    }
+  }
+
+  # set_orientation rotates the simulator; the GeometryReader-backed
+  # mirror flips to landscape, then back to portrait.
+  step "mobile" "orientation_action" {
+    depends_on = ["press_key_action"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      set_orientation {
+        orientation = "landscape_left"
+      }
+    }
+
+    expect {
+      text {
+        id      = "gestures.status.orientation"
+        value   = "orientation=landscape"
+        timeout = "10s"
+      }
+    }
+  }
+
+  step "mobile" "orientation_restore" {
+    depends_on = ["orientation_action"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      set_orientation {
+        orientation = "portrait"
+      }
+    }
+
+    expect {
+      text {
+        id      = "gestures.status.orientation"
+        value   = "orientation=portrait"
+        timeout = "10s"
+      }
+    }
+  }
+
+  # scroll runs last: it leaves the view scrolled, so it must not precede
+  # actions that need top-of-screen targets. Repeated scrolls pull the
+  # LazyVStack content up; a far row is absent from the accessibility
+  # tree until scrolling realizes it, so wait_visible only passes once
+  # the scroll actually moved the content.
+  step "mobile" "scroll_action" {
+    depends_on = ["orientation_restore"]
 
     platform = "ios"
     target   = "iphone"

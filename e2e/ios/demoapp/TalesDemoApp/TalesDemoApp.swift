@@ -208,20 +208,46 @@ struct WelcomeView: View {
 
 // MARK: - Gestures
 
-/// Playground exercising the gesture actions (long_press, double_tap,
-/// swipe, scroll). Every gesture target is paired with a plain-text
-/// status mirror so XCUITest can assert the gesture actually landed.
+/// Playground exercising the gesture and device actions (long_press,
+/// double_tap, swipe, scroll, press_key, set_orientation). Every target
+/// is paired with a plain-text status mirror so XCUITest can assert the
+/// action actually landed.
 struct GestureView: View {
     @State private var longPressCount = 0
     @State private var doubleTapCount = 0
     @State private var swipeDirection = "none"
+    @State private var submitCount = 0
+    @State private var keyFieldText = ""
 
     var body: some View {
+        GeometryReader { geo in
+            scrollBody(orientation: geo.size.width > geo.size.height ? "landscape" : "portrait")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+    }
+
+    private func scrollBody(orientation: String) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Gestures")
                     .font(.title.bold())
                     .accessibilityIdentifier("gestures.screen")
+
+                // Orientation mirror — reflects the window aspect, which
+                // swaps when set_orientation rotates the device.
+                Text("orientation=\(orientation)")
+                    .monospaced()
+                    .accessibilityIdentifier("gestures.status.orientation")
+
+                // Key field — onSubmit fires when press_key sends Return.
+                TextField("Press return here", text: $keyFieldText)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { submitCount += 1 }
+                    .accessibilityIdentifier("gestures.keyfield")
+                Text("submit=\(submitCount)")
+                    .monospaced()
+                    .accessibilityIdentifier("gestures.status.submit")
 
                 Text("Long press me")
                     .frame(maxWidth: .infinity)
@@ -286,8 +312,6 @@ struct GestureView: View {
             }
             .padding(24)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
         .accessibilityIdentifier("gestures.scroll")
     }
 }

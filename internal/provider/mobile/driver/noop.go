@@ -33,6 +33,15 @@ func (NoopDriver) LongPress(_ context.Context, _, _ string, _, _, _ float64) err
 // DoubleTap does nothing.
 func (NoopDriver) DoubleTap(_ context.Context, _, _ string, _, _ float64) error { return nil }
 
+// PressKey does nothing.
+func (NoopDriver) PressKey(_ context.Context, _, _ string) error { return nil }
+
+// PressButton does nothing.
+func (NoopDriver) PressButton(_ context.Context, _, _ string) error { return nil }
+
+// SetOrientation does nothing.
+func (NoopDriver) SetOrientation(_ context.Context, _ string) error { return nil }
+
 // InputText does nothing.
 func (NoopDriver) InputText(_ context.Context, _, _, _ string, _ bool) error { return nil }
 
