@@ -16,6 +16,13 @@ final class TalesAppleDriverUITests: XCTestCase {
     func testRunServer() {
         continueAfterFailure = true
 
+        // Install the XCTest runtime tweaks before serving any request:
+        // disable the implicit quiescence wait that otherwise hangs on
+        // animating apps, and reveal elements behind modal views in
+        // accessibility snapshots.
+        Quiescence.disableImplicitWait()
+        SnapshotParams.apply()
+
         let port = TalesDriverConfig.port
         let host = TalesDriverConfig.host
 
