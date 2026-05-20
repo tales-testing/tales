@@ -1,0 +1,82 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+scenario "iOS privacy permissions" {
+  tags = ["ios", "mobile", "demo", "permissions"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
+  # The permissions block is applied via `simctl privacy` after install
+  # and before launch, so the app observes the granted / revoked state
+  # on first run. The diagnostic view mirrors the authorization status
+  # as plain text.
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+
+    permissions {
+      camera = "allow"
+      photos = "deny"
+    }
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.permissions"
+        timeout = "20s"
+      }
+      tap {
+        id = "welcome.permissions"
+      }
+      wait_visible {
+        id      = "permissions.screen"
+        timeout = "10s"
+      }
+    }
+
+    expect {
+      text {
+        id    = "permissions.status.camera"
+        value = "camera=authorized"
+      }
+      text {
+        id    = "permissions.status.photos"
+        value = "photos=denied"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}

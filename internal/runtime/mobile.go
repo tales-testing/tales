@@ -147,6 +147,13 @@ func evaluateMobileStep(evaluator *lang.Evaluator, scope lang.ScopeData, scenari
 
 	exec.Actions = actions
 
+	permissions, err := evalMobilePermissions(evaluator, scope, scenarioName, step, step.Mobile.Permissions)
+	if err != nil {
+		return nil, err
+	}
+
+	exec.Permissions = permissions
+
 	expect, err := evalMobileExpect(evaluator, scope, scenarioName, step, step.Mobile.Expect)
 	if err != nil {
 		return nil, err
@@ -254,6 +261,36 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 		}
 
 		out = append(out, exec)
+	}
+
+	return out, nil
+}
+
+// evalMobilePermissions resolves each declared privacy permission's
+// "allow" / "deny" decision into a grant / revoke action.
+func evalMobilePermissions(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, permissions []model.MobilePermission) ([]provider.MobilePermissionExec, error) {
+	out := make([]provider.MobilePermissionExec, 0, len(permissions))
+
+	for _, permission := range permissions {
+		exprPath := fmt.Sprintf("mobile.permissions.%s", permission.Service)
+
+		decision, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, exprPath, permission.Decision)
+		if err != nil {
+			return nil, err
+		}
+
+		var action string
+
+		switch decision {
+		case "allow":
+			action = "grant"
+		case "deny":
+			action = "revoke"
+		default:
+			return nil, fmt.Errorf("%s: must be \"allow\" or \"deny\", got %q", exprPath, decision)
+		}
+
+		out = append(out, provider.MobilePermissionExec{Service: permission.Service, Action: action})
 	}
 
 	return out, nil

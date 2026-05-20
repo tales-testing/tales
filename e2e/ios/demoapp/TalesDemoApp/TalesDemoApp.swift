@@ -1,3 +1,5 @@
+import AVFoundation
+import Photos
 import SwiftUI
 
 @main
@@ -199,6 +201,15 @@ struct WelcomeView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("welcome.gestures")
+
+            NavigationLink {
+                PermissionsView()
+            } label: {
+                Text("Permissions")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("welcome.permissions")
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -313,6 +324,55 @@ struct GestureView: View {
             .padding(24)
         }
         .accessibilityIdentifier("gestures.scroll")
+    }
+}
+
+// MARK: - Permissions
+
+/// Reflects the camera and photo-library authorization status as plain
+/// text so an e2e scenario can assert the effect of a `permissions`
+/// block (applied via `simctl privacy` before launch).
+struct PermissionsView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Permissions")
+                .font(.title.bold())
+                .accessibilityIdentifier("permissions.screen")
+
+            Text("camera=\(cameraStatus)")
+                .monospaced()
+                .accessibilityIdentifier("permissions.status.camera")
+
+            Text("photos=\(photosStatus)")
+                .monospaced()
+                .accessibilityIdentifier("permissions.status.photos")
+
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(.systemBackground))
+    }
+
+    private var cameraStatus: String {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: return "authorized"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "notdetermined"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private var photosStatus: String {
+        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+        case .authorized: return "authorized"
+        case .limited: return "limited"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "notdetermined"
+        @unknown default: return "unknown"
+        }
     }
 }
 

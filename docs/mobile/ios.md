@@ -242,6 +242,24 @@ Supported V1 expectations:
 
 Expectations default to `10s` with `250ms` polling.
 
+Privacy permissions:
+
+- A step-level `permissions { <service> = "allow" | "deny" }` block sets
+  privacy permissions via `simctl privacy` after install and before the
+  app launches. Service names are simctl privacy services — `camera`,
+  `photos`, `location`, `contacts`, `microphone`, `calendar`,
+  `reminders`, `motion`, `media-library`, etc.
+
+```hcl
+step "mobile" "launch" {
+  permissions {
+    camera = "allow"
+    photos = "deny"
+  }
+  launch { clear_state = true }
+}
+```
+
 Supported V1 captures:
 
 - `value("id")`

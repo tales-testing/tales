@@ -140,6 +140,7 @@ step "mobile" "<name>" {
 
   launch    { clear_state = true }    # optional, mutually exclusive with terminate
   terminate {}                         # optional, ends the app session
+  permissions { camera = "allow" }     # optional, privacy grants applied before launch
 
   actions {
     # tap | double_tap | long_press | input_text | clear_text
@@ -185,6 +186,11 @@ strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
   `portrait`, `landscape_left`, `landscape_right` or `upside_down`. No `id`.
 - `wait_visible { id = "..." }` — explicit wait until the element is visible.
 - `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
+
+The step-level `permissions { <service> = "allow" | "deny" }` block sets iOS
+privacy permissions (via `simctl privacy`) after install and before launch.
+Service names are simctl privacy services — `camera`, `photos`, `location`,
+`contacts`, `microphone`, etc.
 
 Prefer `wait_visible` / `wait_not_visible` as the canonical way to bridge
 asynchronous UI transitions; never insert sleeps.
