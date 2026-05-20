@@ -1,0 +1,164 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+scenario "iOS gesture actions" {
+  tags = ["ios", "mobile", "demo", "gestures"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
+  step "mobile" "open_gestures" {
+    platform = "ios"
+    target   = "iphone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.gestures"
+        timeout = "20s"
+      }
+      tap {
+        id = "welcome.gestures"
+      }
+      wait_visible {
+        id      = "gestures.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  # long_press holds the finger on the target for its default 1s, long
+  # enough to trip SwiftUI's onLongPressGesture; the status mirror flips
+  # to longpress=1.
+  step "mobile" "long_press_action" {
+    depends_on = ["open_gestures"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      long_press {
+        id = "gestures.longpress.target"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.longpress"
+        value = "longpress=1"
+      }
+    }
+  }
+
+  # double_tap fires two quick taps; SwiftUI's onTapGesture(count: 2)
+  # increments the counter once.
+  step "mobile" "double_tap_action" {
+    depends_on = ["long_press_action"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      double_tap {
+        id = "gestures.doubletap.target"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.doubletap"
+        value = "doubletap=1"
+      }
+    }
+  }
+
+  # swipe drags the finger left across the target; the DragGesture
+  # records the resolved direction.
+  step "mobile" "swipe_action" {
+    depends_on = ["double_tap_action"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      swipe {
+        id        = "gestures.swipe.target"
+        direction = "left"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.swipe"
+        value = "swipe=left"
+      }
+    }
+  }
+
+  # scroll repeatedly pulls the LazyVStack content up. A row far down the
+  # list is absent from the accessibility tree until scrolling realizes
+  # it, so wait_visible only passes once the scroll actually moved the
+  # content.
+  step "mobile" "scroll_action" {
+    depends_on = ["swipe_action"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      scroll {
+        id        = "gestures.scroll"
+        direction = "down"
+      }
+      scroll {
+        id        = "gestures.scroll"
+        direction = "down"
+      }
+      scroll {
+        id        = "gestures.scroll"
+        direction = "down"
+      }
+      scroll {
+        id        = "gestures.scroll"
+        direction = "down"
+      }
+      wait_visible {
+        id      = "gestures.row.30"
+        timeout = "10s"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}

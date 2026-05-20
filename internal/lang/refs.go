@@ -138,6 +138,9 @@ func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
 		collect(action.Secure)
 		collect(action.Timeout)
 		collect(action.Interval)
+		collect(action.Direction)
+		collect(action.Distance)
+		collect(action.Duration)
 	}
 
 	collectMobileExpectRefs(mob.Expect, collect)

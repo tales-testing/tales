@@ -14,18 +14,20 @@ import (
 	"github.com/hyperxlab/tales/internal/provider"
 	"github.com/hyperxlab/tales/internal/provider/mobile"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
+	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
 	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
 	"github.com/hyperxlab/tales/internal/report"
 	"github.com/zclconf/go-cty/cty"
 )
 
 type stubMobileDriver struct {
+	driver.NoopDriver
+
 	hierarchy *tree.ViewNode
 	taps      atomic.Int32
 	inputs    []string
 }
 
-func (s *stubMobileDriver) Health(_ context.Context) error { return nil }
 func (s *stubMobileDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
 	return s.hierarchy, nil
 }
@@ -39,7 +41,6 @@ func (s *stubMobileDriver) InputText(_ context.Context, _, _, t string, _ bool) 
 
 	return nil
 }
-func (s *stubMobileDriver) EraseText(_ context.Context, _ string, _ int) error { return nil }
 func (s *stubMobileDriver) Screenshot(_ context.Context) ([]byte, error) {
 	return []byte("png"), nil
 }

@@ -152,6 +152,86 @@ func TestClientTapSendsPayload(t *testing.T) {
 	}
 }
 
+func TestClientSwipeSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/swipe" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.Swipe(context.Background(), "com.example.MyApp", 1, 2, 3, 4, 0.3); err != nil {
+		t.Fatalf("swipe: %v", err)
+	}
+
+	if captured["startX"] != 1.0 || captured["startY"] != 2.0 ||
+		captured["endX"] != 3.0 || captured["endY"] != 4.0 || captured["duration"] != 0.3 {
+		t.Fatalf("unexpected swipe payload: %v", captured)
+	}
+}
+
+func TestClientLongPressSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/longPress" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.LongPress(context.Background(), "com.example.MyApp", "menu.item", 5, 6, 1.5); err != nil {
+		t.Fatalf("longPress: %v", err)
+	}
+
+	if captured["id"] != "menu.item" || captured["x"] != 5.0 ||
+		captured["y"] != 6.0 || captured["duration"] != 1.5 {
+		t.Fatalf("unexpected longPress payload: %v", captured)
+	}
+}
+
+func TestClientDoubleTapSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/doubleTap" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.DoubleTap(context.Background(), "com.example.MyApp", "feed.item", 7, 8); err != nil {
+		t.Fatalf("doubleTap: %v", err)
+	}
+
+	if captured["id"] != "feed.item" || captured["x"] != 7.0 || captured["y"] != 8.0 {
+		t.Fatalf("unexpected doubleTap payload: %v", captured)
+	}
+}
+
 func TestClientTapIncludesIDWhenProvided(t *testing.T) {
 	t.Parallel()
 

@@ -14,6 +14,12 @@ final class TalesRouter {
             return runOnMain { self.handleHierarchy(request: request) }
         case ("POST", "/tap"):
             return runOnMain { self.handleTap(request: request) }
+        case ("POST", "/swipe"):
+            return runOnMain { self.handleSwipe(request: request) }
+        case ("POST", "/longPress"):
+            return runOnMain { self.handleLongPress(request: request) }
+        case ("POST", "/doubleTap"):
+            return runOnMain { self.handleDoubleTap(request: request) }
         case ("POST", "/inputText"):
             return runOnMain { self.handleInputText(request: request) }
         case ("POST", "/eraseText"):
@@ -118,6 +124,130 @@ final class TalesRouter {
         target.tap()
 
         return HTTPResponse.json(["ok": true])
+    }
+
+    private func handleSwipe(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let startX = doubleField(payload["startX"]),
+              let startY = doubleField(payload["startY"]),
+              let endX = doubleField(payload["endX"]),
+              let endY = doubleField(payload["endY"]) else {
+            return HTTPResponse.error("expected {startX, startY, endX, endY}", status: 400)
+        }
+
+        let duration = doubleField(payload["duration"]) ?? 0.3
+
+        // Swipes go straight through the event-synthesis pipeline: it is
+        // coordinate-driven (the provider computes start/end from the
+        // element bounds) and bypasses the input listener entirely.
+        do {
+            try synthesizeSwipe(
+                start: CGPoint(x: startX, y: startY),
+                end: CGPoint(x: endX, y: endY),
+                duration: duration
+            )
+        } catch {
+            return HTTPResponse.error("swipe failed: \(error.localizedDescription)", status: 500)
+        }
+
+        return HTTPResponse.json(["ok": true])
+    }
+
+    private func handleLongPress(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String,
+              let x = doubleField(payload["x"]),
+              let y = doubleField(payload["y"]) else {
+            return HTTPResponse.error("expected {bundleId, x, y}", status: 400)
+        }
+
+        let id = (payload["id"] as? String) ?? ""
+        let duration = doubleField(payload["duration"]) ?? 1.0
+
+        // Element-based press when the id resolves to a hittable element —
+        // precise and consistent with handleTap. Falls back to a
+        // coordinate touch held for `duration` otherwise.
+        if !id.isEmpty {
+            let app = XCUIApplication(bundleIdentifier: bundleID)
+            let element = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            if element.exists, waitForHittable(element, timeout: 1.5) {
+                element.press(forDuration: duration)
+
+                return HTTPResponse.json(["ok": true])
+            }
+        }
+
+        do {
+            try synthesizeTouch(at: CGPoint(x: x, y: y), touchUpAfter: duration)
+        } catch {
+            return HTTPResponse.error("long press failed: \(error.localizedDescription)", status: 500)
+        }
+
+        return HTTPResponse.json(["ok": true])
+    }
+
+    private func handleDoubleTap(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String,
+              let x = doubleField(payload["x"]),
+              let y = doubleField(payload["y"]) else {
+            return HTTPResponse.error("expected {bundleId, x, y}", status: 400)
+        }
+
+        let id = (payload["id"] as? String) ?? ""
+
+        if !id.isEmpty {
+            let app = XCUIApplication(bundleIdentifier: bundleID)
+            let element = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            if element.exists, waitForHittable(element, timeout: 1.5) {
+                element.doubleTap()
+
+                return HTTPResponse.json(["ok": true])
+            }
+        }
+
+        do {
+            try synthesizeTouch(at: CGPoint(x: x, y: y), touchUpAfter: nil)
+            try synthesizeTouch(at: CGPoint(x: x, y: y), touchUpAfter: nil)
+        } catch {
+            return HTTPResponse.error("double tap failed: \(error.localizedDescription)", status: 500)
+        }
+
+        return HTTPResponse.json(["ok": true])
+    }
+
+    /// Runs one swipe event record through the daemon on the global
+    /// queue so the semaphore wait never blocks the completion thread.
+    private func synthesizeSwipe(start: CGPoint, end: CGPoint, duration: TimeInterval) throws {
+        try synthesizeOnGlobalQueue { record in
+            record.addSwipe(start: start, end: end, duration: duration)
+        }
+    }
+
+    /// Runs one touch event record (tap or held long-press) through the
+    /// daemon on the global queue.
+    private func synthesizeTouch(at point: CGPoint, touchUpAfter: TimeInterval?) throws {
+        try synthesizeOnGlobalQueue { record in
+            record.addTouch(at: point, touchUpAfter: touchUpAfter)
+        }
+    }
+
+    private func synthesizeOnGlobalQueue(_ build: @escaping (EventRecord) -> Void) throws {
+        var caught: Error?
+        DispatchQueue.global(qos: .userInitiated).sync {
+            let record = EventRecord(orientation: .portrait)
+            build(record)
+
+            do {
+                try RunnerDaemonProxy().synthesizeSync(eventRecord: record)
+            } catch {
+                caught = error
+            }
+        }
+
+        if let caught {
+            throw caught
+        }
     }
 
     private func handleInputText(request: HTTPRequest) -> HTTPResponse {

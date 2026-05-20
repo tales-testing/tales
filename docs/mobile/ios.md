@@ -209,8 +209,18 @@ scenario "iOS register demo app" {
 Supported V1 actions:
 
 - `tap { id = "..." }`
+- `double_tap { id = "..." }`
+- `long_press { id = "..." duration = "1s" }` — `duration` optional (default `1s`).
 - `input_text { id = "..." value = "..." secure = true }`
 - `clear_text { id = "..." }`
+- `swipe { id = "..." direction = "up" distance = 0.6 duration = "300ms" }` — drags
+  one finger across the element. `direction` is the finger travel
+  (`up` / `down` / `left` / `right`); `distance` (optional, a fraction in
+  `(0, 1]`, default `0.6`) is the travel as a share of the element's relevant
+  dimension; `duration` optional (default `300ms`).
+- `scroll { id = "..." direction = "down" }` — scrolls the element's content.
+  `direction` is the content direction to reveal (the finger travels the
+  opposite way). Accepts the same optional `distance` / `duration` as `swipe`.
 
 Actions have an implicit wait of `10s` with `250ms` polling. Each action may
 also set `timeout = "2s"`.
