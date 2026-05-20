@@ -139,6 +139,9 @@ step "mobile" "<name>" {
   target   = "<targets key>"
 
   launch    { clear_state = true }    # optional, mutually exclusive with terminate
+                                      # clear_state also resets the simulator
+                                      # Keychain so credentials never leak
+                                      # between scenarios
   terminate {}                         # optional, ends the app session
   permissions { camera = "allow" }     # optional, privacy grants applied before launch
 

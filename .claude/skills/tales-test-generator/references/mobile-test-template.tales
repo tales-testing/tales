@@ -37,6 +37,8 @@ scenario "iOS register happy path" {
     platform = "ios"
     target   = "iphone"
     launch {
+      # clear_state reinstalls the app and resets the simulator
+      # Keychain, so credentials never leak between scenarios.
       clear_state = true
     }
     expect {

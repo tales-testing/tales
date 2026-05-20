@@ -174,6 +174,14 @@ func (s simctlAdapter) Terminate(ctx context.Context, udid, bundleID string) err
 	return nil
 }
 
+func (s simctlAdapter) ResetKeychain(ctx context.Context, udid string) error {
+	if err := s.tool.ResetKeychain(ctx, udid); err != nil {
+		return fmt.Errorf("simctl reset keychain: %w", err)
+	}
+
+	return nil
+}
+
 func (s simctlAdapter) Privacy(ctx context.Context, udid, action, service, bundleID string) error {
 	if err := s.tool.Privacy(ctx, udid, action, service, bundleID); err != nil {
 		return fmt.Errorf("simctl privacy: %w", err)

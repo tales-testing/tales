@@ -241,6 +241,8 @@ func (n *noopSimctl) Privacy(_ context.Context, _, action, service, _ string) er
 	return nil
 }
 
+func (*noopSimctl) ResetKeychain(_ context.Context, _ string) error { return nil }
+
 func (*noopSimctl) Screenshot(_ context.Context, _, _ string) error { return nil }
 
 func newProviderWithFake(drv *fakeDriverAll, lifecycle *fakeLifecycle, target apple.Target) *Provider {
