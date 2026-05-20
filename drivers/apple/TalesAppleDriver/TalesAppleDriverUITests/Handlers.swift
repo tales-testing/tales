@@ -373,10 +373,37 @@ final class TalesRouter {
             element.tap()
             _ = app.keyboards.firstMatch.waitForExistence(timeout: 2.0)
 
-            do {
-                try typeWithEventSynthesis(text)
-            } catch {
-                return HTTPResponse.error("synthesize text failed: \(error.localizedDescription)", status: 500)
+            // Verify-and-retry: after each synthesis pass, read the field
+            // value back. SecureField exposes one bullet per stored
+            // character, so a short read-back means iOS dropped keystrokes
+            // mid-type (the "Use Strong Password" UI stealing focus on a
+            // second .newPassword field, a deterministic 3/16-style
+            // truncation). On a short result, clear the field and retry —
+            // the autofill UI is already installed by then, so the retry
+            // types against a stable field. Bounded so a genuinely
+            // value-less field cannot loop forever.
+            let expectedLength = text.count
+            var landed = -1
+
+            for attempt in 1...inputTextMaxAttempts {
+                if attempt > 1 {
+                    clearFocusedField(app, characters: max(landed, 0) + inputTextClearPadding)
+                    element.tap()
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
+
+                do {
+                    try typeWithEventSynthesis(text)
+                } catch {
+                    return HTTPResponse.error("synthesize text failed: \(error.localizedDescription)", status: 500)
+                }
+
+                landed = valueCharacterCount(element)
+                NSLog("[tales-driver] inputText id=\(id) attempt=\(attempt) expected=\(expectedLength) landed=\(landed)")
+
+                if landed < 0 || landed >= expectedLength {
+                    break
+                }
             }
 
             dismissKeyboardIfPresent(in: app)
@@ -388,6 +415,34 @@ final class TalesRouter {
         dismissKeyboardIfPresent(in: app)
 
         return HTTPResponse.json(["ok": true])
+    }
+
+    /// Maximum synthesis attempts for one input_text in paste mode.
+    private let inputTextMaxAttempts = 3
+    /// Extra delete keys sent when clearing before a retry, to cover any
+    /// characters the previous pass landed beyond the read-back count.
+    private let inputTextClearPadding = 4
+
+    /// Returns the number of characters currently stored in the element,
+    /// or -1 when the element exposes no readable value. A SecureField
+    /// reports one bullet per character, so the count is reliable for
+    /// both secure and plain text fields.
+    private func valueCharacterCount(_ element: XCUIElement) -> Int {
+        guard element.exists, let value = element.value as? String else {
+            return -1
+        }
+
+        return value.count
+    }
+
+    /// Clears the currently focused field by synthesizing `characters`
+    /// delete keystrokes through the event pipeline (the same path used
+    /// for typing, so it bypasses the input listener).
+    private func clearFocusedField(_ app: XCUIApplication, characters: Int) {
+        guard characters > 0 else { return }
+
+        let deletes = String(repeating: XCUIKeyboardKey.delete.rawValue, count: characters)
+        try? synthesizeText(deletes, typingSpeed: 30)
     }
 
     /// Types `text` by feeding XCSynthesizedEventRecord straight to the
