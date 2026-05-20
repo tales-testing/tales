@@ -408,6 +408,18 @@ final class TalesRouter {
 
             dismissKeyboardIfPresent(in: app)
 
+            // landed < 0 means the field exposes no readable value, so the
+            // result is genuinely unverifiable — report ok rather than a
+            // false failure. A non-negative landed shorter than the input
+            // means iOS dropped keystrokes through every retry; surface
+            // that as a real error instead of silently claiming success.
+            if landed >= 0 && landed < expectedLength {
+                return HTTPResponse.error(
+                    "input text truncated: \(landed) of \(expectedLength) characters landed after \(inputTextMaxAttempts) attempts",
+                    status: 500
+                )
+            }
+
             return HTTPResponse.json(["ok": true])
         }
 

@@ -143,6 +143,10 @@ func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
 		collect(action.Duration)
 	}
 
+	for _, permission := range mob.Permissions {
+		collect(permission.Decision)
+	}
+
 	collectMobileExpectRefs(mob.Expect, collect)
 }
 

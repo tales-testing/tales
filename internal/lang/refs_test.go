@@ -128,6 +128,29 @@ func TestStepDependenciesIncludesMobileExpect(t *testing.T) {
 	}
 }
 
+func TestStepDependenciesIncludesMobilePermissions(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "launch",
+		Provider: "mobile",
+		Mobile: &model.MobileStep{
+			Permissions: []model.MobilePermission{
+				{Service: "camera", Decision: parseExpr(t, `result.policy.camera`)},
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["policy"]; !ok {
+		t.Fatalf("missing implicit dep on policy from mobile permissions decision: %#v", deps)
+	}
+}
+
 func TestStepDependenciesIncludesMobilePlatformAndLaunch(t *testing.T) {
 	t.Parallel()
 
