@@ -202,6 +202,22 @@ func (t *Tool) Terminate(ctx context.Context, udid, bundleID string) error {
 	return nil
 }
 
+// ResetKeychain wipes the simulator's keychain. The keychain is global to
+// the device and survives an app uninstall, so a `clear_state` launch must
+// reset it explicitly to keep credentials from one scenario leaking into
+// the next.
+func (t *Tool) ResetKeychain(ctx context.Context, udid string) error {
+	if udid == "" {
+		return fmt.Errorf("reset keychain: udid is required")
+	}
+
+	if _, err := t.runner.Run(ctx, "xcrun", "simctl", "keychain", udid, "reset"); err != nil {
+		return withCoreSimulatorHint(fmt.Errorf("reset keychain on %s: %w", udid, err))
+	}
+
+	return nil
+}
+
 // Privacy grants or revokes a privacy permission for an app. action is
 // "grant" or "revoke"; service is a simctl privacy service name (camera,
 // photos, location, contacts, microphone, …).

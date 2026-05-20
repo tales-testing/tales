@@ -206,6 +206,14 @@ scenario "iOS register demo app" {
 }
 ```
 
+`launch { clear_state = true }` gives the step a clean slate: the provider
+terminates the app, uninstalls it, **resets the simulator Keychain**, then
+reinstalls and launches a fresh copy. The Keychain reset matters because the
+Keychain is device-global — it survives an app uninstall — so credentials such
+as OAuth tokens written by one scenario would otherwise leak into the next.
+Resetting it keeps scenarios isolated. (`simctl keychain reset` requires the
+iOS 16.4+ simulator runtime.)
+
 Supported V1 actions:
 
 - `tap { id = "..." }`

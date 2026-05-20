@@ -15,14 +15,15 @@ import (
 )
 
 type fakeSimctl struct {
-	device     Device
-	findErr    error
-	bootCalls  atomic.Int32
-	waitCalls  atomic.Int32
-	installs   []string
-	uninstalls []string
-	launches   []string
-	terminates []string
+	device         Device
+	findErr        error
+	bootCalls      atomic.Int32
+	waitCalls      atomic.Int32
+	installs       []string
+	uninstalls     []string
+	launches       []string
+	terminates     []string
+	keychainResets []string
 }
 
 func (f *fakeSimctl) FindDeviceByName(_ context.Context, name string) (Device, error) {
@@ -70,6 +71,12 @@ func (f *fakeSimctl) Launch(_ context.Context, _, bundleID string) error {
 
 func (f *fakeSimctl) Terminate(_ context.Context, _, bundleID string) error {
 	f.terminates = append(f.terminates, bundleID)
+
+	return nil
+}
+
+func (f *fakeSimctl) ResetKeychain(_ context.Context, udid string) error {
+	f.keychainResets = append(f.keychainResets, udid)
 
 	return nil
 }
@@ -207,6 +214,10 @@ func TestClearAppStateUninstallsAndReinstalls(t *testing.T) {
 
 	if len(sim.uninstalls) != 1 || sim.uninstalls[0] != "com.example.MyApp" {
 		t.Fatalf("expected uninstall, got %v", sim.uninstalls)
+	}
+
+	if len(sim.keychainResets) != 1 || sim.keychainResets[0] != "AAA" {
+		t.Fatalf("expected keychain reset on AAA, got %v", sim.keychainResets)
 	}
 
 	if len(sim.installs) != 1 || sim.installs[0] != "./MyApp.app" {

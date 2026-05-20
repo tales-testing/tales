@@ -305,6 +305,36 @@ func TestScreenshotArgs(t *testing.T) {
 	}
 }
 
+func TestResetKeychainArgs(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeRunner()
+	tool := New(fake)
+
+	if err := tool.ResetKeychain(context.Background(), "AAA"); err != nil {
+		t.Fatalf("reset keychain: %v", err)
+	}
+
+	if !equalArgs(fake.calls[0].args, []string{"simctl", "keychain", "AAA", "reset"}) {
+		t.Fatalf("unexpected args: %+v", fake.calls[0].args)
+	}
+}
+
+func TestResetKeychainRequiresUDID(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeRunner()
+	tool := New(fake)
+
+	if err := tool.ResetKeychain(context.Background(), ""); err == nil {
+		t.Fatal("expected error when udid is empty")
+	}
+
+	if len(fake.calls) != 0 {
+		t.Fatalf("expected no simctl call without udid, got %+v", fake.calls)
+	}
+}
+
 func TestListDevicesRejectsInvalidJSON(t *testing.T) {
 	t.Parallel()
 

@@ -25,6 +25,7 @@ type SimctlTool interface {
 	Uninstall(ctx context.Context, udid, bundleID string) error
 	Launch(ctx context.Context, udid, bundleID string) error
 	Terminate(ctx context.Context, udid, bundleID string) error
+	ResetKeychain(ctx context.Context, udid string) error
 	Privacy(ctx context.Context, udid, action, service, bundleID string) error
 	Screenshot(ctx context.Context, udid, path string) error
 }
@@ -128,13 +129,22 @@ func (l *Lifecycle) InstallApp(ctx context.Context, udid string, target Target) 
 	return nil
 }
 
-// ClearAppState terminates the app, uninstalls it, then installs it again.
-// This is the V1 implementation of `launch { clear_state = true }`.
+// ClearAppState terminates the app, uninstalls it, resets the simulator
+// keychain, then installs it again. This is the V1 implementation of
+// `launch { clear_state = true }`.
 func (l *Lifecycle) ClearAppState(ctx context.Context, udid string, target Target) error {
 	_ = l.Simctl.Terminate(ctx, udid, target.BundleID)
 
 	if err := l.Simctl.Uninstall(ctx, udid, target.BundleID); err != nil {
 		return fmt.Errorf("clear state (uninstall): %w", err)
+	}
+
+	// The keychain is device-global and survives the uninstall, so an app
+	// re-install alone leaves stale credentials (e.g. an OAuth token from a
+	// prior scenario) that the app's SDK would attach to fresh requests.
+	// Reset it so clear_state truly means a clean slate.
+	if err := l.Simctl.ResetKeychain(ctx, udid); err != nil {
+		return fmt.Errorf("clear state (reset keychain): %w", err)
 	}
 
 	if err := l.Simctl.Install(ctx, udid, target.AppPath); err != nil {
