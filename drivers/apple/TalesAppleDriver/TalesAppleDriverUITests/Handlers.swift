@@ -20,6 +20,12 @@ final class TalesRouter {
             return runOnMain { self.handleLongPress(request: request) }
         case ("POST", "/doubleTap"):
             return runOnMain { self.handleDoubleTap(request: request) }
+        case ("POST", "/pressKey"):
+            return runOnMain { self.handlePressKey(request: request) }
+        case ("POST", "/pressButton"):
+            return runOnMain { self.handlePressButton(request: request) }
+        case ("POST", "/orientation"):
+            return runOnMain { self.handleSetOrientation(request: request) }
         case ("POST", "/inputText"):
             return runOnMain { self.handleInputText(request: request) }
         case ("POST", "/eraseText"):
@@ -215,6 +221,86 @@ final class TalesRouter {
 
         return HTTPResponse.json(["ok": true])
     }
+
+    private func handlePressKey(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let key = payload["key"] as? String else {
+            return HTTPResponse.error("expected {key}", status: 400)
+        }
+
+        guard let keyChar = Self.keyboardKeys[key] else {
+            return HTTPResponse.error("unsupported key \(key)", status: 400)
+        }
+
+        // A keyboard key is fed through the same text-input synthesis path
+        // as typing — the XCUIKeyboardKey raw value is the character the
+        // daemon expects.
+        do {
+            try synthesizeOnGlobalQueue { record in
+                var path = PointerEventPath.pathForTextInput()
+                path.type(text: keyChar, typingSpeed: 30)
+                record.add(path)
+            }
+        } catch {
+            return HTTPResponse.error("press key failed: \(error.localizedDescription)", status: 500)
+        }
+
+        return HTTPResponse.json(["ok": true])
+    }
+
+    private func handlePressButton(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let button = payload["button"] as? String else {
+            return HTTPResponse.error("expected {button}", status: 400)
+        }
+
+        switch button {
+        case "home":
+            XCUIDevice.shared.press(.home)
+        case "lock":
+            // No public API for the lock button; the selector is stable.
+            XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+        default:
+            return HTTPResponse.error("unsupported button \(button)", status: 400)
+        }
+
+        return HTTPResponse.json(["ok": true])
+    }
+
+    private func handleSetOrientation(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let orientation = payload["orientation"] as? String else {
+            return HTTPResponse.error("expected {orientation}", status: 400)
+        }
+
+        guard let deviceOrientation = Self.deviceOrientations[orientation] else {
+            return HTTPResponse.error("unsupported orientation \(orientation)", status: 400)
+        }
+
+        XCUIDevice.shared.orientation = deviceOrientation
+
+        return HTTPResponse.json(["ok": true])
+    }
+
+    /// Maps Tales key names to the XCUIKeyboardKey raw values the event
+    /// synthesizer expects (the raw value is the key's character, not the
+    /// enum case name).
+    private static let keyboardKeys: [String: String] = [
+        "return": XCUIKeyboardKey.return.rawValue,
+        "enter": XCUIKeyboardKey.enter.rawValue,
+        "tab": XCUIKeyboardKey.tab.rawValue,
+        "space": XCUIKeyboardKey.space.rawValue,
+        "escape": XCUIKeyboardKey.escape.rawValue,
+        "delete": XCUIKeyboardKey.delete.rawValue,
+    ]
+
+    /// Maps Tales orientation names to UIDeviceOrientation.
+    private static let deviceOrientations: [String: UIDeviceOrientation] = [
+        "portrait": .portrait,
+        "landscape_left": .landscapeLeft,
+        "landscape_right": .landscapeRight,
+        "upside_down": .portraitUpsideDown,
+    ]
 
     /// Runs one swipe event record through the daemon on the global
     /// queue so the semaphore wait never blocks the completion thread.

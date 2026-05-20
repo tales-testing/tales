@@ -52,6 +52,9 @@ type fakeDriverAll struct {
 	swipes          []fakeSwipe
 	longPresses     []fakeLongPress
 	doubleTaps      []fakeTap
+	pressedKeys     []string
+	pressedButtons  []string
+	orientations    []string
 	inputs          []fakeInput
 	erases          []int
 	screenshotPNG   []byte
@@ -134,6 +137,33 @@ func (f *fakeDriverAll) DoubleTap(_ context.Context, _, id string, x, y float64)
 	defer f.mu.Unlock()
 
 	f.doubleTaps = append(f.doubleTaps, fakeTap{id: id, x: x, y: y})
+
+	return nil
+}
+
+func (f *fakeDriverAll) PressKey(_ context.Context, _, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.pressedKeys = append(f.pressedKeys, key)
+
+	return nil
+}
+
+func (f *fakeDriverAll) PressButton(_ context.Context, _, button string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.pressedButtons = append(f.pressedButtons, button)
+
+	return nil
+}
+
+func (f *fakeDriverAll) SetOrientation(_ context.Context, orientation string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.orientations = append(f.orientations, orientation)
 
 	return nil
 }
@@ -491,6 +521,49 @@ func TestExecuteSwipeRejectsBadDirection(t *testing.T) {
 
 	if len(drv.swipes) != 0 {
 		t.Fatalf("expected no swipe dispatched on bad direction, got %d", len(drv.swipes))
+	}
+}
+
+func TestExecuteDeviceActionsDispatchWithoutElement(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("device"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionPressKey, Value: "return"},
+				{Kind: model.MobileActionPressButton, Value: "home"},
+				{Kind: model.MobileActionSetOrientation, Value: "landscape_left"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.pressedKeys) != 1 || drv.pressedKeys[0] != "return" {
+		t.Fatalf("unexpected pressed keys: %v", drv.pressedKeys)
+	}
+
+	if len(drv.pressedButtons) != 1 || drv.pressedButtons[0] != "home" {
+		t.Fatalf("unexpected pressed buttons: %v", drv.pressedButtons)
+	}
+
+	if len(drv.orientations) != 1 || drv.orientations[0] != "landscape_left" {
+		t.Fatalf("unexpected orientations: %v", drv.orientations)
+	}
+
+	// Device actions never resolve an element, so no tap was issued.
+	if len(drv.taps) != 0 {
+		t.Fatalf("device actions should not tap an element, got %d taps", len(drv.taps))
 	}
 }
 

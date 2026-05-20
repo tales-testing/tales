@@ -155,6 +155,21 @@ func (c *Client) DoubleTap(ctx context.Context, bundleID, id string, x, y float6
 	return c.postJSON(ctx, "/doubleTap", payload)
 }
 
+// PressKey posts to /pressKey.
+func (c *Client) PressKey(ctx context.Context, bundleID, key string) error {
+	return c.postJSON(ctx, "/pressKey", map[string]any{"bundleId": bundleID, "key": key})
+}
+
+// PressButton posts to /pressButton.
+func (c *Client) PressButton(ctx context.Context, bundleID, button string) error {
+	return c.postJSON(ctx, "/pressButton", map[string]any{"bundleId": bundleID, "button": button})
+}
+
+// SetOrientation posts to /orientation.
+func (c *Client) SetOrientation(ctx context.Context, orientation string) error {
+	return c.postJSON(ctx, "/orientation", map[string]any{"orientation": orientation})
+}
+
 // InputText posts to /inputText.
 func (c *Client) InputText(ctx context.Context, bundleID, id, text string, paste bool) error {
 	payload := map[string]any{"bundleId": bundleID, "text": text}

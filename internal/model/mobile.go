@@ -22,6 +22,12 @@ const (
 	MobileActionLongPress MobileActionKind = "long_press"
 	// MobileActionDoubleTap taps an element twice in quick succession.
 	MobileActionDoubleTap MobileActionKind = "double_tap"
+	// MobileActionPressKey presses a hardware keyboard key (return, tab…).
+	MobileActionPressKey MobileActionKind = "press_key"
+	// MobileActionPressButton presses a device button (home, lock).
+	MobileActionPressButton MobileActionKind = "press_button"
+	// MobileActionSetOrientation changes the device orientation.
+	MobileActionSetOrientation MobileActionKind = "set_orientation"
 )
 
 // MobileStep is the provider-specific payload attached to a Step when Provider == "mobile".

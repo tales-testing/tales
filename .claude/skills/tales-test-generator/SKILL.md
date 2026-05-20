@@ -143,7 +143,8 @@ step "mobile" "<name>" {
 
   actions {
     # tap | double_tap | long_press | input_text | clear_text
-    # | swipe | scroll | wait_visible | wait_not_visible
+    # | swipe | scroll | press_key | press_button | set_orientation
+    # | wait_visible | wait_not_visible
     # decoded in source order — order matters
   }
 
@@ -177,6 +178,11 @@ strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
 - `scroll { id = "..." direction = "down" }` — scroll the element's content.
   `direction` is the content direction to reveal. Same optional `distance` /
   `duration` as `swipe`.
+- `press_key { key = "return" }` — hardware key: `return`, `enter`, `tab`,
+  `space`, `escape` or `delete`. No `id`.
+- `press_button { button = "home" }` — device button: `home` or `lock`. No `id`.
+- `set_orientation { orientation = "portrait" }` — rotate the device:
+  `portrait`, `landscape_left`, `landscape_right` or `upside_down`. No `id`.
 - `wait_visible { id = "..." }` — explicit wait until the element is visible.
 - `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
 

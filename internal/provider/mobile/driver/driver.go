@@ -41,6 +41,17 @@ type Driver interface {
 	// (with (x,y) as the screen-space fallback).
 	DoubleTap(ctx context.Context, bundleID, id string, x, y float64) error
 
+	// PressKey presses a hardware keyboard key by name (return, enter,
+	// tab, space, escape, delete).
+	PressKey(ctx context.Context, bundleID, key string) error
+
+	// PressButton presses a device button by name (home, lock).
+	PressButton(ctx context.Context, bundleID, button string) error
+
+	// SetOrientation changes the device orientation (portrait,
+	// landscape_left, landscape_right, upside_down).
+	SetOrientation(ctx context.Context, orientation string) error
+
 	// InputText sets text on the element identified by id. When paste is
 	// true the driver places the text on the system pasteboard and pastes
 	// it via the contextual menu — this avoids the iOS autofill QuickType

@@ -226,7 +226,7 @@ func decodeMobileActions(path string, body hcl.Body) ([]model.MobileAction, hcl.
 
 	for name, attr := range syntaxBody.Attributes {
 		attrRange := attr.Range()
-		diags = append(diags, diagError("Unknown actions attribute", fmt.Sprintf("attribute %q is not allowed inside actions; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, wait_visible, or wait_not_visible blocks.", name), &attrRange))
+		diags = append(diags, diagError("Unknown actions attribute", fmt.Sprintf("attribute %q is not allowed inside actions; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, wait_visible, or wait_not_visible blocks.", name), &attrRange))
 	}
 
 	actions := make([]model.MobileAction, 0, len(syntaxBody.Blocks))
@@ -261,13 +261,19 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 		return decodeSwipeBlock(path, block, model.MobileActionSwipe)
 	case string(model.MobileActionScroll):
 		return decodeSwipeBlock(path, block, model.MobileActionScroll)
+	case string(model.MobileActionPressKey):
+		return decodeDeviceActionBlock(path, block, model.MobileActionPressKey, "key")
+	case string(model.MobileActionPressButton):
+		return decodeDeviceActionBlock(path, block, model.MobileActionPressButton, "button")
+	case string(model.MobileActionSetOrientation):
+		return decodeDeviceActionBlock(path, block, model.MobileActionSetOrientation, "orientation")
 	case string(model.MobileActionWaitVisible):
 		return decodeWaitBlock(path, block, model.MobileActionWaitVisible)
 	case string(model.MobileActionWaitNotVisible):
 		return decodeWaitBlock(path, block, model.MobileActionWaitNotVisible)
 	default:
 		blockRange := block.DefRange()
-		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, wait_visible, or wait_not_visible.", block.Type), &blockRange))
+		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, wait_visible, or wait_not_visible.", block.Type), &blockRange))
 
 		return nil, diags
 	}
@@ -550,6 +556,46 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 		Duration:  expr(path, durationExpr),
 		Timeout:   expr(path, timeoutExpr),
 		Interval:  expr(path, intervalExpr),
+	}
+
+	return action, diags
+}
+
+// decodeDeviceActionBlock decodes a device-level action (press_key,
+// press_button, set_orientation) that carries a single required string
+// attribute (key / button / orientation) and no element id. The argument
+// is stored in MobileAction.Value.
+func decodeDeviceActionBlock(path string, block *hclsyntax.Block, kind model.MobileActionKind, argName string) (*model.MobileAction, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+	actionName := string(kind)
+
+	argExpr, argDiags := requireActionAttr(block, actionName, argName)
+	diags = append(diags, argDiags...)
+
+	timeoutExpr := hcl.Expression(nil)
+	intervalExpr := hcl.Expression(nil)
+
+	for name, attr := range block.Body.Attributes {
+		switch name {
+		case argName:
+			continue
+		case mobileTimeoutAttr:
+			timeoutExpr = attr.Expr
+		case mobileIntervalAttr:
+			intervalExpr = attr.Expr
+		default:
+			attrRange := attr.Range()
+			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: %s, timeout, interval.", actionName, name, argName), &attrRange))
+		}
+	}
+
+	action := &model.MobileAction{
+		Kind:     kind,
+		File:     path,
+		Line:     block.DefRange().Start.Line,
+		Value:    expr(path, argExpr),
+		Timeout:  expr(path, timeoutExpr),
+		Interval: expr(path, intervalExpr),
 	}
 
 	return action, diags

@@ -182,18 +182,30 @@ func evalMobileLaunch(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioN
 	return out, nil
 }
 
+// isDeviceAction reports whether the action operates on the device rather
+// than a UI element and therefore carries no id.
+func isDeviceAction(kind model.MobileActionKind) bool {
+	return kind == model.MobileActionPressKey ||
+		kind == model.MobileActionPressButton ||
+		kind == model.MobileActionSetOrientation
+}
+
 func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, actions []model.MobileAction) ([]provider.MobileActionExec, error) {
 	out := make([]provider.MobileActionExec, 0, len(actions))
 
 	for i, action := range actions {
 		exec := provider.MobileActionExec{Kind: action.Kind, File: action.File, Line: action.Line}
 
-		id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].id", i), action.ID)
-		if err != nil {
-			return nil, err
-		}
+		// Device-level actions (press_key, press_button, set_orientation)
+		// target the device, not an element, so they carry no id.
+		if !isDeviceAction(action.Kind) {
+			id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].id", i), action.ID)
+			if err != nil {
+				return nil, err
+			}
 
-		exec.ID = id
+			exec.ID = id
+		}
 
 		if !action.Timeout.Empty() {
 			timeout, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].timeout", i), action.Timeout)
