@@ -36,6 +36,26 @@ const actionDefaultTimeout = 10 * time.Second
 // the element's value length is unknown.
 const defaultClearTextErase = 64
 
+// Gesture defaults applied when a swipe / scroll / long_press action omits
+// the corresponding attribute.
+const (
+	// defaultGestureDistance is the swipe/scroll travel as a fraction of
+	// the target element's relevant dimension.
+	defaultGestureDistance = 0.6
+	// defaultSwipeDuration is the swipe / scroll gesture duration.
+	defaultSwipeDuration = 300 * time.Millisecond
+	// defaultLongPressDuration is how long long_press holds the finger.
+	defaultLongPressDuration = 1 * time.Second
+)
+
+// Swipe / scroll travel directions.
+const (
+	directionUp    = "up"
+	directionDown  = "down"
+	directionLeft  = "left"
+	directionRight = "right"
+)
+
 // supportedPlatform is the only mobile platform accepted by V1.
 const supportedPlatform = "ios"
 
@@ -548,61 +568,184 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 		return err
 	}
 
-	x, y := tree.Center(node)
-
 	switch action.Kind {
 	case model.MobileActionTap:
-		if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
-			return fmt.Errorf("tap: %w", err)
-		}
+		return executeTap(ctx, session, node)
+	case model.MobileActionDoubleTap:
+		return executeDoubleTap(ctx, session, node)
+	case model.MobileActionLongPress:
+		return executeLongPress(ctx, session, action, node)
 	case model.MobileActionInputText:
-		if usePasteInput(node) {
-			if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, true); err != nil {
-				return fmt.Errorf("input text: %w", err)
-			}
-
-			break
-		}
-
-		if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
-			return fmt.Errorf("focus element: %w", err)
-		}
-
-		if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, false); err != nil {
-			return fmt.Errorf("input text: %w", err)
-		}
+		return executeInputText(ctx, session, action, node)
 	case model.MobileActionClearText:
-		count := len([]rune(tree.Value(node)))
-
-		// SecureField on iOS exposes its value as one "•" per typed
-		// character. An empty value therefore means the field is truly
-		// empty and no delete keys are required. Sending the default
-		// fallback in that case leaks deletes via app.typeText, which on
-		// .newPassword fields routes through the iOS strong-password
-		// group and erases a sibling SecureField instead of the targeted
-		// (already empty) one.
-		if count == 0 && node.Type == secureTextFieldType {
-			return nil
-		}
-
-		if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
-			return fmt.Errorf("focus element: %w", err)
-		}
-
-		if count == 0 {
-			count = defaultClearTextErase
-		}
-
-		if err := session.Driver.EraseText(ctx, session.Target.BundleID, count); err != nil {
-			return fmt.Errorf("erase text: %w", err)
-		}
+		return executeClearText(ctx, session, node)
+	case model.MobileActionSwipe:
+		return executeSwipe(ctx, session, action, node, false)
+	case model.MobileActionScroll:
+		return executeSwipe(ctx, session, action, node, true)
 	case model.MobileActionWaitVisible, model.MobileActionWaitNotVisible:
 		return nil
 	default:
 		return fmt.Errorf("unsupported action kind %q", action.Kind)
 	}
+}
+
+func executeTap(ctx context.Context, session *Session, node *tree.ViewNode) error {
+	x, y := tree.Center(node)
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+		return fmt.Errorf("tap: %w", err)
+	}
 
 	return nil
+}
+
+func executeDoubleTap(ctx context.Context, session *Session, node *tree.ViewNode) error {
+	x, y := tree.Center(node)
+	if err := session.Driver.DoubleTap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+		return fmt.Errorf("double tap: %w", err)
+	}
+
+	return nil
+}
+
+func executeLongPress(ctx context.Context, session *Session, action provider.MobileActionExec, node *tree.ViewNode) error {
+	x, y := tree.Center(node)
+
+	duration := action.Duration
+	if duration <= 0 {
+		duration = defaultLongPressDuration
+	}
+
+	if err := session.Driver.LongPress(ctx, session.Target.BundleID, node.ID, x, y, duration.Seconds()); err != nil {
+		return fmt.Errorf("long press: %w", err)
+	}
+
+	return nil
+}
+
+func executeInputText(ctx context.Context, session *Session, action provider.MobileActionExec, node *tree.ViewNode) error {
+	if usePasteInput(node) {
+		if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, true); err != nil {
+			return fmt.Errorf("input text: %w", err)
+		}
+
+		return nil
+	}
+
+	x, y := tree.Center(node)
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+		return fmt.Errorf("focus element: %w", err)
+	}
+
+	if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, false); err != nil {
+		return fmt.Errorf("input text: %w", err)
+	}
+
+	return nil
+}
+
+func executeClearText(ctx context.Context, session *Session, node *tree.ViewNode) error {
+	count := len([]rune(tree.Value(node)))
+
+	// SecureField on iOS exposes its value as one "•" per typed
+	// character. An empty value therefore means the field is truly
+	// empty and no delete keys are required. Sending the default
+	// fallback in that case leaks deletes via app.typeText, which on
+	// .newPassword fields routes through the iOS strong-password
+	// group and erases a sibling SecureField instead of the targeted
+	// (already empty) one.
+	if count == 0 && node.Type == secureTextFieldType {
+		return nil
+	}
+
+	x, y := tree.Center(node)
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+		return fmt.Errorf("focus element: %w", err)
+	}
+
+	if count == 0 {
+		count = defaultClearTextErase
+	}
+
+	if err := session.Driver.EraseText(ctx, session.Target.BundleID, count); err != nil {
+		return fmt.Errorf("erase text: %w", err)
+	}
+
+	return nil
+}
+
+// executeSwipe backs both the swipe and scroll actions. For swipe,
+// action.Direction is the finger travel direction. For scroll
+// (invert == true) action.Direction is the content direction the author
+// wants to reveal, so the finger travels the opposite way.
+func executeSwipe(ctx context.Context, session *Session, action provider.MobileActionExec, node *tree.ViewNode, invert bool) error {
+	fingerDir := action.Direction
+	if invert {
+		fingerDir = oppositeDirection(action.Direction)
+	}
+
+	startX, startY, endX, endY, err := gestureVector(node, fingerDir, action.Distance)
+	if err != nil {
+		return fmt.Errorf("%s: %w", action.Kind, err)
+	}
+
+	duration := action.Duration
+	if duration <= 0 {
+		duration = defaultSwipeDuration
+	}
+
+	if err := session.Driver.Swipe(ctx, session.Target.BundleID, startX, startY, endX, endY, duration.Seconds()); err != nil {
+		return fmt.Errorf("%s: %w", action.Kind, err)
+	}
+
+	return nil
+}
+
+// gestureVector computes the screen-space start/end points of a finger
+// drag in fingerDir across node, traveling `distance` (a fraction of
+// the element's relevant dimension; defaults applied when <= 0).
+func gestureVector(node *tree.ViewNode, fingerDir string, distance float64) (startX, startY, endX, endY float64, err error) {
+	if distance <= 0 {
+		distance = defaultGestureDistance
+	}
+
+	centerX, centerY := tree.Center(node)
+
+	switch fingerDir {
+	case directionUp:
+		travel := node.Bounds.Height * distance
+
+		return centerX, centerY + travel/2, centerX, centerY - travel/2, nil
+	case directionDown:
+		travel := node.Bounds.Height * distance
+
+		return centerX, centerY - travel/2, centerX, centerY + travel/2, nil
+	case directionLeft:
+		travel := node.Bounds.Width * distance
+
+		return centerX + travel/2, centerY, centerX - travel/2, centerY, nil
+	case directionRight:
+		travel := node.Bounds.Width * distance
+
+		return centerX - travel/2, centerY, centerX + travel/2, centerY, nil
+	default:
+		return 0, 0, 0, 0, fmt.Errorf("invalid direction %q (expected up, down, left or right)", fingerDir)
+	}
+}
+
+func oppositeDirection(direction string) string {
+	switch direction {
+	case directionUp:
+		return directionDown
+	case directionDown:
+		return directionUp
+	case directionLeft:
+		return directionRight
+	case directionRight:
+		return directionLeft
+	default:
+		return direction
+	}
 }
 
 func (p *Provider) waitForActionElement(ctx context.Context, session *Session, action provider.MobileActionExec) (*tree.ViewNode, error) {

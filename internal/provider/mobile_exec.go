@@ -38,6 +38,14 @@ type MobileActionExec struct {
 	Interval time.Duration
 	File     string
 	Line     int
+	// Direction is "up" / "down" / "left" / "right" for swipe and scroll.
+	Direction string
+	// Distance is the resolved swipe/scroll travel fraction in (0,1].
+	// Zero means "use the provider default".
+	Distance float64
+	// Duration is the resolved gesture duration for swipe / scroll /
+	// long_press. Zero means "use the provider default".
+	Duration time.Duration
 }
 
 // MobileExpectExec groups visibility expectations for the step.

@@ -190,10 +190,105 @@ struct WelcomeView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("welcome.repro")
+
+            NavigationLink {
+                GestureView()
+            } label: {
+                Text("Gestures")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("welcome.gestures")
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+    }
+}
+
+// MARK: - Gestures
+
+/// Playground exercising the gesture actions (long_press, double_tap,
+/// swipe, scroll). Every gesture target is paired with a plain-text
+/// status mirror so XCUITest can assert the gesture actually landed.
+struct GestureView: View {
+    @State private var longPressCount = 0
+    @State private var doubleTapCount = 0
+    @State private var swipeDirection = "none"
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Gestures")
+                    .font(.title.bold())
+                    .accessibilityIdentifier("gestures.screen")
+
+                Text("Long press me")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                    .onLongPressGesture { longPressCount += 1 }
+                    .accessibilityIdentifier("gestures.longpress.target")
+                Text("longpress=\(longPressCount)")
+                    .monospaced()
+                    .accessibilityIdentifier("gestures.status.longpress")
+
+                Text("Double tap me")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) { doubleTapCount += 1 }
+                    .accessibilityIdentifier("gestures.doubletap.target")
+                Text("doubletap=\(doubleTapCount)")
+                    .monospaced()
+                    .accessibilityIdentifier("gestures.status.doubletap")
+
+                Text("Swipe me")
+                    .frame(maxWidth: .infinity, minHeight: 80)
+                    .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                if abs(dx) > abs(dy) {
+                                    swipeDirection = dx > 0 ? "right" : "left"
+                                } else {
+                                    swipeDirection = dy > 0 ? "down" : "up"
+                                }
+                            }
+                    )
+                    .accessibilityIdentifier("gestures.swipe.target")
+                Text("swipe=\(swipeDirection)")
+                    .monospaced()
+                    .accessibilityIdentifier("gestures.status.swipe")
+
+                Divider()
+
+                // Long list to exercise the scroll action. LazyVStack only
+                // realizes rows as they approach the viewport, so a row far
+                // down the list is genuinely absent from the accessibility
+                // tree until a scroll brings it into range — making
+                // wait_visible a real assertion that the scroll happened.
+                Text("Scroll list")
+                    .font(.headline)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(0..<40) { index in
+                        Text("Row \(index)")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 10)
+                            .accessibilityIdentifier("gestures.row.\(index)")
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+        .accessibilityIdentifier("gestures.scroll")
     }
 }
 

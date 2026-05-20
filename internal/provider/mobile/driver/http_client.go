@@ -121,6 +121,40 @@ func (c *Client) Tap(ctx context.Context, bundleID, id string, x, y float64) err
 	return c.postJSON(ctx, "/tap", payload)
 }
 
+// Swipe posts to /swipe.
+func (c *Client) Swipe(ctx context.Context, bundleID string, startX, startY, endX, endY, duration float64) error {
+	payload := map[string]any{
+		"bundleId": bundleID,
+		"startX":   startX,
+		"startY":   startY,
+		"endX":     endX,
+		"endY":     endY,
+		"duration": duration,
+	}
+
+	return c.postJSON(ctx, "/swipe", payload)
+}
+
+// LongPress posts to /longPress.
+func (c *Client) LongPress(ctx context.Context, bundleID, id string, x, y, duration float64) error {
+	payload := map[string]any{"bundleId": bundleID, "x": x, "y": y, "duration": duration}
+	if id != "" {
+		payload["id"] = id
+	}
+
+	return c.postJSON(ctx, "/longPress", payload)
+}
+
+// DoubleTap posts to /doubleTap.
+func (c *Client) DoubleTap(ctx context.Context, bundleID, id string, x, y float64) error {
+	payload := map[string]any{"bundleId": bundleID, "x": x, "y": y}
+	if id != "" {
+		payload["id"] = id
+	}
+
+	return c.postJSON(ctx, "/doubleTap", payload)
+}
+
 // InputText posts to /inputText.
 func (c *Client) InputText(ctx context.Context, bundleID, id, text string, paste bool) error {
 	payload := map[string]any{"bundleId": bundleID, "text": text}

@@ -237,10 +237,74 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 			}
 		}
 
+		if err := evalMobileGestureAttrs(evaluator, scope, scenarioName, step, i, action, &exec); err != nil {
+			return nil, err
+		}
+
 		out = append(out, exec)
 	}
 
 	return out, nil
+}
+
+// evalMobileGestureAttrs resolves the swipe / scroll / long_press extras
+// (direction, distance, duration) onto exec. Each is optional; a missing
+// attribute leaves the corresponding exec field at its zero value, which
+// the provider reads as "use the default".
+func evalMobileGestureAttrs(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, index int, action model.MobileAction, exec *provider.MobileActionExec) error {
+	if !action.Direction.Empty() {
+		direction, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].direction", index), action.Direction)
+		if err != nil {
+			return err
+		}
+
+		exec.Direction = direction
+	}
+
+	if !action.Duration.Empty() {
+		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].duration", index), action.Duration)
+		if err != nil {
+			return err
+		}
+
+		exec.Duration = duration
+	}
+
+	if !action.Distance.Empty() {
+		distance, err := evalDistanceAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].distance", index), action.Distance)
+		if err != nil {
+			return err
+		}
+
+		exec.Distance = distance
+	}
+
+	return nil
+}
+
+// evalDistanceAttr resolves a swipe/scroll distance fraction: a number in
+// (0, 1]. A null expression resolves to 0, which the provider reads as
+// "use the default".
+func evalDistanceAttr(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, exprPath string, expression model.Expression) (float64, error) {
+	value, err := evaluator.Eval(expression, scope, lang.GenerateMeta{Scenario: scenarioName, Step: stepName, ExprPath: exprPath})
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", exprPath, err)
+	}
+
+	if value.IsNull() {
+		return 0, nil
+	}
+
+	if value.Type() != cty.Number {
+		return 0, fmt.Errorf("%s: must be a number", exprPath)
+	}
+
+	distance, _ := value.AsBigFloat().Float64()
+	if distance <= 0 || distance > 1 {
+		return 0, fmt.Errorf("%s: must be in (0, 1]", exprPath)
+	}
+
+	return distance, nil
 }
 
 func evalMobileExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, expect model.MobileExpect) (provider.MobileExpectExec, error) {

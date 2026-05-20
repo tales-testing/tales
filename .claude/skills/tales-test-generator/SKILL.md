@@ -142,7 +142,8 @@ step "mobile" "<name>" {
   terminate {}                         # optional, ends the app session
 
   actions {
-    # tap | input_text | clear_text | wait_visible | wait_not_visible
+    # tap | double_tap | long_press | input_text | clear_text
+    # | swipe | scroll | wait_visible | wait_not_visible
     # decoded in source order — order matters
   }
 
@@ -158,14 +159,24 @@ step "mobile" "<name>" {
 
 ### Supported actions
 
-All five actions accept optional `timeout` and `interval` (Go duration
+All actions accept optional `timeout` and `interval` (Go duration
 strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
 `250ms` polling.
 
 - `tap { id = "..." }`
+- `double_tap { id = "..." }` — two quick taps.
+- `long_press { id = "..." duration = "1s" }` — press and hold; `duration`
+  optional (default `1s`).
 - `input_text { id = "..." value = "..." secure = true }` — `secure = true`
   masks the value in console / JUnit / JSONL reports.
 - `clear_text { id = "..." }`
+- `swipe { id = "..." direction = "up" }` — drag a finger across the element.
+  `direction` is the finger travel (`up` / `down` / `left` / `right`).
+  Optional `distance` (fraction in `(0, 1]`, default `0.6`) and `duration`
+  (default `300ms`).
+- `scroll { id = "..." direction = "down" }` — scroll the element's content.
+  `direction` is the content direction to reveal. Same optional `distance` /
+  `duration` as `swipe`.
 - `wait_visible { id = "..." }` — explicit wait until the element is visible.
 - `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
 

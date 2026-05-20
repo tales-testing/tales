@@ -16,6 +16,7 @@ const supportedMobilePlatform = "ios"
 
 const mobileTimeoutAttr = "timeout"
 const mobileIntervalAttr = "interval"
+const mobileDurationAttr = "duration"
 
 // decodeMobileStep builds a model.MobileStep from a parsed step block when any
 // mobile-specific attribute or block is present. It returns nil when the step
@@ -225,7 +226,7 @@ func decodeMobileActions(path string, body hcl.Body) ([]model.MobileAction, hcl.
 
 	for name, attr := range syntaxBody.Attributes {
 		attrRange := attr.Range()
-		diags = append(diags, diagError("Unknown actions attribute", fmt.Sprintf("attribute %q is not allowed inside actions; use tap, input_text, clear_text, wait_visible, or wait_not_visible blocks.", name), &attrRange))
+		diags = append(diags, diagError("Unknown actions attribute", fmt.Sprintf("attribute %q is not allowed inside actions; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, wait_visible, or wait_not_visible blocks.", name), &attrRange))
 	}
 
 	actions := make([]model.MobileAction, 0, len(syntaxBody.Blocks))
@@ -248,17 +249,25 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 	switch block.Type {
 	case string(model.MobileActionTap):
 		return decodeTapBlock(path, block)
+	case string(model.MobileActionDoubleTap):
+		return decodeDoubleTapBlock(path, block)
+	case string(model.MobileActionLongPress):
+		return decodeLongPressBlock(path, block)
 	case string(model.MobileActionInputText):
 		return decodeInputTextBlock(path, block)
 	case string(model.MobileActionClearText):
 		return decodeClearTextBlock(path, block)
+	case string(model.MobileActionSwipe):
+		return decodeSwipeBlock(path, block, model.MobileActionSwipe)
+	case string(model.MobileActionScroll):
+		return decodeSwipeBlock(path, block, model.MobileActionScroll)
 	case string(model.MobileActionWaitVisible):
 		return decodeWaitBlock(path, block, model.MobileActionWaitVisible)
 	case string(model.MobileActionWaitNotVisible):
 		return decodeWaitBlock(path, block, model.MobileActionWaitNotVisible)
 	default:
 		blockRange := block.DefRange()
-		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, input_text, clear_text, wait_visible, or wait_not_visible.", block.Type), &blockRange))
+		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, wait_visible, or wait_not_visible.", block.Type), &blockRange))
 
 		return nil, diags
 	}
@@ -424,6 +433,123 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 		ID:       expr(path, idExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
+	}
+
+	return action, diags
+}
+
+func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+
+	idExpr, idDiags := requireActionAttr(block, "double_tap", "id")
+	diags = append(diags, idDiags...)
+
+	timeoutExpr := hcl.Expression(nil)
+	intervalExpr := hcl.Expression(nil)
+
+	for name, attr := range block.Body.Attributes {
+		switch name {
+		case "id":
+			continue
+		case mobileTimeoutAttr:
+			timeoutExpr = attr.Expr
+		case mobileIntervalAttr:
+			intervalExpr = attr.Expr
+		default:
+			attrRange := attr.Range()
+			diags = append(diags, diagError("Unknown double_tap attribute", fmt.Sprintf("double_tap attribute %q is not supported; allowed: id, timeout, interval.", name), &attrRange))
+		}
+	}
+
+	action := &model.MobileAction{
+		Kind:     model.MobileActionDoubleTap,
+		File:     path,
+		Line:     block.DefRange().Start.Line,
+		ID:       expr(path, idExpr),
+		Timeout:  expr(path, timeoutExpr),
+		Interval: expr(path, intervalExpr),
+	}
+
+	return action, diags
+}
+
+func decodeLongPressBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+
+	idExpr, idDiags := requireActionAttr(block, "long_press", "id")
+	diags = append(diags, idDiags...)
+
+	var durationExpr, timeoutExpr, intervalExpr hcl.Expression
+
+	for name, attr := range block.Body.Attributes {
+		switch name {
+		case "id":
+			continue
+		case mobileDurationAttr:
+			durationExpr = attr.Expr
+		case mobileTimeoutAttr:
+			timeoutExpr = attr.Expr
+		case mobileIntervalAttr:
+			intervalExpr = attr.Expr
+		default:
+			attrRange := attr.Range()
+			diags = append(diags, diagError("Unknown long_press attribute", fmt.Sprintf("long_press attribute %q is not supported; allowed: id, duration, timeout, interval.", name), &attrRange))
+		}
+	}
+
+	action := &model.MobileAction{
+		Kind:     model.MobileActionLongPress,
+		File:     path,
+		Line:     block.DefRange().Start.Line,
+		ID:       expr(path, idExpr),
+		Duration: expr(path, durationExpr),
+		Timeout:  expr(path, timeoutExpr),
+		Interval: expr(path, intervalExpr),
+	}
+
+	return action, diags
+}
+
+func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActionKind) (*model.MobileAction, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+	actionName := string(kind)
+
+	idExpr, idDiags := requireActionAttr(block, actionName, "id")
+	diags = append(diags, idDiags...)
+
+	directionExpr, dirDiags := requireActionAttr(block, actionName, "direction")
+	diags = append(diags, dirDiags...)
+
+	var distanceExpr, durationExpr, timeoutExpr, intervalExpr hcl.Expression
+
+	for name, attr := range block.Body.Attributes {
+		switch name {
+		case "id", "direction":
+			continue
+		case "distance":
+			distanceExpr = attr.Expr
+		case mobileDurationAttr:
+			durationExpr = attr.Expr
+		case mobileTimeoutAttr:
+			timeoutExpr = attr.Expr
+		case mobileIntervalAttr:
+			intervalExpr = attr.Expr
+		default:
+			attrRange := attr.Range()
+			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, direction, distance, duration, timeout, interval.", actionName, name), &attrRange))
+		}
+	}
+
+	action := &model.MobileAction{
+		Kind:      kind,
+		File:      path,
+		Line:      block.DefRange().Start.Line,
+		ID:        expr(path, idExpr),
+		Direction: expr(path, directionExpr),
+		Distance:  expr(path, distanceExpr),
+		Duration:  expr(path, durationExpr),
+		Timeout:   expr(path, timeoutExpr),
+		Interval:  expr(path, intervalExpr),
 	}
 
 	return action, diags

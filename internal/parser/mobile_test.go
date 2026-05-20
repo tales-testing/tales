@@ -324,7 +324,7 @@ scenario "bad-action" {
     platform = "ios"
     target = "iphone"
     actions {
-      swipe {
+      pinch {
         id = "foo"
       }
     }

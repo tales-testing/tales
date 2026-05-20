@@ -14,6 +14,14 @@ const (
 	MobileActionWaitVisible MobileActionKind = "wait_visible"
 	// MobileActionWaitNotVisible waits until an element is missing or not visible.
 	MobileActionWaitNotVisible MobileActionKind = "wait_not_visible"
+	// MobileActionSwipe drags one finger across an element in a direction.
+	MobileActionSwipe MobileActionKind = "swipe"
+	// MobileActionScroll scrolls an element's content in a direction.
+	MobileActionScroll MobileActionKind = "scroll"
+	// MobileActionLongPress presses and holds an element for a duration.
+	MobileActionLongPress MobileActionKind = "long_press"
+	// MobileActionDoubleTap taps an element twice in quick succession.
+	MobileActionDoubleTap MobileActionKind = "double_tap"
 )
 
 // MobileStep is the provider-specific payload attached to a Step when Provider == "mobile".
@@ -44,6 +52,14 @@ type MobileAction struct {
 	Secure   Expression
 	Timeout  Expression
 	Interval Expression
+	// Direction is "up" / "down" / "left" / "right" for swipe and scroll.
+	Direction Expression
+	// Distance is the swipe/scroll travel as a fraction (0,1] of the
+	// target element's relevant dimension. Optional; defaults applied
+	// by the runtime.
+	Distance Expression
+	// Duration is the gesture duration for swipe / scroll / long_press.
+	Duration Expression
 }
 
 // MobileExpect groups visibility expectations for a mobile step.

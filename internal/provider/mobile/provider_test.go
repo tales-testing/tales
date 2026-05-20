@@ -13,6 +13,7 @@ import (
 	"github.com/hyperxlab/tales/internal/provider"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
+	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
 	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -28,12 +29,29 @@ type fakeInput struct {
 	paste bool
 }
 
+type fakeSwipe struct {
+	startX, startY float64
+	endX, endY     float64
+	duration       float64
+}
+
+type fakeLongPress struct {
+	id       string
+	x, y     float64
+	duration float64
+}
+
 type fakeDriverAll struct {
+	driver.NoopDriver
+
 	mu              sync.Mutex
 	hierarchies     []*tree.ViewNode
 	hierarchyErr    error
 	taps            []fakeTap
 	tapErr          error
+	swipes          []fakeSwipe
+	longPresses     []fakeLongPress
+	doubleTaps      []fakeTap
 	inputs          []fakeInput
 	erases          []int
 	screenshotPNG   []byte
@@ -89,6 +107,35 @@ func (f *fakeDriverAll) Tap(_ context.Context, _, id string, x, y float64) error
 	f.taps = append(f.taps, fakeTap{id: id, x: x, y: y})
 
 	return f.tapErr
+}
+
+func (f *fakeDriverAll) Swipe(_ context.Context, _ string, startX, startY, endX, endY, duration float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.swipes = append(f.swipes, fakeSwipe{
+		startX: startX, startY: startY, endX: endX, endY: endY, duration: duration,
+	})
+
+	return nil
+}
+
+func (f *fakeDriverAll) LongPress(_ context.Context, _, id string, x, y, duration float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.longPresses = append(f.longPresses, fakeLongPress{id: id, x: x, y: y, duration: duration})
+
+	return nil
+}
+
+func (f *fakeDriverAll) DoubleTap(_ context.Context, _, id string, x, y float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.doubleTaps = append(f.doubleTaps, fakeTap{id: id, x: x, y: y})
+
+	return nil
 }
 
 func (f *fakeDriverAll) InputText(_ context.Context, _, id, text string, paste bool) error {
@@ -252,6 +299,198 @@ func TestExecuteTapFindsCenterAndSends(t *testing.T) {
 
 	if drv.taps[0].id != "welcome.register" {
 		t.Fatalf("expected tap to carry node id, got %q", drv.taps[0].id)
+	}
+}
+
+func TestExecuteDoubleTapSendsToDriver(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("dt"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionDoubleTap, ID: "welcome.register"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.doubleTaps) != 1 || drv.doubleTaps[0].id != "welcome.register" {
+		t.Fatalf("expected one double tap on welcome.register, got %+v", drv.doubleTaps)
+	}
+
+	if drv.doubleTaps[0].x != 60 || drv.doubleTaps[0].y != 40 {
+		t.Fatalf("unexpected double tap coordinates %+v", drv.doubleTaps[0])
+	}
+}
+
+func TestExecuteLongPressUsesDuration(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("lp"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionLongPress, ID: "welcome.register", Duration: 2 * time.Second},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.longPresses) != 1 {
+		t.Fatalf("expected one long press, got %d", len(drv.longPresses))
+	}
+
+	got := drv.longPresses[0]
+	if got.id != "welcome.register" || got.duration != 2.0 {
+		t.Fatalf("unexpected long press %+v", got)
+	}
+}
+
+func TestExecuteLongPressDefaultsDuration(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("lp"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionLongPress, ID: "welcome.register"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.longPresses) != 1 || drv.longPresses[0].duration != 1.0 {
+		t.Fatalf("expected default 1s long press, got %+v", drv.longPresses)
+	}
+}
+
+func TestExecuteSwipeComputesVectorFromBounds(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("sw"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				// welcome.register bounds {10,20,100,40} → center (60,40),
+				// default distance 0.6 → vertical travel 24. Swipe up:
+				// finger goes from (60,52) to (60,28).
+				{Kind: model.MobileActionSwipe, ID: "welcome.register", Direction: "up"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.swipes) != 1 {
+		t.Fatalf("expected one swipe, got %d", len(drv.swipes))
+	}
+
+	got := drv.swipes[0]
+	if got.startX != 60 || got.startY != 52 || got.endX != 60 || got.endY != 28 {
+		t.Fatalf("unexpected swipe vector %+v", got)
+	}
+}
+
+func TestExecuteScrollInvertsDirection(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("sc"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				// scroll down reveals lower content → finger swipes up:
+				// from (60,52) to (60,28), same as swipe up.
+				{Kind: model.MobileActionScroll, ID: "welcome.register", Direction: "down"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.swipes) != 1 {
+		t.Fatalf("expected one swipe from scroll, got %d", len(drv.swipes))
+	}
+
+	got := drv.swipes[0]
+	if got.startY != 52 || got.endY != 28 {
+		t.Fatalf("scroll down should swipe finger up, got %+v", got)
+	}
+}
+
+func TestExecuteSwipeRejectsBadDirection(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("sw"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionSwipe, ID: "welcome.register", Direction: "sideways"},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected step to fail on invalid swipe direction")
+	}
+
+	if len(drv.swipes) != 0 {
+		t.Fatalf("expected no swipe dispatched on bad direction, got %d", len(drv.swipes))
 	}
 }
 

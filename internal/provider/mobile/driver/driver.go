@@ -26,6 +26,21 @@ type Driver interface {
 	// located or is not hittable.
 	Tap(ctx context.Context, bundleID, id string, x, y float64) error
 
+	// Swipe drags one finger from (startX,startY) to (endX,endY) over the
+	// given duration. Coordinates are screen-space; the provider computes
+	// them from the target element bounds (or the screen) so this also
+	// backs the scroll action.
+	Swipe(ctx context.Context, bundleID string, startX, startY, endX, endY, duration float64) error
+
+	// LongPress presses and holds at the element identified by id (with
+	// (x,y) as the screen-space fallback) for the given duration in
+	// seconds.
+	LongPress(ctx context.Context, bundleID, id string, x, y, duration float64) error
+
+	// DoubleTap performs two quick taps at the element identified by id
+	// (with (x,y) as the screen-space fallback).
+	DoubleTap(ctx context.Context, bundleID, id string, x, y float64) error
+
 	// InputText sets text on the element identified by id. When paste is
 	// true the driver places the text on the system pasteboard and pastes
 	// it via the contextual menu — this avoids the iOS autofill QuickType

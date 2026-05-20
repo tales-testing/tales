@@ -27,6 +27,19 @@ struct PointerEventPath {
         return Self(path: path, offset: offset)
     }
 
+    /// Creates a touch event path with the finger pressed down at `point`.
+    /// `initForTouchAtPoint:offset:` is available since Xcode 10.2.
+    static func pathForTouch(at point: CGPoint, offset: TimeInterval = 0) -> Self {
+        let alloced = objc_lookUpClass("XCPointerEventPath")!.alloc() as! NSObject
+        let selector = NSSelectorFromString("initForTouchAtPoint:offset:")
+        let imp = alloced.method(for: selector)
+        typealias Method = @convention(c) (NSObject, Selector, CGPoint, TimeInterval) -> NSObject
+        let method = unsafeBitCast(imp, to: Method.self)
+        let path = method(alloced, selector, point, offset)
+
+        return Self(path: path, offset: offset)
+    }
+
     let path: NSObject
     var offset: TimeInterval
 
@@ -46,6 +59,24 @@ struct PointerEventPath {
         typealias Method = @convention(c) (NSObject, Selector, NSString, TimeInterval, UInt64, Bool) -> Void
         let method = unsafeBitCast(imp, to: Method.self)
         method(path, selector, text as NSString, offset, UInt64(typingSpeed), shouldRedact)
+    }
+
+    /// Drags the finger to `point` at the current offset.
+    mutating func move(to point: CGPoint) {
+        let selector = NSSelectorFromString("moveToPoint:atOffset:")
+        let imp = path.method(for: selector)
+        typealias Method = @convention(c) (NSObject, Selector, CGPoint, TimeInterval) -> Void
+        let method = unsafeBitCast(imp, to: Method.self)
+        method(path, selector, point, offset)
+    }
+
+    /// Lifts the finger up at the current offset, ending the touch.
+    mutating func liftUp() {
+        let selector = NSSelectorFromString("liftUpAtOffset:")
+        let imp = path.method(for: selector)
+        typealias Method = @convention(c) (NSObject, Selector, TimeInterval) -> Void
+        let method = unsafeBitCast(imp, to: Method.self)
+        method(path, selector, offset)
     }
 }
 
@@ -74,6 +105,34 @@ final class EventRecord {
         method(record, selector, path.path)
 
         return self
+    }
+
+    /// Default press-then-release window for a plain tap.
+    static let defaultTapDuration: TimeInterval = 0.1
+
+    /// Adds a single touch: finger down at `point`, lifted up after
+    /// `touchUpAfter` seconds (a plain tap when nil, a long-press when a
+    /// duration is supplied).
+    @discardableResult
+    func addTouch(at point: CGPoint, touchUpAfter: TimeInterval? = nil) -> Self {
+        var path = PointerEventPath.pathForTouch(at: point)
+        path.offset += touchUpAfter ?? Self.defaultTapDuration
+        path.liftUp()
+
+        return add(path)
+    }
+
+    /// Adds a swipe: finger down at `start`, dragged to `end` over
+    /// `duration` seconds, then lifted up.
+    @discardableResult
+    func addSwipe(start: CGPoint, end: CGPoint, duration: TimeInterval) -> Self {
+        var path = PointerEventPath.pathForTouch(at: start)
+        path.offset += Self.defaultTapDuration
+        path.move(to: end)
+        path.offset += duration
+        path.liftUp()
+
+        return add(path)
     }
 }
 

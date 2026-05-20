@@ -12,6 +12,7 @@ import (
 	"github.com/hyperxlab/tales/internal/model"
 	"github.com/hyperxlab/tales/internal/provider"
 	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
+	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
 	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
 )
 
@@ -19,6 +20,8 @@ import (
 // tests can assert exact behavior. The hierarchy slot is reused: callers
 // configure `hierarchy` once and it is returned for every Hierarchy() call.
 type recordingDriver struct {
+	driver.NoopDriver
+
 	hierarchy        *tree.ViewNode
 	hierarchyErr     error
 	hierarchyCalls   atomic.Int32
@@ -29,8 +32,6 @@ type recordingDriver struct {
 	inputTextErr     error
 	tappedAtLeastOne atomic.Int32
 }
-
-func (d *recordingDriver) Health(_ context.Context) error { return nil }
 
 func (d *recordingDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
 	d.hierarchyCalls.Add(1)
