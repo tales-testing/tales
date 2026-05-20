@@ -43,16 +43,31 @@ final class TalesRouter {
         }
 
         let app = XCUIApplication(bundleIdentifier: bundleID)
-        let snapshot: XCUIElementSnapshot
-        do {
-            snapshot = try app.snapshot()
-        } catch {
-            return HTTPResponse.error("snapshot failed: \(error)", status: 500)
+
+        // app.snapshot() can transiently fail while the UI is mid-transition
+        // (XCTest reports the accessibility tree as briefly unavailable).
+        // A bounded retry smooths that over instead of surfacing a 500 that
+        // the Tales provider would otherwise treat as a hard error.
+        var lastError: Error?
+        for attempt in 0..<hierarchySnapshotAttempts {
+            do {
+                let snapshot = try app.snapshot()
+
+                return HTTPResponse.json(HierarchyEncoder.encode(snapshot: snapshot))
+            } catch {
+                lastError = error
+
+                if attempt < hierarchySnapshotAttempts - 1 {
+                    Thread.sleep(forTimeInterval: hierarchySnapshotRetryDelay)
+                }
+            }
         }
 
-        let payload = HierarchyEncoder.encode(snapshot: snapshot)
-        return HTTPResponse.json(payload)
+        return HTTPResponse.error("snapshot failed: \(lastError.map { "\($0)" } ?? "unknown")", status: 500)
     }
+
+    private let hierarchySnapshotAttempts = 3
+    private let hierarchySnapshotRetryDelay: TimeInterval = 0.25
 
     private func handleTap(request: HTTPRequest) -> HTTPResponse {
         guard let payload = jsonObject(request.body),

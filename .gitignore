@@ -8,3 +8,6 @@ build/
 dist/
 
 .build-ready
+
+# Local reference checkout of Maestro for driver parity work (not committed).
+.maestro-ref/
