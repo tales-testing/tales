@@ -32,12 +32,23 @@ const (
 
 // MobileStep is the provider-specific payload attached to a Step when Provider == "mobile".
 type MobileStep struct {
-	Platform  Expression
-	Target    Expression
-	Launch    *MobileLaunch
-	Terminate *MobileTerminate
-	Actions   []MobileAction
-	Expect    MobileExpect
+	Platform    Expression
+	Target      Expression
+	Launch      *MobileLaunch
+	Terminate   *MobileTerminate
+	Actions     []MobileAction
+	Permissions []MobilePermission
+	Expect      MobileExpect
+}
+
+// MobilePermission is one privacy permission declared in a step's
+// `permissions` block. Service is a simctl privacy service name (camera,
+// photos, location, …); Decision evaluates to "allow" or "deny".
+type MobilePermission struct {
+	Service  string
+	Decision Expression
+	File     string
+	Line     int
 }
 
 // MobileLaunch describes the optional launch block of a mobile step.

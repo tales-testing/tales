@@ -174,6 +174,14 @@ func (s simctlAdapter) Terminate(ctx context.Context, udid, bundleID string) err
 	return nil
 }
 
+func (s simctlAdapter) Privacy(ctx context.Context, udid, action, service, bundleID string) error {
+	if err := s.tool.Privacy(ctx, udid, action, service, bundleID); err != nil {
+		return fmt.Errorf("simctl privacy: %w", err)
+	}
+
+	return nil
+}
+
 func (s simctlAdapter) Screenshot(ctx context.Context, udid, path string) error {
 	if err := s.tool.Screenshot(ctx, udid, path); err != nil {
 		return fmt.Errorf("simctl screenshot: %w", err)

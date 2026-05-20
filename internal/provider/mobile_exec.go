@@ -12,12 +12,20 @@ import (
 // expression has been resolved to a Go value by the runtime so the provider
 // stays free of HCL/cty dependencies.
 type MobileExecution struct {
-	Platform   string
-	TargetName string
-	Launch     *MobileLaunchExec
-	Terminate  *MobileTerminateExec
-	Actions    []MobileActionExec
-	Expect     MobileExpectExec
+	Platform    string
+	TargetName  string
+	Launch      *MobileLaunchExec
+	Terminate   *MobileTerminateExec
+	Actions     []MobileActionExec
+	Permissions []MobilePermissionExec
+	Expect      MobileExpectExec
+}
+
+// MobilePermissionExec is a resolved privacy permission. Service is a
+// simctl privacy service name; Action is "grant" or "revoke".
+type MobilePermissionExec struct {
+	Service string
+	Action  string
 }
 
 // MobileLaunchExec carries the resolved launch block fields.

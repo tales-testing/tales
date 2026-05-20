@@ -202,6 +202,21 @@ func (t *Tool) Terminate(ctx context.Context, udid, bundleID string) error {
 	return nil
 }
 
+// Privacy grants or revokes a privacy permission for an app. action is
+// "grant" or "revoke"; service is a simctl privacy service name (camera,
+// photos, location, contacts, microphone, …).
+func (t *Tool) Privacy(ctx context.Context, udid, action, service, bundleID string) error {
+	if udid == "" || action == "" || service == "" || bundleID == "" {
+		return fmt.Errorf("privacy: udid, action, service and bundleID are required")
+	}
+
+	if _, err := t.runner.Run(ctx, "xcrun", "simctl", "privacy", udid, action, service, bundleID); err != nil {
+		return withCoreSimulatorHint(fmt.Errorf("privacy %s %s for %s on %s: %w", action, service, bundleID, udid, err))
+	}
+
+	return nil
+}
+
 // Screenshot writes a PNG screenshot of the simulator to the given path.
 func (t *Tool) Screenshot(ctx context.Context, udid, path string) error {
 	if udid == "" || path == "" {

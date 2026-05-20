@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -58,6 +59,12 @@ func decodeMobileStep(path string, rs stepBlock) (*model.MobileStep, hcl.Diagnos
 		ms.Actions = actions
 	}
 
+	if rs.Permissions != nil {
+		perms, pDiags := decodeMobilePermissions(path, rs.Permissions.Body)
+		diags = append(diags, pDiags...)
+		ms.Permissions = perms
+	}
+
 	expectBody := rs.Expect
 	if expectBody == nil {
 		expectBody = rs.Response
@@ -101,7 +108,7 @@ func looksLikeMobileStep(rs stepBlock) bool {
 		return true
 	}
 
-	if rs.Launch != nil || rs.Terminate != nil || rs.Actions != nil {
+	if rs.Launch != nil || rs.Terminate != nil || rs.Actions != nil || rs.Permissions != nil {
 		return true
 	}
 
@@ -241,6 +248,39 @@ func decodeMobileActions(path string, body hcl.Body) ([]model.MobileAction, hcl.
 	}
 
 	return actions, diags
+}
+
+// decodeMobilePermissions walks the permissions body: each attribute is a
+// privacy service name mapped to an "allow" / "deny" expression. Entries
+// are sorted by service name so the decoded order is deterministic.
+func decodeMobilePermissions(path string, body hcl.Body) ([]model.MobilePermission, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+
+	syntaxBody, ok := body.(*hclsyntax.Body)
+	if !ok {
+		diags = append(diags, diagError("Unsupported permissions block", "mobile permissions block must use HCL native syntax.", nil))
+
+		return nil, diags
+	}
+
+	for _, block := range syntaxBody.Blocks {
+		blockRange := block.DefRange()
+		diags = append(diags, diagError("Unknown permissions block", fmt.Sprintf("nested block %q is not allowed inside permissions; use `service = \"allow\"` or `service = \"deny\"` attributes.", block.Type), &blockRange))
+	}
+
+	perms := make([]model.MobilePermission, 0, len(syntaxBody.Attributes))
+	for name, attr := range syntaxBody.Attributes {
+		perms = append(perms, model.MobilePermission{
+			Service:  name,
+			Decision: expr(path, attr.Expr),
+			File:     path,
+			Line:     attr.Range().Start.Line,
+		})
+	}
+
+	sort.Slice(perms, func(i, j int) bool { return perms[i].Service < perms[j].Service })
+
+	return perms, diags
 }
 
 func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {

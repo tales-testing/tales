@@ -201,14 +201,16 @@ func (f *fakeDriverAll) Screenshot(_ context.Context) ([]byte, error) {
 type fakeLifecycle struct {
 	udid       string
 	terminates atomic.Int32
+	privacy    []string
 }
 
 func (f *fakeLifecycle) toAppleLifecycle() *apple.Lifecycle {
-	return &apple.Lifecycle{Simctl: &noopSimctl{terminates: &f.terminates}}
+	return &apple.Lifecycle{Simctl: &noopSimctl{terminates: &f.terminates, privacy: &f.privacy}}
 }
 
 type noopSimctl struct {
 	terminates *atomic.Int32
+	privacy    *[]string
 }
 
 func (n *noopSimctl) FindDeviceByName(_ context.Context, _ string) (apple.Device, error) {
@@ -226,6 +228,14 @@ func (*noopSimctl) Launch(_ context.Context, _, _ string) error    { return nil 
 func (n *noopSimctl) Terminate(_ context.Context, _, _ string) error {
 	if n.terminates != nil {
 		n.terminates.Add(1)
+	}
+
+	return nil
+}
+
+func (n *noopSimctl) Privacy(_ context.Context, _, action, service, _ string) error {
+	if n.privacy != nil {
+		*n.privacy = append(*n.privacy, action+" "+service)
 	}
 
 	return nil
@@ -521,6 +531,36 @@ func TestExecuteSwipeRejectsBadDirection(t *testing.T) {
 
 	if len(drv.swipes) != 0 {
 		t.Fatalf("expected no swipe dispatched on bad direction, got %d", len(drv.swipes))
+	}
+}
+
+func TestExecuteAppliesPermissionsOnLaunch(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("launch"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Launch:     &provider.MobileLaunchExec{ClearState: true},
+			Permissions: []provider.MobilePermissionExec{
+				{Service: "camera", Action: "grant"},
+				{Service: "photos", Action: "revoke"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(lc.privacy) != 2 || lc.privacy[0] != "grant camera" || lc.privacy[1] != "revoke photos" {
+		t.Fatalf("unexpected privacy calls: %v", lc.privacy)
 	}
 }
 

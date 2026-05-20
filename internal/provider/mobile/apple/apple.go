@@ -25,6 +25,7 @@ type SimctlTool interface {
 	Uninstall(ctx context.Context, udid, bundleID string) error
 	Launch(ctx context.Context, udid, bundleID string) error
 	Terminate(ctx context.Context, udid, bundleID string) error
+	Privacy(ctx context.Context, udid, action, service, bundleID string) error
 	Screenshot(ctx context.Context, udid, path string) error
 }
 
@@ -138,6 +139,16 @@ func (l *Lifecycle) ClearAppState(ctx context.Context, udid string, target Targe
 
 	if err := l.Simctl.Install(ctx, udid, target.AppPath); err != nil {
 		return fmt.Errorf("clear state (install): %w", err)
+	}
+
+	return nil
+}
+
+// SetPermission grants or revokes a privacy permission for the target app.
+// action is "grant" or "revoke"; service is a simctl privacy service name.
+func (l *Lifecycle) SetPermission(ctx context.Context, udid string, target Target, action, service string) error {
+	if err := l.Simctl.Privacy(ctx, udid, action, service, target.BundleID); err != nil {
+		return fmt.Errorf("set permission %s %s: %w", action, service, err)
 	}
 
 	return nil

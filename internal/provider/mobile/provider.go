@@ -290,8 +290,12 @@ func (p *Provider) executeMobile(ctx context.Context, input provider.Input, sess
 	exec := input.Mobile
 
 	if exec.Launch != nil {
-		if err := p.handleLaunch(ctx, session, exec.Launch); err != nil {
+		if err := p.handleLaunch(ctx, session, exec.Launch, exec.Permissions); err != nil {
 			return fmt.Errorf("launch: %w", err)
+		}
+	} else if len(exec.Permissions) > 0 {
+		if err := applyPermissions(ctx, session, exec.Permissions); err != nil {
+			return fmt.Errorf("permissions: %w", err)
 		}
 	}
 
@@ -538,7 +542,7 @@ func actionLabel(kind model.MobileActionKind, id, maskedValue string, secure boo
 	}
 }
 
-func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *provider.MobileLaunchExec) error {
+func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *provider.MobileLaunchExec, permissions []provider.MobilePermissionExec) error {
 	if launch.ClearState {
 		if err := session.Lifecycle.ClearAppState(ctx, session.UDID, session.Target); err != nil {
 			return fmt.Errorf("clear state: %w", err)
@@ -547,8 +551,26 @@ func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *p
 		return fmt.Errorf("install app: %w", err)
 	}
 
+	// Privacy permissions are applied while the app is installed but
+	// before it launches, so the app sees the granted state on first run.
+	if err := applyPermissions(ctx, session, permissions); err != nil {
+		return err
+	}
+
 	if err := session.Lifecycle.LaunchApp(ctx, session.UDID, session.Target); err != nil {
 		return fmt.Errorf("launch app: %w", err)
+	}
+
+	return nil
+}
+
+// applyPermissions grants or revokes each declared privacy permission
+// through simctl.
+func applyPermissions(ctx context.Context, session *Session, permissions []provider.MobilePermissionExec) error {
+	for _, permission := range permissions {
+		if err := session.Lifecycle.SetPermission(ctx, session.UDID, session.Target, permission.Action, permission.Service); err != nil {
+			return fmt.Errorf("%s %s: %w", permission.Action, permission.Service, err)
+		}
 	}
 
 	return nil

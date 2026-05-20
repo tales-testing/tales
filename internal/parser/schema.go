@@ -36,24 +36,25 @@ type teardownDef struct {
 }
 
 type stepBlock struct {
-	Provider   string                `hcl:",label"`
-	Name       string                `hcl:",label"`
-	DependsOn  []string              `hcl:"depends_on,optional"`
-	When       hcl.Expression        `hcl:"when,optional"`
-	Request    *requestBlock         `hcl:"request,block"`
-	Expect     *expectBlock          `hcl:"expect,block"`
-	Response   *expectBlock          `hcl:"response,block"`
-	Capture    *captureBlock         `hcl:"capture,block"`
-	Retry      *retryBlock           `hcl:"retry,block"`
-	CallName   hcl.Expression        `hcl:"name,optional"`
-	Inputs     hcl.Expression        `hcl:"inputs,optional"`
-	Platform   hcl.Expression        `hcl:"platform,optional"`
-	Target     hcl.Expression        `hcl:"target,optional"`
-	Launch     *mobileLaunchBlock    `hcl:"launch,block"`
-	Terminate  *mobileTerminateBlock `hcl:"terminate,block"`
-	Actions    *mobileActionsBlock   `hcl:"actions,block"`
-	SkipIf     []skipBlock           `hcl:"skip_if,block"`
-	SkipUnless []skipBlock           `hcl:"skip_unless,block"`
+	Provider    string                  `hcl:",label"`
+	Name        string                  `hcl:",label"`
+	DependsOn   []string                `hcl:"depends_on,optional"`
+	When        hcl.Expression          `hcl:"when,optional"`
+	Request     *requestBlock           `hcl:"request,block"`
+	Expect      *expectBlock            `hcl:"expect,block"`
+	Response    *expectBlock            `hcl:"response,block"`
+	Capture     *captureBlock           `hcl:"capture,block"`
+	Retry       *retryBlock             `hcl:"retry,block"`
+	CallName    hcl.Expression          `hcl:"name,optional"`
+	Inputs      hcl.Expression          `hcl:"inputs,optional"`
+	Platform    hcl.Expression          `hcl:"platform,optional"`
+	Target      hcl.Expression          `hcl:"target,optional"`
+	Launch      *mobileLaunchBlock      `hcl:"launch,block"`
+	Terminate   *mobileTerminateBlock   `hcl:"terminate,block"`
+	Actions     *mobileActionsBlock     `hcl:"actions,block"`
+	Permissions *mobilePermissionsBlock `hcl:"permissions,block"`
+	SkipIf      []skipBlock             `hcl:"skip_if,block"`
+	SkipUnless  []skipBlock             `hcl:"skip_unless,block"`
 }
 
 type retryBlock struct {
@@ -127,6 +128,10 @@ type mobileLaunchBlock struct {
 type mobileTerminateBlock struct{}
 
 type mobileActionsBlock struct {
+	Body hcl.Body `hcl:",remain"`
+}
+
+type mobilePermissionsBlock struct {
 	Body hcl.Body `hcl:",remain"`
 }
 

@@ -56,6 +56,7 @@ func (noopSim) Install(_ context.Context, _, _ string) error                  { 
 func (noopSim) Uninstall(_ context.Context, _, _ string) error                { return nil }
 func (noopSim) Launch(_ context.Context, _, _ string) error                   { return nil }
 func (noopSim) Terminate(_ context.Context, _, _ string) error                { return nil }
+func (noopSim) Privacy(_ context.Context, _, _, _, _ string) error            { return nil }
 func (noopSim) Screenshot(_ context.Context, _, _ string) error               { return nil }
 
 func newStubProvider(drv *stubMobileDriver) *mobile.Provider {

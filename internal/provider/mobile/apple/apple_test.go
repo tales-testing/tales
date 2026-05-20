@@ -74,6 +74,10 @@ func (f *fakeSimctl) Terminate(_ context.Context, _, bundleID string) error {
 	return nil
 }
 
+func (f *fakeSimctl) Privacy(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+
 func (f *fakeSimctl) Screenshot(_ context.Context, _, _ string) error {
 	return nil
 }
