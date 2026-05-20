@@ -266,7 +266,34 @@ Supported V1 captures:
 - `text("id")`
 - `request.actions[N].value` for evaluated action values
 
-Secure input values are masked in user-facing reports.
+Secure input values are masked to `***` everywhere in `request` — reports
+**and** expression scope. **Do not** capture a secure action's value with
+`request.actions[N].value`: a `secure = true` input yields the mask `"***"`,
+not the typed text. To reuse a generated secret across steps (for example a
+password and its confirmation), generate it **once** in a `capture` block and
+reference the captured `result.<step>.<key>` from every `input_text`:
+
+```hcl
+step "mobile" "launch" {
+  launch { clear_state = true }
+  actions { wait_visible { id = "welcome.signin" } }
+  capture {
+    password = generate("password_gen")   # generated once, real value
+  }
+}
+
+step "mobile" "fill" {
+  depends_on = ["launch"]
+  actions {
+    input_text { id = "form.password",        value = result.launch.password, secure = true }
+    input_text { id = "form.password_confirm", value = result.launch.password, secure = true }
+  }
+}
+```
+
+Calling `generate(...)` twice produces two different values (the seed mixer
+includes the expression path), so the capture-once pattern is the only way
+to get matching values.
 
 ## Driver modes
 

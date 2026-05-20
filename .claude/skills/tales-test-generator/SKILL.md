@@ -217,11 +217,34 @@ functions that close over the recorded UI hierarchy:
 - `text("id")`  — returns the visible text of an element.
 
 `request.actions[N].value` exposes the evaluated value of action `N` (zero-based),
-useful for re-using a generated email or password downstream:
+useful for re-using a generated **non-secure** value (e.g. an email) downstream:
 
 ```hcl
 capture {
   email = value("register.email")
+}
+```
+
+**Never** capture `request.actions[N].value` of a `secure = true` action — it
+returns the mask `"***"` (3 chars), not the typed text, because secure values
+are masked everywhere in `request`. To reuse a generated secret (a password
+and its confirmation, say), generate it **once** in a `capture` block and
+reference `result.<step>.<key>` from every `input_text` — `generate(...)`
+called twice yields different values, so capture-once is the only correct
+pattern:
+
+```hcl
+step "mobile" "launch" {
+  launch { clear_state = true }
+  actions { wait_visible { id = "welcome.signin" } }
+  capture { password = generate("password_gen") }
+}
+step "mobile" "fill" {
+  depends_on = ["launch"]
+  actions {
+    input_text { id = "form.password",         value = result.launch.password, secure = true }
+    input_text { id = "form.password_confirm", value = result.launch.password, secure = true }
+  }
 }
 ```
 
