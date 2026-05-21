@@ -197,6 +197,27 @@ func isDeviceAction(kind model.MobileActionKind) bool {
 		kind == model.MobileActionSetOrientation
 }
 
+// deviceActionAttrNames maps each device-level action to the DSL
+// attribute that carries its argument. Device actions take no id, so
+// their argument lands in MobileAction.Value under a kind-specific name.
+var deviceActionAttrNames = map[model.MobileActionKind]string{
+	model.MobileActionPressKey:       "key",
+	model.MobileActionPressButton:    "button",
+	model.MobileActionSetOrientation: "orientation",
+}
+
+// mobileValueAttrName returns the DSL attribute name that carries an
+// action's value, so evaluation diagnostics point at the field the user
+// actually wrote. Device-level actions name it key / button / orientation;
+// every other action uses value.
+func mobileValueAttrName(kind model.MobileActionKind) string {
+	if name, ok := deviceActionAttrNames[kind]; ok {
+		return name
+	}
+
+	return "value"
+}
+
 func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, actions []model.MobileAction) ([]provider.MobileActionExec, error) {
 	out := make([]provider.MobileActionExec, 0, len(actions))
 
@@ -233,7 +254,9 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 		}
 
 		if !action.Value.Empty() {
-			value, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].value", i), action.Value)
+			attr := mobileValueAttrName(action.Kind)
+
+			value, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].%s", i, attr), action.Value)
 			if err != nil {
 				return nil, err
 			}
