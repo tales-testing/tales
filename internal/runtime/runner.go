@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hyperxlab/tales/internal/assertion"
-	"github.com/hyperxlab/tales/internal/dag"
 	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/hyperxlab/tales/internal/lang"
 	"github.com/hyperxlab/tales/internal/model"
@@ -149,22 +148,10 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		return sResult, nil
 	}
 
-	layers, orderErr := buildLayers(scenario.Steps)
-	if orderErr != nil {
-		sResult.Status = report.StatusFail
-		sResult.Failure = &report.ErrorDetail{Kind: "dag", Message: orderErr.Error()}
-		sResult.Duration = time.Since(start)
-
-		return sResult, orderErr
-	}
-
 	tracker := newDepTracker()
-	stepByName := map[string]*model.Step{}
 	depsByStep := map[string]map[string]struct{}{}
 
 	for _, step := range scenario.Steps {
-		stepByName[step.Name] = step
-
 		deps, err := lang.StepDependencies(step)
 		if err != nil {
 			return nil, fmt.Errorf("resolve dependencies for step %q: %w", step.Name, err)
@@ -173,7 +160,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		depsByStep[step.Name] = deps
 	}
 
-	r.runScenarioLayers(ctx, scenario, sResult, layers, stepByName, depsByStep, tracker, evaluator, suite, config, state)
+	r.runScenarioSteps(ctx, scenario, sResult, depsByStep, tracker, evaluator, suite, config, state)
 
 	for _, step := range scenario.Teardown {
 		stepResult := r.executeTeardownStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
@@ -189,55 +176,42 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	}
 
 	sResult.Duration = time.Since(start)
-	sort.Slice(sResult.Steps, func(i, j int) bool { return sResult.Steps[i].Name < sResult.Steps[j].Name })
 
 	return sResult, nil
 }
 
-// runScenarioLayers executes the scenario's DAG layers, honoring
-// step-level skip rules, the dependency cascade, and per-layer
-// parallelism. Mutates sResult under mu; updates the dep tracker
-// under its own internal mutex.
-func (r *Runner) runScenarioLayers(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, layers [][]string, stepByName map[string]*model.Step, depsByStep map[string]map[string]struct{}, tracker *depTracker, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
-	for _, layer := range layers {
-		var wg sync.WaitGroup
-
-		mu := sync.Mutex{}
-
-		for _, stepName := range layer {
-			step := stepByName[stepName]
-
-			wg.Add(1)
-
-			go func(step *model.Step) {
-				defer wg.Done()
-
-				r.runOneStep(ctx, scenario, sResult, step, depsByStep, tracker, &mu, evaluator, suite, config, state)
-			}(step)
-		}
-
-		wg.Wait()
+// runScenarioSteps executes a scenario's steps sequentially in .tales file
+// order, honoring step-level skip rules and the dependency-skip cascade.
+// Once a step fails the scenario stops: every later step is reported as
+// skipped without being executed. Teardown still runs afterwards.
+func (r *Runner) runScenarioSteps(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, depsByStep map[string]map[string]struct{}, tracker *depTracker, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
+	for _, step := range scenario.Steps {
+		r.runOneStep(ctx, scenario, sResult, step, depsByStep, tracker, evaluator, suite, config, state)
 	}
 }
 
 // runOneStep handles the lifecycle of a single step: dep-failure
 // cascade, skip-rule evaluation, provider execution, and bookkeeping.
-func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, step *model.Step, depsByStep map[string]map[string]struct{}, tracker *depTracker, mu *sync.Mutex, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
+func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResult *report.ScenarioResult, step *model.Step, depsByStep map[string]map[string]struct{}, tracker *depTracker, evaluator *lang.Evaluator, suite *model.Suite, config map[string]cty.Value, state *ScenarioState) {
 	if blocker, failedDep, blocked := tracker.dependencyBlocker(depsByStep[step.Name]); blocked {
-		recordDepCascadeSkip(sResult, step, scenario.Name, blocker, failedDep, tracker, mu)
+		recordDepCascadeSkip(sResult, step, scenario.Name, blocker, failedDep, tracker)
+
+		return
+	}
+
+	if sResult.Status == report.StatusFail {
+		recordHaltedSkip(sResult, step, scenario.Name, tracker)
 
 		return
 	}
 
 	if stepSkip := evaluateStepSkip(evaluator, step, scenario.Name, state, config); stepSkip != nil {
-		recordStepSkipResult(sResult, stepSkip, step.Name, tracker, mu)
+		recordStepSkipResult(sResult, stepSkip, step.Name, tracker)
 
 		return
 	}
 
 	stepResult := r.executeStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
-
-	mu.Lock()
 
 	sResult.Steps = append(sResult.Steps, stepResult)
 
@@ -250,20 +224,17 @@ func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResu
 
 		sResult.Status = report.StatusFail
 	}
-	mu.Unlock()
 }
 
 // recordDepCascadeSkip emits a StatusSkip result for a step that is
 // being cascade-skipped because one of its dependencies did not
 // produce a result, and propagates the skip downstream by marking
 // the step as skipped in the tracker.
-func recordDepCascadeSkip(sResult *report.ScenarioResult, step *model.Step, scenarioName, blocker string, blockerFailed bool, tracker *depTracker, mu *sync.Mutex) {
+func recordDepCascadeSkip(sResult *report.ScenarioResult, step *model.Step, scenarioName, blocker string, blockerFailed bool, tracker *depTracker) {
 	reason := fmt.Sprintf("depends on skipped step %q", blocker)
 	if blockerFailed {
 		reason = fmt.Sprintf("depends on failed step %q", blocker)
 	}
-
-	mu.Lock()
 
 	sResult.Steps = append(sResult.Steps, &report.StepResult{
 		File:       step.File,
@@ -275,7 +246,22 @@ func recordDepCascadeSkip(sResult *report.ScenarioResult, step *model.Step, scen
 		SkipReason: reason,
 	})
 
-	mu.Unlock()
+	tracker.markSkipped(step.Name)
+}
+
+// recordHaltedSkip emits a StatusSkip result for a step that is not executed
+// because an earlier step in the scenario already failed. The scenario stops
+// at the first failure; later steps are reported as skipped rather than run.
+func recordHaltedSkip(sResult *report.ScenarioResult, step *model.Step, scenarioName string, tracker *depTracker) {
+	sResult.Steps = append(sResult.Steps, &report.StepResult{
+		File:       step.File,
+		Scenario:   scenarioName,
+		Name:       step.Name,
+		Provider:   step.Provider,
+		Phase:      "step",
+		Status:     report.StatusSkip,
+		SkipReason: "not run: an earlier step in the scenario failed",
+	})
 
 	tracker.markSkipped(step.Name)
 }
@@ -283,9 +269,7 @@ func recordDepCascadeSkip(sResult *report.ScenarioResult, step *model.Step, scen
 // recordStepSkipResult appends a skip-or-skip-eval-failure result
 // to the scenario, propagating failure state when the rule itself
 // errored, or registering the cascade-skip otherwise.
-func recordStepSkipResult(sResult *report.ScenarioResult, stepSkip *report.StepResult, stepName string, tracker *depTracker, mu *sync.Mutex) {
-	mu.Lock()
-
+func recordStepSkipResult(sResult *report.ScenarioResult, stepSkip *report.StepResult, stepName string, tracker *depTracker) {
 	sResult.Steps = append(sResult.Steps, stepSkip)
 
 	if stepSkip.Status == report.StatusFail {
@@ -295,7 +279,6 @@ func recordStepSkipResult(sResult *report.ScenarioResult, stepSkip *report.StepR
 
 		sResult.Status = report.StatusFail
 	}
-	mu.Unlock()
 
 	if stepSkip.Status == report.StatusFail {
 		tracker.markFailed(stepName)
@@ -475,51 +458,6 @@ func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evalua
 	}
 
 	return r.executeStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, "teardown")
-}
-
-func buildLayers(steps []*model.Step) ([][]string, error) {
-	return buildLayersWithExternalDeps(steps, nil)
-}
-
-func buildLayersWithExternalDeps(steps []*model.Step, externalDeps map[string]struct{}) ([][]string, error) {
-	g := dag.NewGraph()
-	knownSteps := map[string]struct{}{}
-
-	for _, step := range steps {
-		if err := g.AddNode(step.Name); err != nil {
-			return nil, fmt.Errorf("add node %q: %w", step.Name, err)
-		}
-
-		knownSteps[step.Name] = struct{}{}
-	}
-
-	for _, step := range steps {
-		deps, err := lang.StepDependencies(step)
-		if err != nil {
-			return nil, fmt.Errorf("resolve dependencies for step %q: %w", step.Name, err)
-		}
-
-		for dep := range deps {
-			if _, exists := knownSteps[dep]; !exists {
-				if _, external := externalDeps[dep]; external {
-					continue
-				}
-
-				return nil, fmt.Errorf("step %q references unknown dependency %q", step.Name, dep)
-			}
-
-			if err := g.AddEdge(dep, step.Name); err != nil {
-				return nil, fmt.Errorf("step %q: %w", step.Name, err)
-			}
-		}
-	}
-
-	layers, err := dag.TopologicalLayers(g)
-	if err != nil {
-		return nil, fmt.Errorf("topological sort failed: %w", err)
-	}
-
-	return layers, nil
 }
 
 func evaluateRequest(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step) (map[string]cty.Value, time.Duration, error) {
@@ -1072,65 +1010,27 @@ func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) (*S
 }
 
 func (r *Runner) executeKeywordSteps(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword, externalDeps map[string]struct{}) *report.ErrorDetail {
-	layers, err := buildLayersWithExternalDeps(keyword.Steps, externalDeps)
-	if err != nil {
+	if err := lang.ValidateStepOrder(keyword.Steps, externalDeps); err != nil {
 		return &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("keyword %q graph error: %v", keyword.Name, err)}
 	}
 
-	stepByName := map[string]*model.Step{}
-	depsByStep := map[string]map[string]struct{}{}
-	failedSteps := map[string]struct{}{}
-
 	for _, step := range keyword.Steps {
-		stepByName[step.Name] = step
-
-		deps, depErr := lang.StepDependencies(step)
-		if depErr != nil {
-			return &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("keyword %q dependencies for step %q: %v", keyword.Name, step.Name, depErr)}
-		}
-
-		depsByStep[step.Name] = deps
-	}
-
-	for _, layer := range layers {
-		for _, stepName := range layer {
-			step := stepByName[stepName]
-
-			if hasFailedDependency(step.Name, depsByStep, failedSteps) {
-				failedSteps[step.Name] = struct{}{}
-
-				continue
+		stepResult := r.executeStep(ctx, evaluator, suite, scenarioName, config, keywordState, input, step)
+		if stepResult.Status == report.StatusFail {
+			message := "keyword step failed"
+			if stepResult.Failure != nil {
+				message = stepResult.Failure.Message
 			}
 
-			stepResult := r.executeStep(ctx, evaluator, suite, scenarioName, config, keywordState, input, step)
-			if stepResult.Status == report.StatusFail {
-				failedSteps[step.Name] = struct{}{}
-
-				message := "keyword step failed"
-				if stepResult.Failure != nil {
-					message = stepResult.Failure.Message
-				}
-
-				return &report.ErrorDetail{
-					Kind:    "keyword",
-					Path:    step.Name,
-					Message: fmt.Sprintf("keyword %q step %q failed: %s", keyword.Name, step.Name, message),
-				}
+			return &report.ErrorDetail{
+				Kind:    "keyword",
+				Path:    step.Name,
+				Message: fmt.Sprintf("keyword %q step %q failed: %s", keyword.Name, step.Name, message),
 			}
 		}
 	}
 
 	return nil
-}
-
-func hasFailedDependency(stepName string, depsByStep map[string]map[string]struct{}, failedSteps map[string]struct{}) bool {
-	for dependency := range depsByStep[stepName] {
-		if _, failed := failedSteps[dependency]; failed {
-			return true
-		}
-	}
-
-	return false
 }
 
 func evaluateKeywordOutputs(evaluator *lang.Evaluator, scenarioName, callingStepName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword) (map[string]cty.Value, error) {
