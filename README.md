@@ -9,7 +9,7 @@ Scenarios are written in declarative HCL2 files with the `.tales` extension.
 - Single Go binary, easy to run in CI.
 - Declarative DSL focused on API workflows.
 - Deterministic seeded data generation.
-- Scenario and step execution with dependency-aware scheduling.
+- Scenarios run in parallel; steps within a scenario run sequentially in file order.
 - Built-in HTTP provider (including ConnectRPC JSON over HTTP).
 - Native iOS UI automation via XCUITest (`step "mobile"`), no Appium / no
   Maestro at runtime. The XCUITest driver is **embedded** in the `tales`
@@ -288,6 +288,22 @@ request {
 
 `body.form` values are encoded with `application/x-www-form-urlencoded` semantics, so characters such as `&`, `=`, `+`, `%`, `#`, and spaces are safe in generated values.
 
+## Execution Model
+
+- **Scenarios** run in parallel, up to `--parallel` at a time (default `1`).
+- **Steps inside a scenario** run **sequentially, in the order they are defined**
+  in the `.tales` file. There is no implicit parallelism between steps.
+- A step may reference (`result.<step>`) or `depends_on` only steps defined
+  **earlier** in the file. A forward reference or an unknown reference is
+  rejected at load time — `tales validate` catches it and the exit code is `2`.
+- `depends_on` is **optional**: file order already determines execution order.
+  Use it only as explicit documentation/validation of a relationship; it does
+  not reorder steps.
+- When a step fails, the scenario stops: later steps are reported as skipped
+  and are not executed.
+- `teardown` steps run sequentially in file order, after the scenario's steps,
+  even when a step failed.
+
 ## Built-in Functions and Matchers
 
 General:
@@ -454,8 +470,7 @@ make e2e
 - `internal/parser`: loading and HCL decoding.
 - `internal/model`: suite/scenario/step models.
 - `internal/lang`: expression evaluation and functions.
-- `internal/runtime`: execution engine, scheduler, seed logic.
-- `internal/dag`: dependency graph/topological layering.
+- `internal/runtime`: execution engine, sequential step runner, seed logic.
 - `internal/assertion`: matcher and JSON assertion logic.
 - `internal/provider/http`: HTTP execution provider.
 - `internal/report`: console/JUnit/JSONL reporting.

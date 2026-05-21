@@ -47,7 +47,8 @@ Use this skill when asked to:
 - Always assert at least `expect.status`.
 - Prefer robust assertions (`contains`, `is_string`, `one_of`) over brittle full payload equality unless strict matching is explicitly required.
 - Capture only reusable values needed by later steps/teardown.
-- Use `result.<step>.<field>` references to model dependencies.
+- Use `result.<step>.<field>` references to share data between steps.
+- Steps run sequentially in `.tales` file order: define every step after the steps it references. `depends_on` is optional documentation only and never reorders steps; a forward or unknown reference fails `tales validate`.
 - Use bounded `retry` blocks for eventually consistent HTTP flows instead of adding artificial sleeps.
 
 4. Always include resilient cleanup:
@@ -56,9 +57,9 @@ Use this skill when asked to:
 - For deletion status, prefer `one_of([200, 204, 404])` when API semantics allow idempotent cleanup.
 
 5. Validate after generation:
-- `tales validate <path>`
+- `tales validate <path>` — also rejects forward/unknown step references
 - `tales test <path> --seed 1234`
-- if runtime supports it in the project context: add `--parallel` run to expose dependency issues
+- `--parallel` only affects scenario-level concurrency; steps within a scenario always run sequentially in file order
 
 6. Fix and re-run until green:
 - parse errors: align fields/blocks with parser schema
@@ -243,7 +244,6 @@ step "mobile" "launch" {
   capture { password = generate("password_gen") }
 }
 step "mobile" "fill" {
-  depends_on = ["launch"]
   actions {
     input_text { id = "form.password",         value = result.launch.password, secure = true }
     input_text { id = "form.password_confirm", value = result.launch.password, secure = true }
@@ -281,8 +281,6 @@ step "mobile" "fill" {
 
 ```hcl
 step "mobile" "submit_register" {
-  depends_on = ["open_register"]
-
   platform = "ios"
   target   = "iphone"
 
