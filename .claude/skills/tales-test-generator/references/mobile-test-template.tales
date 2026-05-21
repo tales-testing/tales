@@ -54,8 +54,6 @@ scenario "iOS register happy path" {
   }
 
   step "mobile" "open_register" {
-    depends_on = ["launch"]
-
     platform = "ios"
     target   = "iphone"
     actions {
@@ -69,8 +67,6 @@ scenario "iOS register happy path" {
   }
 
   step "mobile" "submit_register" {
-    depends_on = ["open_register"]
-
     platform = "ios"
     target   = "iphone"
     actions {
