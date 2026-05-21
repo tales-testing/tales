@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
@@ -141,5 +142,77 @@ scenario "lines" {
 
 	if steps[1].Line != 5 {
 		t.Fatalf("second step: want line 5 got %d", steps[1].Line)
+	}
+}
+
+// TestLoadRejectsForwardResultReference ensures a step referencing a step
+// defined later in the file is rejected at load time.
+func TestLoadRejectsForwardResultReference(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "forward" {
+  step "http" "second" {
+    request {
+      method = "GET"
+      url    = "http://x/${result.first.id}"
+    }
+  }
+  step "http" "first" {}
+}
+`
+	_, diags := loadString(t, content)
+	if !diags.HasErrors() {
+		t.Fatal("expected forward reference to be rejected at load time")
+	}
+
+	if !strings.Contains(diags.Error(), `references result.first, but "first" is defined later`) {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+}
+
+// TestLoadRejectsForwardDependsOn ensures a forward depends_on is rejected.
+func TestLoadRejectsForwardDependsOn(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "forward" {
+  step "http" "login" {
+    depends_on = ["create_user"]
+  }
+  step "http" "create_user" {}
+}
+`
+	_, diags := loadString(t, content)
+	if !diags.HasErrors() {
+		t.Fatal("expected forward depends_on to be rejected at load time")
+	}
+
+	if !strings.Contains(diags.Error(), `depends on "create_user", but "create_user" is defined later`) {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+}
+
+// TestLoadAcceptsBackwardReference confirms a top-down scenario still loads.
+func TestLoadAcceptsBackwardReference(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "ok" {
+  step "http" "first" {}
+  step "http" "second" {
+    request {
+      method = "GET"
+      url    = "http://x/${result.first.id}"
+    }
+  }
+}
+`
+	_, diags := loadString(t, content)
+	if diags.HasErrors() {
+		t.Fatalf("backward reference must load cleanly: %s", diags.Error())
 	}
 }
