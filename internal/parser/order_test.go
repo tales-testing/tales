@@ -216,3 +216,26 @@ scenario "ok" {
 		t.Fatalf("backward reference must load cleanly: %s", diags.Error())
 	}
 }
+
+// TestLoadRejectsDuplicateKeywordStepNames ensures keyword sub-steps with the
+// same name are rejected at load time (they break source-order reordering and
+// result lookup).
+func TestLoadRejectsDuplicateKeywordStepNames(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+keyword "flow" {
+  step "test" "dup" {}
+  step "test" "dup" {}
+}
+`
+	_, diags := loadString(t, content)
+	if !diags.HasErrors() {
+		t.Fatal("expected duplicate keyword step names to be rejected")
+	}
+
+	if !strings.Contains(diags.Error(), `Keyword "flow" has duplicate step "dup"`) {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+}

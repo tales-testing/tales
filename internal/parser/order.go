@@ -75,16 +75,24 @@ func sourceOrder(body *hclsyntax.Body) []sourceStep {
 
 // reorderStepsBySource returns steps reordered to match textual source order,
 // setting each Step.Line from its source block. When the decoded set and the
-// source set disagree (count mismatch or an unmatched block, e.g. malformed
-// input already reported through gohcl diagnostics) it returns steps unchanged.
+// source set disagree (count mismatch, an unmatched block, or duplicate
+// (provider, name) keys — all already reported elsewhere through gohcl or
+// suite validation) it returns steps unchanged rather than risk dropping or
+// duplicating a step.
 func reorderStepsBySource(steps []*model.Step, order []sourceStep) []*model.Step {
 	if len(order) != len(steps) {
 		return steps
 	}
 
 	byKey := make(map[stepKey]*model.Step, len(steps))
+
 	for _, step := range steps {
-		byKey[stepKey{provider: step.Provider, name: step.Name}] = step
+		key := stepKey{provider: step.Provider, name: step.Name}
+		if _, dup := byKey[key]; dup {
+			return steps
+		}
+
+		byKey[key] = step
 	}
 
 	reordered := make([]*model.Step, 0, len(steps))
