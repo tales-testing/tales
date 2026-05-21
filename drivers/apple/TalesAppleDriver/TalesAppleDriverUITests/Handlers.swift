@@ -237,7 +237,7 @@ final class TalesRouter {
         // daemon expects.
         do {
             try synthesizeOnGlobalQueue { record in
-                var path = PointerEventPath.pathForTextInput()
+                var path = try PointerEventPath.pathForTextInput()
                 path.type(text: keyChar, typingSpeed: 30)
                 record.add(path)
             }
@@ -306,7 +306,7 @@ final class TalesRouter {
     /// queue so the semaphore wait never blocks the completion thread.
     private func synthesizeSwipe(start: CGPoint, end: CGPoint, duration: TimeInterval) throws {
         try synthesizeOnGlobalQueue { record in
-            record.addSwipe(start: start, end: end, duration: duration)
+            try record.addSwipe(start: start, end: end, duration: duration)
         }
     }
 
@@ -314,17 +314,16 @@ final class TalesRouter {
     /// daemon on the global queue.
     private func synthesizeTouch(at point: CGPoint, touchUpAfter: TimeInterval?) throws {
         try synthesizeOnGlobalQueue { record in
-            record.addTouch(at: point, touchUpAfter: touchUpAfter)
+            try record.addTouch(at: point, touchUpAfter: touchUpAfter)
         }
     }
 
-    private func synthesizeOnGlobalQueue(_ build: @escaping (EventRecord) -> Void) throws {
+    private func synthesizeOnGlobalQueue(_ build: @escaping (EventRecord) throws -> Void) throws {
         var caught: Error?
         DispatchQueue.global(qos: .userInitiated).sync {
-            let record = EventRecord(orientation: .portrait)
-            build(record)
-
             do {
+                let record = try EventRecord(orientation: .portrait)
+                try build(record)
                 try RunnerDaemonProxy().synthesizeSync(eventRecord: record)
             } catch {
                 caught = error
@@ -494,11 +493,11 @@ final class TalesRouter {
         var caught: Error?
         DispatchQueue.global(qos: .userInitiated).sync {
             do {
-                var path = PointerEventPath.pathForTextInput()
+                var path = try PointerEventPath.pathForTextInput()
                 path.type(text: text, typingSpeed: typingSpeed)
 
                 let orientation = UIInterfaceOrientation.portrait
-                let record = EventRecord(orientation: orientation)
+                let record = try EventRecord(orientation: orientation)
                 record.add(path)
 
                 try RunnerDaemonProxy().synthesizeSync(eventRecord: record)
