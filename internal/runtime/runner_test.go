@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hyperxlab/tales/internal/lang"
 	"github.com/hyperxlab/tales/internal/model"
 )
 
@@ -97,7 +98,10 @@ func TestFilterScenarios(t *testing.T) {
 	}
 }
 
-func TestBuildLayersOrdersMobileAfterKeywordDependency(t *testing.T) {
+// TestValidateStepOrderMobileAfterKeyword checks that a mobile step whose
+// action references a keyword step's result is accepted when defined after
+// that keyword step, and rejected as a forward reference when defined before.
+func TestValidateStepOrderMobileAfterKeyword(t *testing.T) {
 	t.Parallel()
 
 	userStep := &model.Step{
@@ -124,20 +128,11 @@ func TestBuildLayersOrdersMobileAfterKeywordDependency(t *testing.T) {
 		},
 	}
 
-	layers, err := buildLayers([]*model.Step{userStep, loginStep})
-	if err != nil {
-		t.Fatalf("buildLayers: %v", err)
+	if err := lang.ValidateStepOrder([]*model.Step{userStep, loginStep}, nil); err != nil {
+		t.Fatalf("mobile step after the keyword it references must be valid: %v", err)
 	}
 
-	if len(layers) != 2 {
-		t.Fatalf("want 2 layers (keyword then mobile), got %d: %#v", len(layers), layers)
-	}
-
-	if len(layers[0]) != 1 || layers[0][0] != "user" {
-		t.Fatalf("layer[0] = %v, want [user]", layers[0])
-	}
-
-	if len(layers[1]) != 1 || layers[1][0] != "login_flow" {
-		t.Fatalf("layer[1] = %v, want [login_flow]", layers[1])
+	if err := lang.ValidateStepOrder([]*model.Step{loginStep, userStep}, nil); err == nil {
+		t.Fatal("mobile step before the keyword it references must be rejected")
 	}
 }
