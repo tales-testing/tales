@@ -13,11 +13,33 @@ import UIKit
 /// project does not need ObjC bridging headers for the private classes.
 /// The selectors used here are documented across Maestro, Detox and
 /// WebDriverAgent — they have been stable since Xcode 12.
+///
+/// Every class / selector lookup is guarded: if a future Xcode or iOS
+/// runtime renames or removes one of these private symbols the wrappers
+/// throw `XCTestPrivateError` instead of force-unwrapping nil and
+/// crashing the process, so the driver's HTTP server stays alive and the
+/// handler can return a structured 500 to Tales.
+
+/// Raised when a private XCTest class or runtime symbol is unavailable.
+enum XCTestPrivateError: LocalizedError {
+    case classUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .classUnavailable(let symbol):
+            return "private XCTest symbol \(symbol) is unavailable on this runtime"
+        }
+    }
+}
 
 struct PointerEventPath {
-    static func pathForTextInput(offset: TimeInterval = 0) -> Self {
+    static func pathForTextInput(offset: TimeInterval = 0) throws -> Self {
         // initForTextInput is available since Xcode 10.2.
-        let alloced = objc_lookUpClass("XCPointerEventPath")!.alloc() as! NSObject
+        guard let cls = objc_lookUpClass("XCPointerEventPath"),
+              let alloced = cls.alloc() as? NSObject else {
+            throw XCTestPrivateError.classUnavailable("XCPointerEventPath")
+        }
+
         let selector = NSSelectorFromString("initForTextInput")
         let imp = alloced.method(for: selector)
         typealias Method = @convention(c) (NSObject, Selector) -> NSObject
@@ -29,8 +51,12 @@ struct PointerEventPath {
 
     /// Creates a touch event path with the finger pressed down at `point`.
     /// `initForTouchAtPoint:offset:` is available since Xcode 10.2.
-    static func pathForTouch(at point: CGPoint, offset: TimeInterval = 0) -> Self {
-        let alloced = objc_lookUpClass("XCPointerEventPath")!.alloc() as! NSObject
+    static func pathForTouch(at point: CGPoint, offset: TimeInterval = 0) throws -> Self {
+        guard let cls = objc_lookUpClass("XCPointerEventPath"),
+              let alloced = cls.alloc() as? NSObject else {
+            throw XCTestPrivateError.classUnavailable("XCPointerEventPath")
+        }
+
         let selector = NSSelectorFromString("initForTouchAtPoint:offset:")
         let imp = alloced.method(for: selector)
         typealias Method = @convention(c) (NSObject, Selector, CGPoint, TimeInterval) -> NSObject
@@ -87,8 +113,12 @@ final class EventRecord {
 
     let record: NSObject
 
-    init(orientation: UIInterfaceOrientation, style: Style = .singleFinger) {
-        let alloced = objc_lookUpClass("XCSynthesizedEventRecord")!.alloc() as! NSObject
+    init(orientation: UIInterfaceOrientation, style: Style = .singleFinger) throws {
+        guard let cls = objc_lookUpClass("XCSynthesizedEventRecord"),
+              let alloced = cls.alloc() as? NSObject else {
+            throw XCTestPrivateError.classUnavailable("XCSynthesizedEventRecord")
+        }
+
         let selector = NSSelectorFromString("initWithName:interfaceOrientation:")
         let imp = alloced.method(for: selector)
         typealias Method = @convention(c) (NSObject, Selector, NSString, UIInterfaceOrientation) -> NSObject
@@ -114,8 +144,8 @@ final class EventRecord {
     /// `touchUpAfter` seconds (a plain tap when nil, a long-press when a
     /// duration is supplied).
     @discardableResult
-    func addTouch(at point: CGPoint, touchUpAfter: TimeInterval? = nil) -> Self {
-        var path = PointerEventPath.pathForTouch(at: point)
+    func addTouch(at point: CGPoint, touchUpAfter: TimeInterval? = nil) throws -> Self {
+        var path = try PointerEventPath.pathForTouch(at: point)
         path.offset += touchUpAfter ?? Self.defaultTapDuration
         path.liftUp()
 
@@ -125,8 +155,8 @@ final class EventRecord {
     /// Adds a swipe: finger down at `start`, dragged to `end` over
     /// `duration` seconds, then lifted up.
     @discardableResult
-    func addSwipe(start: CGPoint, end: CGPoint, duration: TimeInterval) -> Self {
-        var path = PointerEventPath.pathForTouch(at: start)
+    func addSwipe(start: CGPoint, end: CGPoint, duration: TimeInterval) throws -> Self {
+        var path = try PointerEventPath.pathForTouch(at: start)
         path.offset += Self.defaultTapDuration
         path.move(to: end)
         path.offset += duration
@@ -139,17 +169,24 @@ final class EventRecord {
 final class RunnerDaemonProxy {
     private let proxy: NSObject
 
-    init() {
-        let clazz: AnyClass = NSClassFromString("XCTRunnerDaemonSession")!
+    init() throws {
+        guard let clazz: AnyClass = NSClassFromString("XCTRunnerDaemonSession") else {
+            throw XCTestPrivateError.classUnavailable("XCTRunnerDaemonSession")
+        }
+
         let selector = NSSelectorFromString("sharedSession")
         let imp = clazz.method(for: selector)
         typealias Method = @convention(c) (AnyClass, Selector) -> NSObject
         let method = unsafeBitCast(imp, to: Method.self)
         let session = method(clazz, selector)
 
-        proxy = session
-            .perform(NSSelectorFromString("daemonProxy"))
-            .takeUnretainedValue() as! NSObject
+        guard let daemonProxy = session
+            .perform(NSSelectorFromString("daemonProxy"))?
+            .takeUnretainedValue() as? NSObject else {
+            throw XCTestPrivateError.classUnavailable("XCTRunnerDaemonSession.daemonProxy")
+        }
+
+        proxy = daemonProxy
     }
 
     /// Synchronously dispatches an event record to testmanagerd and waits
