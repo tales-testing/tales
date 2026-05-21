@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hyperxlab/tales/internal/model"
@@ -82,6 +83,82 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 	}
 
 	return deps, nil
+}
+
+// ValidateStepOrder verifies that every step references only steps defined
+// earlier in file order, through either depends_on or result.<x> expressions.
+// steps must be in .tales source order. externalDeps holds names resolvable
+// outside the list (for example results injected into a keyword by its
+// caller); they never trigger a forward-reference error.
+func ValidateStepOrder(steps []*model.Step, externalDeps map[string]struct{}) error {
+	known := make(map[string]struct{}, len(steps))
+	for _, step := range steps {
+		known[step.Name] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(steps))
+
+	for _, step := range steps {
+		if err := validateStepRefs(step, seen, known, externalDeps); err != nil {
+			return err
+		}
+
+		seen[step.Name] = struct{}{}
+	}
+
+	return nil
+}
+
+// validateStepRefs checks one step's explicit and implicit dependencies
+// against the steps already seen, the full set of known step names, and the
+// externally resolvable names.
+func validateStepRefs(step *model.Step, seen, known, externalDeps map[string]struct{}) error {
+	for _, dep := range step.DependsOn {
+		if dep == step.Name {
+			return fmt.Errorf("step %q depends on itself", step.Name)
+		}
+
+		if _, ok := seen[dep]; ok {
+			continue
+		}
+
+		if _, ok := externalDeps[dep]; ok {
+			continue
+		}
+
+		if _, ok := known[dep]; ok {
+			return fmt.Errorf("step %q depends on %q, but %q is defined later", step.Name, dep, dep)
+		}
+
+		return fmt.Errorf("step %q depends on unknown step %q", step.Name, dep)
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		return err
+	}
+
+	for dep := range deps {
+		if slices.Contains(step.DependsOn, dep) {
+			continue // already validated in the depends_on loop above
+		}
+
+		if _, ok := seen[dep]; ok {
+			continue
+		}
+
+		if _, ok := externalDeps[dep]; ok {
+			continue
+		}
+
+		if _, ok := known[dep]; ok {
+			return fmt.Errorf("step %q references result.%s, but %q is defined later", step.Name, dep, dep)
+		}
+
+		return fmt.Errorf("step %q references unknown dependency %q", step.Name, dep)
+	}
+
+	return nil
 }
 
 func collectRequestRefs(req *model.Request, collect func(model.Expression)) {
