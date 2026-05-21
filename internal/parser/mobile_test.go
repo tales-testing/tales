@@ -396,6 +396,227 @@ scenario "wrong-provider" {
 	}
 }
 
+func TestLoadPathMobilePermissionsDecodedSortedByService(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "perms" {
+  step "mobile" "launch" {
+    platform = "ios"
+    target = "iphone"
+    permissions {
+      photos = "deny"
+      camera = "allow"
+      contacts = "allow"
+    }
+    launch {
+      clear_state = true
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	step := suite.Scenarios[0].Steps[0]
+	if step.Mobile == nil {
+		t.Fatal("expected mobile step to be populated")
+	}
+
+	// The decoder sorts permissions by service name so the decoded order
+	// is deterministic regardless of HCL map iteration order.
+	wantServices := []string{"camera", "contacts", "photos"}
+	if len(step.Mobile.Permissions) != len(wantServices) {
+		t.Fatalf("expected %d permissions, got %d", len(wantServices), len(step.Mobile.Permissions))
+	}
+
+	for i, service := range wantServices {
+		if step.Mobile.Permissions[i].Service != service {
+			t.Fatalf("permission %d: want service %q, got %q", i, service, step.Mobile.Permissions[i].Service)
+		}
+
+		if step.Mobile.Permissions[i].Decision.Empty() {
+			t.Fatalf("permission %d (%s): expected decision expression to be captured", i, service)
+		}
+	}
+}
+
+func TestLoadPathMobileDeviceActionsDecoded(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "device" {
+  step "mobile" "device" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      press_key { key = "return" }
+      press_button { button = "home" }
+      set_orientation { orientation = "landscape_left" }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Mobile.Actions
+
+	want := []model.MobileActionKind{
+		model.MobileActionPressKey,
+		model.MobileActionPressButton,
+		model.MobileActionSetOrientation,
+	}
+	if len(actions) != len(want) {
+		t.Fatalf("expected %d actions, got %d", len(want), len(actions))
+	}
+
+	for i, kind := range want {
+		if actions[i].Kind != kind {
+			t.Fatalf("action %d: want %q got %q", i, kind, actions[i].Kind)
+		}
+
+		// Device actions carry their argument in Value and never an id.
+		if !actions[i].ID.Empty() {
+			t.Fatalf("action %d (%s): expected no id", i, kind)
+		}
+
+		if actions[i].Value.Empty() {
+			t.Fatalf("action %d (%s): expected value expression to be captured", i, kind)
+		}
+	}
+}
+
+func TestLoadPathMobileDeviceActionRejectsMissingArg(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "bad-device" {
+  step "mobile" "device" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      press_key {}
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics for press_key without key")
+	}
+
+	if !strings.Contains(diags.Error(), "Missing press_key attribute") {
+		t.Fatalf("expected missing-key diagnostic, got: %s", diags.Error())
+	}
+}
+
+func TestLoadPathMobileGestureActionsDecoded(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "gestures" {
+  step "mobile" "gestures" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      swipe {
+        id        = "feed.list"
+        direction = "up"
+        distance  = 0.6
+        duration  = "300ms"
+      }
+      scroll {
+        id        = "feed.list"
+        direction = "down"
+      }
+      long_press {
+        id       = "feed.item"
+        duration = "1s"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Mobile.Actions
+	if len(actions) != 3 {
+		t.Fatalf("expected 3 actions, got %d", len(actions))
+	}
+
+	swipe := actions[0]
+	if swipe.Kind != model.MobileActionSwipe {
+		t.Fatalf("action 0: want swipe, got %q", swipe.Kind)
+	}
+
+	if swipe.Direction.Empty() || swipe.Distance.Empty() || swipe.Duration.Empty() {
+		t.Fatal("expected swipe direction/distance/duration expressions to be captured")
+	}
+
+	scroll := actions[1]
+	if scroll.Kind != model.MobileActionScroll {
+		t.Fatalf("action 1: want scroll, got %q", scroll.Kind)
+	}
+
+	// distance / duration are optional and stay empty when omitted.
+	if !scroll.Distance.Empty() || !scroll.Duration.Empty() {
+		t.Fatal("expected omitted scroll distance/duration to stay empty")
+	}
+
+	longPress := actions[2]
+	if longPress.Kind != model.MobileActionLongPress {
+		t.Fatalf("action 2: want long_press, got %q", longPress.Kind)
+	}
+
+	if longPress.Duration.Empty() {
+		t.Fatal("expected long_press duration expression to be captured")
+	}
+}
+
+func TestLoadPathMobileSwipeRejectsMissingDirection(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "bad-swipe" {
+  step "mobile" "swipe" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      swipe {
+        id = "feed.list"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics for swipe without direction")
+	}
+
+	if !strings.Contains(diags.Error(), "Missing swipe attribute") {
+		t.Fatalf("expected missing-direction diagnostic, got: %s", diags.Error())
+	}
+}
+
 func TestLoadPathMobileNotVisible(t *testing.T) {
 	t.Parallel()
 
