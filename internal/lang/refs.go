@@ -74,12 +74,11 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 	collectMobileRefs(step.Mobile, collect)
 	collectSkipRefs(step.SkipRules, collect)
 
-	delete(deps, step.Name)
-
-	for dep := range deps {
-		if dep == step.Name {
-			return nil, fmt.Errorf("step %q cannot depend on itself", step.Name)
-		}
+	// A step referencing its own name — through depends_on or a
+	// result.<self> expression — is always invalid: its result does not
+	// exist yet while it runs.
+	if _, selfRef := deps[step.Name]; selfRef {
+		return nil, fmt.Errorf("step %q cannot depend on itself", step.Name)
 	}
 
 	return deps, nil
@@ -115,7 +114,7 @@ func ValidateStepOrder(steps []*model.Step, externalDeps map[string]struct{}) er
 func validateStepRefs(step *model.Step, seen, known, externalDeps map[string]struct{}) error {
 	for _, dep := range step.DependsOn {
 		if dep == step.Name {
-			return fmt.Errorf("step %q depends on itself", step.Name)
+			continue // self-reference is reported by StepDependencies below
 		}
 
 		if _, ok := seen[dep]; ok {

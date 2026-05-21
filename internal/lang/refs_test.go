@@ -328,3 +328,17 @@ func TestValidateStepOrderSelfReferenceRejected(t *testing.T) {
 		t.Fatal("expected self-reference to be rejected")
 	}
 }
+
+func TestValidateStepOrderImplicitSelfReferenceRejected(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "loop",
+		Provider: "http",
+		Request:  &model.Request{URL: parseExpr(t, `"http://x/${result.loop.id}"`)},
+	}
+
+	if err := ValidateStepOrder([]*model.Step{step}, nil); err == nil {
+		t.Fatal("expected a step referencing its own result to be rejected")
+	}
+}

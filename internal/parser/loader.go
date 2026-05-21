@@ -164,6 +164,33 @@ func validateSuite(suite *model.Suite, diags *hcl.Diagnostics) {
 
 		validateScenarioStepOrder(sc, diags)
 	}
+
+	validateKeywordStepNames(suite, diags)
+}
+
+// validateKeywordStepNames rejects duplicate step names within a keyword.
+// Unlike scenario steps, keyword sub-steps were previously unchecked; the
+// sequential runner and the source-order reordering both assume unique
+// (provider, name) keys inside a keyword body.
+func validateKeywordStepNames(suite *model.Suite, diags *hcl.Diagnostics) {
+	names := make([]string, 0, len(suite.Keywords))
+	for name := range suite.Keywords {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	for _, name := range names {
+		stepNames := map[string]struct{}{}
+
+		for _, step := range suite.Keywords[name].Steps {
+			if _, exists := stepNames[step.Name]; exists {
+				*diags = append(*diags, diagError("Duplicate step", fmt.Sprintf("Keyword %q has duplicate step %q", name, step.Name), nil))
+			}
+
+			stepNames[step.Name] = struct{}{}
+		}
+	}
 }
 
 // validateScenarioStepOrder rejects steps that reference an unknown step or a
