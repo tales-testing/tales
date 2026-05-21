@@ -241,6 +241,124 @@ func TestRunnerMobileFailureProducesErrorDetail(t *testing.T) {
 	}
 }
 
+const mobileConfigHeader = `version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = "iPhone 16"
+        app         = "./MyApp.app"
+        bundle_id   = "com.example.MyApp"
+        driver = {
+          host     = "127.0.0.1"
+          port     = 9080
+          external = true
+        }
+      }
+    }
+  }
+}
+`
+
+func TestRunnerMobileRejectsOutOfRangeDistance(t *testing.T) {
+	t.Parallel()
+
+	suite := loadTales(t, mobileConfigHeader+`
+scenario "demo" {
+  step "mobile" "swipe" {
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      swipe {
+        id        = "welcome.register"
+        direction = "up"
+        distance  = 1.5
+      }
+    }
+  }
+}
+`)
+
+	drv := &stubMobileDriver{hierarchy: sampleHierarchyForTales()}
+	runner := NewRunner(provider.NewRegistry(newStubProvider(drv)))
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if !result.Failed() {
+		t.Fatal("expected failure for out-of-range swipe distance")
+	}
+
+	step := result.Scenarios[0].Steps[0]
+	if step.Failure == nil || !strings.Contains(step.Failure.Message, "must be in (0, 1]") {
+		t.Fatalf("expected (0, 1] distance diagnostic, got %+v", step.Failure)
+	}
+
+	if !strings.Contains(step.Failure.Message, "distance") {
+		t.Fatalf("expected diagnostic to reference the distance attribute, got %+v", step.Failure)
+	}
+}
+
+func TestRunnerMobileRejectsInvalidPermissionDecision(t *testing.T) {
+	t.Parallel()
+
+	suite := loadTales(t, mobileConfigHeader+`
+scenario "demo" {
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    permissions {
+      camera = "maybe"
+    }
+  }
+}
+`)
+
+	drv := &stubMobileDriver{hierarchy: sampleHierarchyForTales()}
+	runner := NewRunner(provider.NewRegistry(newStubProvider(drv)))
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if !result.Failed() {
+		t.Fatal("expected failure for invalid permission decision")
+	}
+
+	step := result.Scenarios[0].Steps[0]
+	if step.Failure == nil || !strings.Contains(step.Failure.Message, `must be "allow" or "deny"`) {
+		t.Fatalf("expected allow/deny diagnostic, got %+v", step.Failure)
+	}
+
+	// The diagnostic must point at the service the user wrote.
+	if !strings.Contains(step.Failure.Message, "mobile.permissions.camera") {
+		t.Fatalf("expected diagnostic to reference mobile.permissions.camera, got %+v", step.Failure)
+	}
+}
+
+func TestMobileValueAttrName(t *testing.T) {
+	t.Parallel()
+
+	cases := map[model.MobileActionKind]string{
+		model.MobileActionPressKey:       "key",
+		model.MobileActionPressButton:    "button",
+		model.MobileActionSetOrientation: "orientation",
+		model.MobileActionInputText:      "value",
+		model.MobileActionTap:            "value",
+	}
+
+	for kind, want := range cases {
+		if got := mobileValueAttrName(kind); got != want {
+			t.Fatalf("mobileValueAttrName(%q): want %q, got %q", kind, want, got)
+		}
+	}
+}
+
 func TestArtifactsFromOutputExtractsValues(t *testing.T) {
 	t.Parallel()
 
