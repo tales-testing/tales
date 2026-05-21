@@ -1,0 +1,145 @@
+package parser
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hyperxlab/tales/internal/model"
+)
+
+func loadString(t *testing.T, content string) (*model.Suite, hcl.Diagnostics) {
+	t.Helper()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "order.tales")
+
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return LoadPath(dir)
+}
+
+func names(steps []*model.Step) []string {
+	out := make([]string, 0, len(steps))
+	for _, step := range steps {
+		out = append(out, step.Name)
+	}
+
+	return out
+}
+
+func assertOrder(t *testing.T, label string, got, want []string) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Fatalf("%s: want %v got %v", label, want, got)
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%s: want %v got %v", label, want, got)
+		}
+	}
+}
+
+// TestInterleavedStepAndCaseSourceOrder ensures that mixing step and case
+// blocks preserves their textual order in model.Scenario.Steps, instead of
+// the gohcl default of all step blocks followed by all case blocks.
+func TestInterleavedStepAndCaseSourceOrder(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "interleaved" {
+  step "test" "first" {}
+  case "test" "second" {}
+  step "test" "third" {}
+  case "test" "fourth" {}
+}
+`
+	suite, diags := loadString(t, content)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	got := names(suite.Scenarios[0].Steps)
+	want := []string{"first", "second", "third", "fourth"}
+	assertOrder(t, "scenario steps", got, want)
+}
+
+// TestInterleavedTeardownSourceOrder ensures teardown step/case ordering.
+func TestInterleavedTeardownSourceOrder(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "interleaved" {
+  step "test" "main" {}
+
+  teardown {
+    step "test" "cleanup_a" {}
+    case "test" "cleanup_b" {}
+    step "test" "cleanup_c" {}
+  }
+}
+`
+	suite, diags := loadString(t, content)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	got := names(suite.Scenarios[0].Teardown)
+	want := []string{"cleanup_a", "cleanup_b", "cleanup_c"}
+	assertOrder(t, "teardown steps", got, want)
+}
+
+// TestInterleavedKeywordSourceOrder ensures keyword sub-step ordering.
+func TestInterleavedKeywordSourceOrder(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+keyword "flow" {
+  step "test" "k_first" {}
+  case "test" "k_second" {}
+  step "test" "k_third" {}
+}
+`
+	suite, diags := loadString(t, content)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	got := names(suite.Keywords["flow"].Steps)
+	want := []string{"k_first", "k_second", "k_third"}
+	assertOrder(t, "keyword steps", got, want)
+}
+
+// TestStepLineFromBlockDefRange ensures Step.Line points at the real block.
+func TestStepLineFromBlockDefRange(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "lines" {
+  step "test" "first" {}
+  step "test" "second" {}
+}
+`
+	suite, diags := loadString(t, content)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	steps := suite.Scenarios[0].Steps
+	if steps[0].Line != 4 {
+		t.Fatalf("first step: want line 4 got %d", steps[0].Line)
+	}
+
+	if steps[1].Line != 5 {
+		t.Fatalf("second step: want line 5 got %d", steps[1].Line)
+	}
+}

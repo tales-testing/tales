@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hyperxlab/tales/internal/model"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -17,6 +18,12 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 	if diags.HasErrors() {
 		return nil, diags
 	}
+
+	// syntaxBody lets us recover the textual order of interleaved step/case
+	// blocks, which gohcl loses by decoding them into separate slices. It is
+	// nil for non-native bodies, in which case reordering falls back to a
+	// no-op (.tales files are always HCL native syntax).
+	syntaxBody, _ := body.(*hclsyntax.Body)
 
 	suite := &model.Suite{
 		Version:    raw.Version,
@@ -46,7 +53,9 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 		}
 	}
 
-	for _, kw := range raw.Keywords {
+	keywordBlocks := childBlocks(syntaxBody, "keyword")
+
+	for i, kw := range raw.Keywords {
 		inputs := map[string]model.Expression{}
 
 		if kw.InputsBlock != nil {
@@ -68,6 +77,8 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 		steps, sDiags := decodeSteps(path, append(kw.Steps, kw.Cases...))
 		diags = append(diags, sDiags...)
 
+		steps = reorderStepsBySource(steps, sourceOrder(blockBodyAt(keywordBlocks, i)))
+
 		suite.Keywords[kw.Name] = &model.Keyword{
 			Name:    kw.Name,
 			File:    path,
@@ -77,15 +88,23 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 		}
 	}
 
-	for _, sc := range raw.Scenarios {
+	scenarioBlocks := childBlocks(syntaxBody, "scenario")
+
+	for i, sc := range raw.Scenarios {
 		normalSteps, sDiags := decodeSteps(path, append(sc.Steps, sc.Cases...))
 		diags = append(diags, sDiags...)
 
-		teardownSteps := make([]*model.Step, 0)
+		scenarioBody := blockBodyAt(scenarioBlocks, i)
+		normalSteps = reorderStepsBySource(normalSteps, sourceOrder(scenarioBody))
 
-		for _, td := range sc.Teardowns {
+		teardownSteps := make([]*model.Step, 0)
+		teardownBlocks := childBlocks(scenarioBody, "teardown")
+
+		for j, td := range sc.Teardowns {
 			steps, tDiags := decodeSteps(path, append(td.Steps, td.Cases...))
 			diags = append(diags, tDiags...)
+
+			steps = reorderStepsBySource(steps, sourceOrder(blockBodyAt(teardownBlocks, j)))
 			teardownSteps = append(teardownSteps, steps...)
 		}
 
