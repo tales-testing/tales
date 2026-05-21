@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/hyperxlab/tales/internal/lang"
 	"github.com/hyperxlab/tales/internal/model"
 )
 
@@ -160,6 +161,22 @@ func validateSuite(suite *model.Suite, diags *hcl.Diagnostics) {
 
 			stepNames[step.Name] = struct{}{}
 		}
+
+		validateScenarioStepOrder(sc, diags)
+	}
+}
+
+// validateScenarioStepOrder rejects steps that reference an unknown step or a
+// step defined later in the file: with sequential file-order execution a step
+// can only consume results produced by an earlier step.
+//
+// Teardown steps are intentionally not checked. They run after every main
+// step and routinely guard optional references with when = can(...), so a
+// reference to a step that never produced a result is a legitimate pattern
+// there rather than an error.
+func validateScenarioStepOrder(sc *model.Scenario, diags *hcl.Diagnostics) {
+	if err := lang.ValidateStepOrder(sc.Steps, nil); err != nil {
+		*diags = append(*diags, diagError("Invalid step order", fmt.Sprintf("Scenario %q: %v", sc.Name, err), nil))
 	}
 }
 
