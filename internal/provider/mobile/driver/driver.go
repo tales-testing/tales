@@ -53,11 +53,12 @@ type Driver interface {
 	SetOrientation(ctx context.Context, orientation string) error
 
 	// InputText sets text on the element identified by id. When paste is
-	// true the driver places the text on the system pasteboard and pastes
-	// it via the contextual menu — this avoids the iOS autofill QuickType
-	// bar that intercepts keystrokes on SecureField(.newPassword) inputs.
-	// When paste is false the driver types into the currently focused
-	// element via typeText. id is required when paste is true.
+	// true the driver taps the element to focus it, then feeds the text
+	// through the private XCTest event-synthesis pipeline — this bypasses
+	// the iOS input listener that the autofill QuickType bar hooks to
+	// intercept keystrokes on SecureField(.newPassword) inputs. When paste
+	// is false the driver types into the currently focused element via
+	// typeText. id is required when paste is true.
 	InputText(ctx context.Context, bundleID, id, text string, paste bool) error
 
 	// EraseText erases the given number of characters from the focused

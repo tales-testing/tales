@@ -504,10 +504,12 @@ func (p *Provider) captureStepEnd(ctx context.Context, session *Session, stepDir
 const secureTextFieldType = "secure_text_field"
 
 // usePasteInput reports whether an input_text action should use the
-// pasteboard-based driver path instead of keyboard typing. SwiftUI
-// SecureField(.newPassword) inputs surface an autofill QuickType bar
-// that intercepts the first keystrokes; pasting from the system
-// pasteboard sidesteps the keyboard entirely.
+// id-targeted driver input route instead of typing into the currently
+// focused element. SwiftUI SecureField(.newPassword) inputs surface an
+// autofill QuickType bar that intercepts the first keystrokes; the
+// id-targeted route taps the field to focus it and feeds the text
+// through the private XCTest event-synthesis pipeline, which bypasses
+// the input listener the banner hooks into.
 func usePasteInput(node *tree.ViewNode) bool {
 	if node == nil {
 		return false
@@ -518,8 +520,15 @@ func usePasteInput(node *tree.ViewNode) bool {
 
 var actionLabels = map[model.MobileActionKind]string{
 	model.MobileActionTap:            "Tap",
+	model.MobileActionDoubleTap:      "Double tap",
+	model.MobileActionLongPress:      "Long press",
 	model.MobileActionInputText:      "Input text",
 	model.MobileActionClearText:      "Clear text",
+	model.MobileActionSwipe:          "Swipe",
+	model.MobileActionScroll:         "Scroll",
+	model.MobileActionPressKey:       "Press key",
+	model.MobileActionPressButton:    "Press button",
+	model.MobileActionSetOrientation: "Set orientation",
 	model.MobileActionWaitVisible:    "Wait visible",
 	model.MobileActionWaitNotVisible: "Wait not visible",
 }
