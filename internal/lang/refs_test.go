@@ -213,3 +213,118 @@ func TestStepDependenciesIncludesSkipRule(t *testing.T) {
 		t.Fatalf("missing implicit dep on ticket from skip_unless reason: %#v", deps)
 	}
 }
+
+func TestValidateStepOrderBackwardRefsOK(t *testing.T) {
+	t.Parallel()
+
+	first := &model.Step{Name: "first", Provider: "http"}
+	second := &model.Step{
+		Name:      "second",
+		Provider:  "http",
+		Request:   &model.Request{URL: parseExpr(t, `"http://x/${result.first.id}"`)},
+		DependsOn: []string{"first"},
+	}
+
+	if err := ValidateStepOrder([]*model.Step{first, second}, nil); err != nil {
+		t.Fatalf("backward references must be valid: %v", err)
+	}
+}
+
+func TestValidateStepOrderForwardResultRefRejected(t *testing.T) {
+	t.Parallel()
+
+	second := &model.Step{
+		Name:     "second",
+		Provider: "http",
+		Request:  &model.Request{URL: parseExpr(t, `"http://x/${result.first.id}"`)},
+	}
+	first := &model.Step{Name: "first", Provider: "http"}
+
+	err := ValidateStepOrder([]*model.Step{second, first}, nil)
+	if err == nil {
+		t.Fatal("expected forward result reference to be rejected")
+	}
+
+	want := `step "second" references result.first, but "first" is defined later`
+	if err.Error() != want {
+		t.Fatalf("want %q got %q", want, err.Error())
+	}
+}
+
+func TestValidateStepOrderForwardDependsOnRejected(t *testing.T) {
+	t.Parallel()
+
+	login := &model.Step{Name: "login", Provider: "http", DependsOn: []string{"create_user"}}
+	createUser := &model.Step{Name: "create_user", Provider: "http"}
+
+	err := ValidateStepOrder([]*model.Step{login, createUser}, nil)
+	if err == nil {
+		t.Fatal("expected forward depends_on to be rejected")
+	}
+
+	want := `step "login" depends on "create_user", but "create_user" is defined later`
+	if err.Error() != want {
+		t.Fatalf("want %q got %q", want, err.Error())
+	}
+}
+
+func TestValidateStepOrderUnknownResultRefRejected(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "only",
+		Provider: "http",
+		Request:  &model.Request{URL: parseExpr(t, `"http://x/${result.missing.id}"`)},
+	}
+
+	err := ValidateStepOrder([]*model.Step{step}, nil)
+	if err == nil {
+		t.Fatal("expected unknown reference to be rejected")
+	}
+
+	want := `step "only" references unknown dependency "missing"`
+	if err.Error() != want {
+		t.Fatalf("want %q got %q", want, err.Error())
+	}
+}
+
+func TestValidateStepOrderUnknownDependsOnRejected(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{Name: "only", Provider: "http", DependsOn: []string{"ghost"}}
+
+	err := ValidateStepOrder([]*model.Step{step}, nil)
+	if err == nil {
+		t.Fatal("expected unknown depends_on to be rejected")
+	}
+
+	want := `step "only" depends on unknown step "ghost"`
+	if err.Error() != want {
+		t.Fatalf("want %q got %q", want, err.Error())
+	}
+}
+
+func TestValidateStepOrderExternalDepTolerated(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "uses_outer",
+		Provider: "http",
+		Request:  &model.Request{URL: parseExpr(t, `"http://x/${result.outer.id}"`)},
+	}
+
+	external := map[string]struct{}{"outer": {}}
+	if err := ValidateStepOrder([]*model.Step{step}, external); err != nil {
+		t.Fatalf("external dependency must be tolerated: %v", err)
+	}
+}
+
+func TestValidateStepOrderSelfReferenceRejected(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{Name: "loop", Provider: "http", DependsOn: []string{"loop"}}
+
+	if err := ValidateStepOrder([]*model.Step{step}, nil); err == nil {
+		t.Fatal("expected self-reference to be rejected")
+	}
+}
