@@ -1,0 +1,52 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# This scenario proves that steps run sequentially in .tales file order.
+# "read_marker" deliberately does NOT reference result.create_marker: there
+# is no dependency between the two steps. It can only succeed because
+# "create_marker" is defined — and therefore executed — first.
+scenario "Steps execute in file order" {
+  tags = ["http", "order"]
+
+  step "http" "create_marker" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/markers"
+
+      body {
+        json = {
+          id    = "ordered"
+          label = "file-order proof"
+        }
+      }
+    }
+
+    expect {
+      status = 201
+
+      json = {
+        id    = "ordered"
+        label = "file-order proof"
+      }
+    }
+  }
+
+  step "http" "read_marker" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/markers/ordered"
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        id    = "ordered"
+        label = "file-order proof"
+      }
+    }
+  }
+}

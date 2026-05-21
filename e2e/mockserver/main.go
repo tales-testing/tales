@@ -37,6 +37,7 @@ type serverState struct {
 	tokens            map[string]string
 	verificationCodes map[string]string
 	mailPolls         map[string]int
+	markers           map[string]map[string]interface{}
 }
 
 func newState() *serverState {
@@ -48,6 +49,7 @@ func newState() *serverState {
 		tokens:            map[string]string{},
 		verificationCodes: map[string]string{},
 		mailPolls:         map[string]int{},
+		markers:           map[string]map[string]interface{}{},
 	}
 }
 
@@ -71,6 +73,8 @@ func main() {
 	r.HandleFunc("/form-echo", state.formEcho).Methods(http.MethodPost)
 	r.HandleFunc("/mail/messages", state.mailMessages).Methods(http.MethodGet)
 	r.HandleFunc("/verify-email", state.verifyEmail).Methods(http.MethodPost)
+	r.HandleFunc("/markers", state.createMarker).Methods(http.MethodPost)
+	r.HandleFunc("/markers/{id}", state.getMarker).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts/{id}", state.getPost).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts/{id}", state.deletePost).Methods(http.MethodDelete)
@@ -321,6 +325,49 @@ func (s *serverState) deletePost(w http.ResponseWriter, req *http.Request) {
 
 	delete(s.posts, id)
 	writeJSON(w, http.StatusNoContent, map[string]interface{}{"deleted": true})
+}
+
+// createMarker stores a JSON body under a client-supplied id. It is used by
+// the file-order E2E scenario: one step writes a marker at a known id and a
+// later step reads it back, without referencing the writer step's result, so
+// the read can only succeed if steps run in .tales file order.
+func (s *serverState) createMarker(w http.ResponseWriter, req *http.Request) {
+	body := map[string]interface{}{}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	id, ok := body["id"].(string)
+	if !ok || id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "id is required"})
+
+		return
+	}
+
+	s.mu.Lock()
+	s.markers[id] = body
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusCreated, body)
+}
+
+// getMarker returns a marker previously stored by createMarker.
+func (s *serverState) getMarker(w http.ResponseWriter, req *http.Request) {
+	id := mux.Vars(req)["id"]
+
+	s.mu.Lock()
+	marker, exists := s.markers[id]
+	s.mu.Unlock()
+
+	if !exists {
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{"error": "not found"})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, marker)
 }
 
 // connectGetUser simulates a ConnectRPC / protobuf JSON response where
