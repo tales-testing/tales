@@ -3,6 +3,7 @@ package lang
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -159,6 +160,154 @@ func TestURLEncode(t *testing.T) {
 	value := evalTestExpression(t, `url_encode("a&b=c +%#")`)
 	if value.AsString() != "a%26b%3Dc+%2B%25%23" {
 		t.Fatalf("unexpected encoded value: %s", value.AsString())
+	}
+}
+
+func TestJSONEncodeSortsObjectKeys(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `jsonencode({ z = 1, a = 2, m = 3 })`)
+	if value.AsString() != `{"a":2,"m":3,"z":1}` {
+		t.Fatalf("unexpected JSON output: %s", value.AsString())
+	}
+}
+
+func TestJSONEncodeNestedObjectsAreSorted(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `jsonencode({ outer = { z = "last", a = "first" }, top = true })`)
+	if value.AsString() != `{"outer":{"a":"first","z":"last"},"top":true}` {
+		t.Fatalf("unexpected nested JSON output: %s", value.AsString())
+	}
+}
+
+func TestJSONEncodeIsStableAcrossCalls(t *testing.T) {
+	t.Parallel()
+
+	const expr = `jsonencode({ d = 1, c = 2, b = 3, a = 4 })`
+
+	first := evalTestExpression(t, expr).AsString()
+	for range 50 {
+		again := evalTestExpression(t, expr).AsString()
+		if again != first {
+			t.Fatalf("jsonencode is not stable: %q vs %q", first, again)
+		}
+	}
+}
+
+func TestJSONEncodeListsPreserveOrder(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `jsonencode([3, 1, 2])`)
+	if value.AsString() != `[3,1,2]` {
+		t.Fatalf("expected list order preserved, got %s", value.AsString())
+	}
+}
+
+func TestJSONEncodeScalars(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		`jsonencode("hello \"world\"")`: `"hello \"world\""`,
+		`jsonencode(42)`:                `42`,
+		`jsonencode(3.14)`:              `3.14`,
+		`jsonencode(true)`:              `true`,
+		`jsonencode(false)`:             `false`,
+		`jsonencode(null)`:              `null`,
+	}
+
+	for expr, expected := range cases {
+		value := evalTestExpression(t, expr)
+		if value.AsString() != expected {
+			t.Fatalf("jsonencode %s = %s, expected %s", expr, value.AsString(), expected)
+		}
+	}
+}
+
+func TestNowUnixCloseToWallClock(t *testing.T) {
+	t.Parallel()
+
+	before := time.Now().Unix()
+	value := evalTestExpression(t, `now_unix()`)
+	after := time.Now().Unix()
+
+	parsed, _ := value.AsBigFloat().Int64()
+	if parsed < before-1 || parsed > after+1 {
+		t.Fatalf("now_unix() %d is outside [%d, %d]", parsed, before, after)
+	}
+}
+
+func TestNowUnixRejectsArguments(t *testing.T) {
+	t.Parallel()
+
+	if _, err := evalTestExpressionError(`now_unix(1)`); err == nil {
+		t.Fatalf("expected error when passing arguments to now_unix")
+	}
+}
+
+func TestNowRFC3339IsParseable(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `now_rfc3339()`)
+	parsed, err := time.Parse(time.RFC3339, value.AsString())
+	if err != nil {
+		t.Fatalf("now_rfc3339 output %q is not RFC3339: %v", value.AsString(), err)
+	}
+
+	if parsed.Location().String() != "UTC" {
+		t.Fatalf("expected UTC timezone, got %s", parsed.Location().String())
+	}
+}
+
+func TestHMACSHA256HexKnownVector(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `hmac_sha256_hex("key", "The quick brown fox jumps over the lazy dog")`)
+	if value.AsString() != "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8" {
+		t.Fatalf("unexpected HMAC: %s", value.AsString())
+	}
+}
+
+func TestHMACSHA256HexEmptyMessage(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `hmac_sha256_hex("secret", "")`)
+	if value.AsString() != "f9e66e179b6747ae54108f82f8ade8b3c25d76fd30afde6c395822c530196169" {
+		t.Fatalf("unexpected HMAC for empty message: %s", value.AsString())
+	}
+}
+
+func TestHMACSHA256HexUnicode(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `hmac_sha256_hex("clé", "café")`)
+	if len(value.AsString()) != 64 {
+		t.Fatalf("expected 64-char hex, got %d chars: %s", len(value.AsString()), value.AsString())
+	}
+}
+
+func TestHMACSHA256HexRejectsArity(t *testing.T) {
+	t.Parallel()
+
+	if _, err := evalTestExpressionError(`hmac_sha256_hex("only-one-arg")`); err == nil {
+		t.Fatalf("expected error for single argument")
+	}
+
+	if _, err := evalTestExpressionError(`hmac_sha256_hex("a", "b", "c")`); err == nil {
+		t.Fatalf("expected error for too many arguments")
+	}
+}
+
+func TestHMACSHA256HexErrorDoesNotLeakSecret(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`hmac_sha256_hex()`)
+	if err == nil {
+		t.Fatalf("expected error for missing arguments")
+	}
+
+	if strings.Contains(err.Error(), "supersecret") {
+		t.Fatalf("error message should never embed user secret material: %v", err)
 	}
 }
 
