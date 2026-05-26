@@ -1,0 +1,131 @@
+version = 1
+
+# Canonical SQL scenario for Tales V1.
+#
+# - Pulls the DSN from env() so the same file runs locally (against a
+#   docker-compose Postgres) and in CI (against a managed service).
+# - Gates the scenario with skip_unless { env_set = [...] } so make e2e
+#   keeps passing on hosts without a real DB.
+# - Uses DROP IF EXISTS + CREATE so a previous failed run leaves no
+#   leftover state in the way.
+# - Pairs the SQL setup with a downstream API assertion (placeholder
+#   step here) — the SQL provider is a helper, not a replacement for
+#   user-facing assertions.
+
+config {
+  sql = {
+    connections = {
+      app = {
+        driver = "postgres"
+        dsn    = env("DATABASE_URL", "")
+      }
+    }
+  }
+}
+
+scenario "VIP organization bypasses payment" {
+  tags = ["sql", "vip"]
+
+  skip_unless {
+    env_set = ["DATABASE_URL"]
+    reason  = "DATABASE_URL is required for the VIP flag SQL helper"
+  }
+
+  step "sql" "reset_table" {
+    connection = "app"
+
+    exec {
+      sql = "DROP TABLE IF EXISTS tales_orgs"
+    }
+  }
+
+  step "sql" "create_table" {
+    connection = "app"
+
+    exec {
+      sql = "CREATE TABLE tales_orgs (id TEXT PRIMARY KEY, vip BOOLEAN NOT NULL DEFAULT FALSE)"
+    }
+  }
+
+  step "sql" "seed_org" {
+    connection = "app"
+
+    exec {
+      sql  = "INSERT INTO tales_orgs (id, vip) VALUES ($1, $2)"
+      args = ["org_test", false]
+    }
+
+    expect {
+      json = {
+        rows_affected = 1
+      }
+    }
+  }
+
+  step "sql" "make_org_vip" {
+    connection = "app"
+
+    exec {
+      sql  = "UPDATE tales_orgs SET vip = $1 WHERE id = $2"
+      args = [true, "org_test"]
+    }
+
+    expect {
+      json = {
+        rows_affected = 1
+      }
+    }
+  }
+
+  step "sql" "verify_org_state" {
+    connection = "app"
+
+    query {
+      sql  = "SELECT id, vip FROM tales_orgs WHERE id = $1"
+      args = ["org_test"]
+    }
+
+    expect {
+      json = {
+        row_count = 1
+        rows = [
+          {
+            id  = "org_test"
+            vip = true
+          },
+        ]
+      }
+    }
+
+    capture {
+      vip = response.json.rows[0].vip
+    }
+  }
+
+  # IMPORTANT: pair the SQL setup with an API or UI assertion that
+  # observes the user-visible effect (e.g. checking that a billing
+  # endpoint now returns "free" for this org). Replace the placeholder
+  # below with the real check.
+  #
+  # step "http" "billing_free_for_vip" {
+  #   request {
+  #     method = "GET"
+  #     url    = "${config.base_url}/orgs/org_test/billing"
+  #   }
+  #   expect {
+  #     status = 200
+  #     json   = { plan = "free" }
+  #   }
+  # }
+
+  teardown {
+    step "sql" "drop_table" {
+      when       = can(result.create_table.response.json.rows_affected)
+      connection = "app"
+
+      exec {
+        sql = "DROP TABLE IF EXISTS tales_orgs"
+      }
+    }
+  }
+}

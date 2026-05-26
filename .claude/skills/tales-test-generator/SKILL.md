@@ -23,12 +23,16 @@ Use this skill when asked to:
 - `README.md`
 - `internal/parser/schema.go`
 - `internal/parser/mobile.go` (mobile DSL surface)
+- `internal/parser/sql.go` (sql DSL surface)
 - `internal/model/mobile.go` (mobile model types)
 - `internal/lang/functions.go`
 - `internal/runtime/runner.go`
 - `internal/runtime/mobile.go` (mobile execution + capture functions)
+- `internal/runtime/sql.go` (sql execution: expression evaluation + provider dispatch)
+- `internal/provider/sql/` (sql provider package: drivers, config resolver, args/row conversion)
 - `docs/mobile/ios.md` (mobile architecture and config)
-- `e2e/pass/*.tales` (HTTP examples)
+- `docs/providers/sql.md` (sql provider reference)
+- `e2e/pass/*.tales` (HTTP and SQL examples; `e2e/pass/sql.tales` is the canonical SQL scenario)
 - `e2e/ios/pass/*.tales` (mobile examples)
 
 2. Build tests with only supported structures:
@@ -37,6 +41,7 @@ Use this skill when asked to:
 - optional `generator "type" "name" { ... }`
 - `scenario "..." { ... }`
 - `step "http" "name" { optional retry { ... } request { ... } expect { ... } capture { ... } }`
+- `step "sql" "name" { connection = "<name>"; exec { sql; args } | query { sql; args } }` — see the SQL provider section below.
 - optional `teardown { step ... }`
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
 - optional `skip_if { ... }` / `skip_unless { ... }` on a `scenario` or `step` to gate execution on `host.os` / `host.arch`, env vars, or any bool expression. Attribute set: `condition`, `reason`, `os`, `arch`, `env_set`, `env`. Skipped scenarios skip their steps and teardown; skipped steps cascade-skip their dependents. See [docs/skip.md](../../../docs/skip.md).
@@ -359,3 +364,147 @@ For canonical patterns and starter templates, read:
 - [references/validation-checklist.md](references/validation-checklist.md)
 - [references/api-test-template.tales](references/api-test-template.tales)
 - [references/mobile-test-template.tales](references/mobile-test-template.tales)
+- [references/sql-test-template.tales](references/sql-test-template.tales)
+
+## SQL provider (V1)
+
+The SQL provider exists to set up or tear down internal state that is not
+exposed by the public API. **Never use it as the only proof that
+user-facing behaviour works.** Always pair a SQL setup with an HTTP / UI
+assertion observing the same effect. Full reference:
+[docs/providers/sql.md](../../../docs/providers/sql.md).
+
+### Drivers and DSN
+
+V1 embeds two database/sql drivers:
+
+- `driver = "postgres"` (alias `pgx`) — `github.com/jackc/pgx/v5/stdlib`,
+  placeholders are `$1`, `$2`, …
+- `driver = "mysql"` — `github.com/go-sql-driver/mysql`, placeholders are
+  `?`.
+
+Connections live under `config.sql.connections.<name>` and are opened
+lazily. Always pull the DSN from `env(...)` — never inline it. DSNs are
+never echoed in reports.
+
+```hcl
+config {
+  sql = {
+    connections = {
+      app = {
+        driver = "postgres"
+        dsn    = env("DATABASE_URL")
+      }
+    }
+  }
+}
+```
+
+When the DSN may not be present (CI without a DB), gate the scenario with
+`skip_unless { env_set = ["DATABASE_URL"] }`.
+
+### Step shape
+
+A SQL step declares exactly one of `exec` or `query`. Both blocks take
+`sql` (required) and optional `args` (a list of scalars). Lists or
+objects in `args` are rejected at runtime.
+
+```hcl
+step "sql" "make_org_vip" {
+  connection = "app"
+
+  exec {
+    sql  = "UPDATE organizations SET vip = $1 WHERE id = $2"
+    args = [true, result.create_org.id]
+  }
+
+  expect {
+    json = {
+      rows_affected = 1
+    }
+  }
+}
+
+step "sql" "get_org" {
+  connection = "app"
+
+  query {
+    sql  = "SELECT id, vip FROM organizations WHERE id = $1"
+    args = [result.create_org.id]
+  }
+
+  expect {
+    json = {
+      row_count = 1
+      rows = [
+        { id = result.create_org.id, vip = true },
+      ]
+    }
+  }
+
+  capture {
+    vip = response.json.rows[0].vip
+  }
+}
+```
+
+### Response shape
+
+Both modes expose their payload under `response.json` so the standard
+assertion + capture pipeline works unchanged.
+
+- exec: `{ "rows_affected": <int|null>, "last_insert_id": <int|null> }`.
+  `last_insert_id` is `null` on PostgreSQL by design — use `RETURNING` +
+  `query` to fetch the new id.
+- query: `{ "row_count": <int>, "columns": [<string>...], "rows":
+  [{...}, ...] }`. `rows[i].<col>` carries one cell per column; alias
+  duplicated column names to avoid a `duplicate SQL column` error.
+
+### Teardown
+
+SQL steps are teardown-safe. Guard destructive cleanup with the usual
+`when = can(result.<step>.<field>)` pattern. Postgres `RETURNING` /
+MySQL `LAST_INSERT_ID()` are the only portable ways to grab a freshly
+inserted id; otherwise prefer capturing it earlier from the API call
+that created the row.
+
+```hcl
+teardown {
+  step "sql" "reset_org_vip" {
+    when       = can(result.create_org.id)
+    connection = "app"
+
+    exec {
+      sql  = "UPDATE organizations SET vip = $1 WHERE id = $2"
+      args = [false, result.create_org.id]
+    }
+
+    expect {
+      json = {
+        rows_affected = one_of([0, 1])
+      }
+    }
+  }
+}
+```
+
+### Authoring rules
+
+- Use named connections rather than embedding multiple DSNs. Two .tales
+  files cannot redeclare the same top-level `config.sql` key (later files
+  overwrite earlier ones), so colocate related SQL scenarios in a single
+  file or register all required connections in every file that needs
+  them.
+- Args are scalar-only: `string`, `bool`, integer/float `number`, or
+  `null`. Wrap composite values into JSON strings before binding if
+  needed.
+- Integers preserve precision (bound as `int64`); non-integer numbers
+  become `float64`.
+- `[]byte` columns are decoded as UTF-8 strings; non-UTF-8 bytes cause
+  an explicit error rather than silent corruption.
+- `time.Time` columns are returned as RFC3339Nano strings.
+- PostgreSQL `jsonb` columns are returned as raw strings — use
+  `jsondecode(response.json.rows[0].metadata).field` to descend into
+  them.
+- Never put a secret inline in `args`; let it flow through a previous
+  step's `result.*` so the .tales source stays clean.
