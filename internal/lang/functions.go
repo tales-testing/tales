@@ -1,15 +1,20 @@
 package lang
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
+	"time"
 
 	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
-	"github.com/zclconf/go-cty/cty/function/stdlib"
 )
 
 const matcherKey = "__tales_matcher"
@@ -171,6 +176,169 @@ func urlEncodeFunc() function.Function {
 	})
 }
 
+// jsonEncodeFunc serializes a cty.Value to a canonical JSON string with
+// alphabetically-sorted object keys. The deterministic output makes it safe
+// to use as the input of an HMAC or any other signature scheme.
+func jsonEncodeFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType, AllowNull: true}},
+		Type:   function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			canonical, err := ctyToCanonical(args[0])
+			if err != nil {
+				return cty.NilVal, fmt.Errorf("jsonencode: %w", err)
+			}
+
+			out, err := json.Marshal(canonical)
+			if err != nil {
+				return cty.NilVal, fmt.Errorf("jsonencode: %w", err)
+			}
+
+			return cty.StringVal(string(out)), nil
+		},
+	})
+}
+
+// ctyToCanonical converts a cty.Value into a Go value that json.Marshal
+// emits deterministically: object keys are sorted (encoding/json sorts
+// map[string]any keys alphabetically), sets are sorted by encoded form,
+// and numbers preserve precision via json.Number.
+func ctyToCanonical(v cty.Value) (any, error) {
+	if v.IsNull() {
+		return nil, nil
+	}
+
+	if !v.IsKnown() {
+		return nil, fmt.Errorf("cannot encode unknown value")
+	}
+
+	ty := v.Type()
+	switch {
+	case ty == cty.String:
+		return v.AsString(), nil
+	case ty == cty.Bool:
+		return v.True(), nil
+	case ty == cty.Number:
+		return json.Number(v.AsBigFloat().Text('f', -1)), nil
+	case ty.IsObjectType(), ty.IsMapType():
+		out := map[string]any{}
+
+		for it := v.ElementIterator(); it.Next(); {
+			k, val := it.Element()
+
+			child, err := ctyToCanonical(val)
+			if err != nil {
+				return nil, err
+			}
+
+			out[k.AsString()] = child
+		}
+
+		return out, nil
+	case ty.IsListType(), ty.IsTupleType():
+		out := make([]any, 0, v.LengthInt())
+
+		for it := v.ElementIterator(); it.Next(); {
+			_, val := it.Element()
+
+			child, err := ctyToCanonical(val)
+			if err != nil {
+				return nil, err
+			}
+
+			out = append(out, child)
+		}
+
+		return out, nil
+	case ty.IsSetType():
+		items := make([]any, 0, v.LengthInt())
+
+		for it := v.ElementIterator(); it.Next(); {
+			_, val := it.Element()
+
+			child, err := ctyToCanonical(val)
+			if err != nil {
+				return nil, err
+			}
+
+			items = append(items, child)
+		}
+
+		encoded := make([]string, len(items))
+		for i, item := range items {
+			b, err := json.Marshal(item)
+			if err != nil {
+				return nil, err
+			}
+
+			encoded[i] = string(b)
+		}
+
+		indexes := make([]int, len(items))
+		for i := range indexes {
+			indexes[i] = i
+		}
+
+		sort.SliceStable(indexes, func(i, j int) bool {
+			return encoded[indexes[i]] < encoded[indexes[j]]
+		})
+
+		sorted := make([]any, len(items))
+		for i, idx := range indexes {
+			sorted[i] = items[idx]
+		}
+
+		return sorted, nil
+	}
+
+	return nil, fmt.Errorf("cannot encode value of type %s", ty.FriendlyName())
+}
+
+// nowUnixFunc returns the current Unix timestamp in seconds. Non-deterministic
+// by design: callers that need a stable value across multiple expressions must
+// capture it once in a step-local var.
+func nowUnixFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{},
+		Type:   function.StaticReturnType(cty.Number),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			return cty.NumberIntVal(time.Now().Unix()), nil
+		},
+	})
+}
+
+// nowRFC3339Func returns the current UTC time formatted as RFC3339. UTC is
+// explicit to avoid timezone drift between environments.
+func nowRFC3339Func() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{},
+		Type:   function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			return cty.StringVal(time.Now().UTC().Format(time.RFC3339)), nil
+		},
+	})
+}
+
+// hmacSHA256HexFunc computes HMAC-SHA256(secret, message) and returns the
+// digest as lowercase hex. Errors never embed the secret or message.
+func hmacSHA256HexFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{
+			{Name: "secret", Type: cty.String},
+			{Name: "message", Type: cty.String},
+		},
+		Type: function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			mac := hmac.New(sha256.New, []byte(args[0].AsString()))
+			if _, err := mac.Write([]byte(args[1].AsString())); err != nil {
+				return cty.NilVal, fmt.Errorf("hmac_sha256_hex: write failed")
+			}
+
+			return cty.StringVal(hex.EncodeToString(mac.Sum(nil))), nil
+		},
+	})
+}
+
 func ctyNumberToInt(value cty.Value) (int, error) {
 	if value.Type() != cty.Number {
 		return 0, fmt.Errorf("number value expected")
@@ -186,23 +354,26 @@ func ctyNumberToInt(value cty.Value) (int, error) {
 
 func baseFunctions() map[string]function.Function {
 	return map[string]function.Function{
-		"env":        envFunc(),
-		"jsonencode": stdlib.JSONEncodeFunc,
-		"regex_find": regexFindFunc(),
-		"url_encode": urlEncodeFunc(),
-		"contains":   matcherSingleArg("contains"),
-		"matches":    matchesFunc(),
-		"exists":     matcherNoArg("exists"),
-		"not_exists": matcherNoArg("not_exists"),
-		"is_string":  matcherNoArg("is_string"),
-		"is_number":  matcherNoArg("is_number"),
-		"is_bool":    matcherNoArg("is_bool"),
-		"is_array":   matcherNoArg("is_array"),
-		"is_object":  matcherNoArg("is_object"),
-		"one_of":     oneOfFunc(),
-		"can":        matcherSingleArg("can"),
-		"optional":   optionalFunc(),
-		"required":   requiredFunc(),
-		"any":        matcherNoArg("any"),
+		"env":             envFunc(),
+		"jsonencode":      jsonEncodeFunc(),
+		"now_unix":        nowUnixFunc(),
+		"now_rfc3339":     nowRFC3339Func(),
+		"hmac_sha256_hex": hmacSHA256HexFunc(),
+		"regex_find":      regexFindFunc(),
+		"url_encode":      urlEncodeFunc(),
+		"contains":        matcherSingleArg("contains"),
+		"matches":         matchesFunc(),
+		"exists":          matcherNoArg("exists"),
+		"not_exists":      matcherNoArg("not_exists"),
+		"is_string":       matcherNoArg("is_string"),
+		"is_number":       matcherNoArg("is_number"),
+		"is_bool":         matcherNoArg("is_bool"),
+		"is_array":        matcherNoArg("is_array"),
+		"is_object":       matcherNoArg("is_object"),
+		"one_of":          oneOfFunc(),
+		"can":             matcherSingleArg("can"),
+		"optional":        optionalFunc(),
+		"required":        requiredFunc(),
+		"any":             matcherNoArg("any"),
 	}
 }
