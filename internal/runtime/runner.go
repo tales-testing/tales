@@ -354,6 +354,14 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
 
+	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "vars", Path: failedVar, Message: err.Error()}
+		stepReport.Duration = time.Since(start)
+
+		return stepReport
+	}
+
 	requestValues, timeout, err := evaluateRequest(evaluator, scope, scenarioName, step)
 	if err != nil {
 		stepReport.Status = report.StatusFail
@@ -462,6 +470,38 @@ func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evalua
 	}
 
 	return r.executeStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, "teardown")
+}
+
+// evaluateStepVars evaluates each declared step-local var in source order
+// and mounts the cumulative map onto scope.Vars. Each var is evaluated with
+// a scope that already includes all previously-evaluated vars, so later vars
+// can read earlier ones via vars.<name>. Returns the failing var's name and
+// the error on the first evaluation failure.
+func evaluateStepVars(evaluator *lang.Evaluator, scope *lang.ScopeData, scenarioName string, step *model.Step) (string, error) {
+	if len(step.Vars) == 0 {
+		return "", nil
+	}
+
+	values := make(map[string]cty.Value, len(step.Vars))
+
+	for _, v := range step.Vars {
+		scope.Vars = values
+
+		val, err := evaluator.Eval(v.Expr, *scope, lang.GenerateMeta{
+			Scenario: scenarioName,
+			Step:     step.Name,
+			ExprPath: "vars." + v.Name,
+		})
+		if err != nil {
+			return v.Name, fmt.Errorf("evaluate vars.%s: %w", v.Name, err)
+		}
+
+		values[v.Name] = val
+	}
+
+	scope.Vars = values
+
+	return "", nil
 }
 
 func evaluateRequest(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step) (map[string]cty.Value, time.Duration, error) {

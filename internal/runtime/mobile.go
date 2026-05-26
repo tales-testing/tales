@@ -32,6 +32,14 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
 
+	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "vars", Path: failedVar, Message: err.Error()}
+		stepReport.Duration = time.Since(start)
+
+		return stepReport
+	}
+
 	exec, evalErr := evaluateMobileStep(evaluator, scope, scenarioName, step)
 	if evalErr != nil {
 		stepReport.Status = report.StatusFail

@@ -21,12 +21,18 @@ type GenerateMeta struct {
 type GenerateFunc func(name string, meta GenerateMeta) (cty.Value, error)
 
 // ScopeData holds values available while evaluating one expression.
+//
+// Vars holds step-local variables declared in a step's vars block. It is
+// populated by the runtime after evaluating each var in source order, and
+// is empty (nil) outside the step body — when, skip rules, config and
+// generator expressions never see it.
 type ScopeData struct {
 	Config   map[string]cty.Value
 	Result   map[string]cty.Value
 	Request  map[string]cty.Value
 	Response map[string]cty.Value
 	Input    map[string]cty.Value
+	Vars     map[string]cty.Value
 }
 
 // Evaluator evaluates HCL expressions for runtime.
@@ -53,6 +59,11 @@ func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData,
 		return cty.NullVal(cty.DynamicPseudoType), nil
 	}
 
+	varsValue := cty.EmptyObjectVal
+	if len(scope.Vars) > 0 {
+		varsValue = cty.ObjectVal(scope.Vars)
+	}
+
 	ctx := &hcl.EvalContext{
 		Variables: map[string]cty.Value{
 			"config":   cty.ObjectVal(scope.Config),
@@ -61,6 +72,7 @@ func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData,
 			"response": cty.ObjectVal(scope.Response),
 			"input":    cty.ObjectVal(scope.Input),
 			"host":     hostObject(),
+			"vars":     varsValue,
 		},
 		Functions: map[string]function.Function{},
 	}
