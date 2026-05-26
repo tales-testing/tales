@@ -353,7 +353,11 @@ func resolveBodyMap(input provider.Input, bodyMap map[string]cty.Value, headers 
 
 		body = encoded
 
-		setDefaultHeader(headers, "Content-Type", contentType)
+		// Force the multipart Content-Type, even if the caller already set
+		// one: the encoder's boundary parameter is part of the header and
+		// any user-supplied value (e.g. plain "multipart/form-data" without
+		// boundary) would silently corrupt the request otherwise.
+		overrideHeader(headers, "Content-Type", contentType)
 	}
 
 	if setFields == 0 {
@@ -398,6 +402,21 @@ func setDefaultHeader(headers map[string]string, name, value string) {
 	for key := range headers {
 		if strings.EqualFold(key, name) {
 			return
+		}
+	}
+
+	headers[name] = value
+}
+
+// overrideHeader replaces any prior value (case-insensitive) for the given
+// header name. Used when a body encoder produces a header that must match
+// the wire payload exactly — for example multipart's Content-Type carries
+// the encoder-generated boundary and would corrupt the request if the
+// caller could pin a stale value.
+func overrideHeader(headers map[string]string, name, value string) {
+	for key := range headers {
+		if strings.EqualFold(key, name) {
+			delete(headers, key)
 		}
 	}
 
