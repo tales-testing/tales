@@ -203,6 +203,13 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 			step.Mobile = mobileStep
 		}
 
+		sqlStep, sqlDiags := decodeSQLStepIfNeeded(path, rs, step.Name)
+		diags = append(diags, sqlDiags...)
+
+		if sqlStep != nil {
+			step.SQL = sqlStep
+		}
+
 		if step.Provider == "" {
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,

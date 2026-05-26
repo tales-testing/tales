@@ -342,3 +342,78 @@ func TestValidateStepOrderImplicitSelfReferenceRejected(t *testing.T) {
 		t.Fatal("expected a step referencing its own result to be rejected")
 	}
 }
+
+func TestStepDependenciesIncludesSQLArgs(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "update_org",
+		Provider: "sql",
+		SQL: &model.SQLCall{
+			Connection: parseExpr(t, `"app"`),
+			Exec: &model.SQLOp{
+				SQL:  parseExpr(t, `"UPDATE organizations SET vip = $1 WHERE id = $2"`),
+				Args: parseExpr(t, `[true, result.create_org.id]`),
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["create_org"]; !ok {
+		t.Fatalf("missing implicit dep on create_org from sql args: %#v", deps)
+	}
+}
+
+func TestStepDependenciesIncludesSQLQuerySQL(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "get_org",
+		Provider: "sql",
+		SQL: &model.SQLCall{
+			Connection: parseExpr(t, `result.config_step.connection_name`),
+			Query: &model.SQLOp{
+				SQL: parseExpr(t, `"SELECT * FROM t WHERE name = '${result.previous.name}'"`),
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["previous"]; !ok {
+		t.Fatalf("missing implicit dep from query.sql interpolation: %#v", deps)
+	}
+
+	if _, ok := deps["config_step"]; !ok {
+		t.Fatalf("missing implicit dep from connection expression: %#v", deps)
+	}
+}
+
+func TestValidateStepOrderRejectsForwardRefInSQLArgs(t *testing.T) {
+	t.Parallel()
+
+	first := &model.Step{
+		Name:     "update_org",
+		Provider: "sql",
+		SQL: &model.SQLCall{
+			Connection: parseExpr(t, `"app"`),
+			Exec: &model.SQLOp{
+				SQL:  parseExpr(t, `"UPDATE organizations SET vip = $1 WHERE id = $2"`),
+				Args: parseExpr(t, `[true, result.create_org.id]`),
+			},
+		},
+	}
+	second := &model.Step{Name: "create_org", Provider: "http"}
+
+	err := ValidateStepOrder([]*model.Step{first, second}, nil)
+	if err == nil {
+		t.Fatal("expected forward reference inside sql args to be rejected")
+	}
+}

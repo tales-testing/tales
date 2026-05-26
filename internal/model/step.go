@@ -15,6 +15,7 @@ type Step struct {
 	Capture   map[string]Expression
 	Keyword   *KeywordCall
 	Mobile    *MobileStep
+	SQL       *SQLCall
 	Retry     *Retry
 	SkipRules []SkipRule
 }
@@ -67,4 +68,17 @@ type Retry struct {
 type KeywordCall struct {
 	Name   Expression
 	Inputs Expression
+}
+
+// SQLCall holds parsed data for a sql provider step.
+type SQLCall struct {
+	Connection Expression
+	Exec       *SQLOp
+	Query      *SQLOp
+}
+
+// SQLOp is one SQL operation (exec or query) declared by a sql step.
+type SQLOp struct {
+	SQL  Expression
+	Args Expression
 }
