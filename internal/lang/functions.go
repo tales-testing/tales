@@ -221,77 +221,90 @@ func ctyToCanonical(v cty.Value) (any, error) {
 	case ty == cty.Number:
 		return json.Number(v.AsBigFloat().Text('f', -1)), nil
 	case ty.IsObjectType(), ty.IsMapType():
-		out := map[string]any{}
-
-		for it := v.ElementIterator(); it.Next(); {
-			k, val := it.Element()
-
-			child, err := ctyToCanonical(val)
-			if err != nil {
-				return nil, err
-			}
-
-			out[k.AsString()] = child
-		}
-
-		return out, nil
+		return ctyMapToCanonical(v)
 	case ty.IsListType(), ty.IsTupleType():
-		out := make([]any, 0, v.LengthInt())
-
-		for it := v.ElementIterator(); it.Next(); {
-			_, val := it.Element()
-
-			child, err := ctyToCanonical(val)
-			if err != nil {
-				return nil, err
-			}
-
-			out = append(out, child)
-		}
-
-		return out, nil
+		return ctyListToCanonical(v)
 	case ty.IsSetType():
-		items := make([]any, 0, v.LengthInt())
-
-		for it := v.ElementIterator(); it.Next(); {
-			_, val := it.Element()
-
-			child, err := ctyToCanonical(val)
-			if err != nil {
-				return nil, err
-			}
-
-			items = append(items, child)
-		}
-
-		encoded := make([]string, len(items))
-		for i, item := range items {
-			b, err := json.Marshal(item)
-			if err != nil {
-				return nil, err
-			}
-
-			encoded[i] = string(b)
-		}
-
-		indexes := make([]int, len(items))
-		for i := range indexes {
-			indexes[i] = i
-		}
-
-		sort.SliceStable(indexes, func(i, j int) bool {
-			return encoded[indexes[i]] < encoded[indexes[j]]
-		})
-
-		sorted := make([]any, len(items))
-		for i, idx := range indexes {
-			sorted[i] = items[idx]
-		}
-
-		return sorted, nil
+		return ctySetToCanonical(v)
 	}
 
 	return nil, fmt.Errorf("cannot encode value of type %s", ty.FriendlyName())
+}
+
+func ctyMapToCanonical(v cty.Value) (any, error) {
+	out := map[string]any{}
+
+	for it := v.ElementIterator(); it.Next(); {
+		k, val := it.Element()
+
+		child, err := ctyToCanonical(val)
+		if err != nil {
+			return nil, err
+		}
+
+		out[k.AsString()] = child
+	}
+
+	return out, nil
+}
+
+func ctyListToCanonical(v cty.Value) (any, error) {
+	out := make([]any, 0, v.LengthInt())
+
+	for it := v.ElementIterator(); it.Next(); {
+		_, val := it.Element()
+
+		child, err := ctyToCanonical(val)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, child)
+	}
+
+	return out, nil
+}
+
+func ctySetToCanonical(v cty.Value) (any, error) {
+	items := make([]any, 0, v.LengthInt())
+
+	for it := v.ElementIterator(); it.Next(); {
+		_, val := it.Element()
+
+		child, err := ctyToCanonical(val)
+		if err != nil {
+			return nil, err
+		}
+
+		items = append(items, child)
+	}
+
+	encoded := make([]string, len(items))
+
+	for i, item := range items {
+		b, err := json.Marshal(item)
+		if err != nil {
+			return nil, fmt.Errorf("encode set element: %w", err)
+		}
+
+		encoded[i] = string(b)
+	}
+
+	indexes := make([]int, len(items))
+	for i := range indexes {
+		indexes[i] = i
+	}
+
+	sort.SliceStable(indexes, func(i, j int) bool {
+		return encoded[indexes[i]] < encoded[indexes[j]]
+	})
+
+	sorted := make([]any, len(items))
+	for i, idx := range indexes {
+		sorted[i] = items[idx]
+	}
+
+	return sorted, nil
 }
 
 // nowUnixFunc returns the current Unix timestamp in seconds. Non-deterministic
