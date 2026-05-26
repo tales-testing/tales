@@ -80,8 +80,9 @@ Use this skill when asked to:
 - Avoid step name collisions:
   - unique names across scenario steps and teardown steps
   - keyword internal step names must not collide with outer scenario step names
-- Use `request.body { json = ... }`, `request.body { form = ... }`, or `request.body { raw = ... }` for request bodies.
+- Use `request.body { json = ... }`, `request.body { form = ... }`, `request.body { raw = ... }`, or `request.body { multipart { ... } }` for request bodies. The four modes are mutually exclusive.
 - Use `request.body.form` for `application/x-www-form-urlencoded` payloads; Tales URL-encodes form values and sets `Content-Type` when it is absent.
+- Use `request.body { multipart { file { ... } field { ... } } }` for `multipart/form-data` file uploads. Each `file` block declares exactly one of `path` (resolved relative to the `.tales` file) or `content` (any string expression, including `generate("bytes")`), plus optional `filename` and `content_type`. Each `field` block requires `name` and `value`. Part order is preserved on the wire; `Content-Type` is set automatically with the boundary. See [e2e/pass/file_upload.tales](../../../e2e/pass/file_upload.tales) for a worked example using both a disk-loaded fixture and a generated blob.
 - `request.url` must be an absolute `http` or `https` URL.
 - Use `request.auth.basic` for HTTP Basic Authentication instead of manually setting an `Authorization` header.
 - Do not combine `headers.Authorization` with `auth.basic`; Tales rejects that conflict.
