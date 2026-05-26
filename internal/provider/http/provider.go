@@ -56,7 +56,7 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, fmt.Errorf("resolve basic auth: %w", err)
 	}
 
-	body, err := resolveBody(input.Request, headers)
+	body, err := resolveBody(input, headers)
 	if err != nil {
 		return nil, fmt.Errorf("resolve body: %w", err)
 	}
@@ -283,8 +283,8 @@ func authFieldString(values map[string]cty.Value, key string) (string, error) {
 	return value.AsString(), nil
 }
 
-func resolveBody(request map[string]cty.Value, headers map[string]string) ([]byte, error) {
-	bodyValue, ok := request["body"]
+func resolveBody(input provider.Input, headers map[string]string) ([]byte, error) {
+	bodyValue, ok := input.Request["body"]
 	if !ok || bodyValue.IsNull() {
 		return nil, nil
 	}
@@ -299,10 +299,10 @@ func resolveBody(request map[string]cty.Value, headers map[string]string) ([]byt
 
 	bodyMap := bodyValue.AsValueMap()
 
-	return resolveBodyMap(bodyMap, headers)
+	return resolveBodyMap(input, bodyMap, headers)
 }
 
-func resolveBodyMap(bodyMap map[string]cty.Value, headers map[string]string) ([]byte, error) {
+func resolveBodyMap(input provider.Input, bodyMap map[string]cty.Value, headers map[string]string) ([]byte, error) {
 	var body []byte
 
 	setFields := 0
@@ -343,12 +343,25 @@ func resolveBodyMap(bodyMap map[string]cty.Value, headers map[string]string) ([]
 		body = encoded
 	}
 
+	if multipartVal, ok := bodyMap["multipart"]; ok && !multipartVal.IsNull() {
+		setFields++
+
+		encoded, contentType, err := encodeMultipartBody(input, multipartVal)
+		if err != nil {
+			return nil, err
+		}
+
+		body = encoded
+
+		setDefaultHeader(headers, "Content-Type", contentType)
+	}
+
 	if setFields == 0 {
-		return nil, fmt.Errorf("request.body must define one of json, form, or raw")
+		return nil, fmt.Errorf("request.body must define one of json, form, raw, or multipart")
 	}
 
 	if setFields > 1 {
-		return nil, fmt.Errorf("request.body must define exactly one of json, form, or raw")
+		return nil, fmt.Errorf("request.body must define exactly one of json, form, raw, or multipart")
 	}
 
 	return body, nil

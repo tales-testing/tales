@@ -155,7 +155,7 @@ func TestHTTPProviderFormRequestRejectsBodyConflict(t *testing.T) {
 			}),
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), "request.body must define exactly one of json, form, or raw") {
+	if err == nil || !strings.Contains(err.Error(), "request.body must define exactly one of json, form, raw, or multipart") {
 		t.Fatalf("expected form/body conflict, got %v", err)
 	}
 }
