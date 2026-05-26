@@ -53,8 +53,16 @@ type stepBlock struct {
 	Terminate   *mobileTerminateBlock   `hcl:"terminate,block"`
 	Actions     *mobileActionsBlock     `hcl:"actions,block"`
 	Permissions *mobilePermissionsBlock `hcl:"permissions,block"`
+	Connection  hcl.Expression          `hcl:"connection,optional"`
+	Exec        *sqlOpBlock             `hcl:"exec,block"`
+	Query       *sqlOpBlock             `hcl:"query,block"`
 	SkipIf      []skipBlock             `hcl:"skip_if,block"`
 	SkipUnless  []skipBlock             `hcl:"skip_unless,block"`
+}
+
+type sqlOpBlock struct {
+	SQL  hcl.Expression `hcl:"sql,optional"`
+	Args hcl.Expression `hcl:"args,optional"`
 }
 
 type retryBlock struct {

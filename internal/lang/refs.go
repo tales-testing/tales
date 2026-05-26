@@ -72,6 +72,7 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 	}
 
 	collectMobileRefs(step.Mobile, collect)
+	collectSQLRefs(step.SQL, collect)
 	collectSkipRefs(step.SkipRules, collect)
 
 	// A step referencing its own name — through depends_on or a
@@ -263,6 +264,24 @@ func collectMobileExpectRefs(expect model.MobileExpect, collect func(model.Expre
 		collect(v.ID)
 		collect(v.Timeout)
 		collect(v.Interval)
+	}
+}
+
+func collectSQLRefs(sql *model.SQLCall, collect func(model.Expression)) {
+	if sql == nil {
+		return
+	}
+
+	collect(sql.Connection)
+
+	if sql.Exec != nil {
+		collect(sql.Exec.SQL)
+		collect(sql.Exec.Args)
+	}
+
+	if sql.Query != nil {
+		collect(sql.Query.SQL)
+		collect(sql.Query.Args)
 	}
 }
 
