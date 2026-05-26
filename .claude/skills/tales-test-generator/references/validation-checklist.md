@@ -30,7 +30,31 @@ Run this checklist before considering a `.tales` suite done.
 - Do not use `coalesce(...)` unless the local runtime explicitly documents lazy fallback support
 - For protobuf/ConnectRPC payloads that may omit default-valued fields (`""`, `0`, `[]`, unspecified enums), use `optional(...)` around the expected value; reserve `required(...)` as an explicit readability wrapper and `any()` for "must be present, any value"
 
-## 4) SQL specifics
+## 4) Signed payloads (step-local vars)
+
+When a step must sign its own request body (HMAC, JWT compact, partner
+webhooks, Stripe-style signatures, …):
+
+- Use a `vars { ... }` block inside the step to compute the timestamp,
+  the canonical body, and the signature **once**. Reading `vars.<name>`
+  in both `headers` and `body { raw = ... }` guarantees the bytes sent
+  match the bytes signed.
+- Compute the body with `jsonencode(...)` (canonical / key-sorted output)
+  and use that exact string as `body { raw = vars.body }`.
+- Capture the current time once with `now_unix()` (or `now_rfc3339()`)
+  inside `vars`; **never** call `now_unix()` twice in the same step.
+- Compute the signature with `hmac_sha256_hex(secret, "<ts>.<body>")` and
+  reference it by `vars.sig`.
+- Source the shared secret from `config.<key>` (typically `env(...)`),
+  not inline. Never log it.
+- vars are step-local: a downstream step needs `capture` to inherit any
+  computed value. `vars.<name>` in `when` / `skip_if` / `skip_unless` is
+  a load-time error.
+- For a worked example, see `e2e/pass/signed_webhook.tales` and the
+  matching mockserver endpoint `/webhook/signed` in
+  `e2e/mockserver/main.go`.
+
+## 5) SQL specifics
 
 When the suite contains `step "sql"` blocks:
 
@@ -46,7 +70,7 @@ When the suite contains `step "sql"` blocks:
 - `last_insert_id` is `null` on PostgreSQL — use `RETURNING` + a follow-up `query` step
 - SQL setup is **paired** with an HTTP / UI assertion that observes the user-visible effect
 
-## 5) Mobile (iOS) specifics
+## 6) Mobile (iOS) specifics
 
 When the suite contains `step "mobile"` blocks:
 
@@ -61,7 +85,7 @@ When the suite contains `step "mobile"` blocks:
 - `text` / `value` expectations use literals or matchers (`contains`, `matches`), not over-specified equality
 - `tales test ./suite --seed 1234 --parallel 1` is the safe default; only raise `--parallel` when targets are distinct
 
-## 6) Command validation
+## 7) Command validation
 
 ```bash
 tales validate <path>
