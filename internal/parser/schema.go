@@ -40,6 +40,7 @@ type stepBlock struct {
 	Name        string                  `hcl:",label"`
 	DependsOn   []string                `hcl:"depends_on,optional"`
 	When        hcl.Expression          `hcl:"when,optional"`
+	Vars        *varsBlock              `hcl:"vars,block"`
 	Request     *requestBlock           `hcl:"request,block"`
 	Expect      *expectBlock            `hcl:"expect,block"`
 	Response    *expectBlock            `hcl:"response,block"`
@@ -144,6 +145,10 @@ type mobilePermissionsBlock struct {
 }
 
 type captureBlock struct {
+	Body hcl.Body `hcl:",remain"`
+}
+
+type varsBlock struct {
 	Body hcl.Body `hcl:",remain"`
 }
 

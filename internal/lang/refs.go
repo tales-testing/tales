@@ -10,6 +10,15 @@ import (
 
 // FindStepRefs returns referenced result.<step> names from expression.
 func FindStepRefs(expr hcl.Expression) []string {
+	return findRootAttrRefs(expr, "result")
+}
+
+// FindVarRefs returns referenced vars.<name> names from expression.
+func FindVarRefs(expr hcl.Expression) []string {
+	return findRootAttrRefs(expr, "vars")
+}
+
+func findRootAttrRefs(expr hcl.Expression, rootName string) []string {
 	if expr == nil {
 		return nil
 	}
@@ -22,7 +31,7 @@ func FindStepRefs(expr hcl.Expression) []string {
 		}
 
 		root, ok := traversal[0].(hcl.TraverseRoot)
-		if !ok || root.Name != "result" {
+		if !ok || root.Name != rootName {
 			continue
 		}
 
@@ -294,4 +303,67 @@ func collectSkipRefs(rules []model.SkipRule, collect func(model.Expression)) {
 		collect(rule.EnvSet)
 		collect(rule.Env)
 	}
+}
+
+// ValidateStepVars enforces the contract for step-local vars at load time:
+// each var may reference only vars declared earlier in the same block, no
+// var name is duplicated, and every vars.<name> consumed by the rest of the
+// step (request, expect, capture, etc.) is declared in this step's vars.
+// Cross-step var sharing is intentionally not supported — use capture.
+func ValidateStepVars(step *model.Step) error {
+	declared := make(map[string]struct{}, len(step.Vars))
+
+	for _, v := range step.Vars {
+		for _, ref := range FindVarRefs(v.Expr.Expr) {
+			if ref == v.Name {
+				return fmt.Errorf("step %q variable %q cannot reference itself", step.Name, v.Name)
+			}
+
+			if _, ok := declared[ref]; !ok {
+				return fmt.Errorf("step %q variable %q references vars.%s before it is defined", step.Name, v.Name, ref)
+			}
+		}
+
+		if _, dup := declared[v.Name]; dup {
+			return fmt.Errorf("duplicate variable %q in step %q", v.Name, step.Name)
+		}
+
+		declared[v.Name] = struct{}{}
+	}
+
+	seen := map[string]struct{}{}
+
+	collect := func(expression model.Expression) {
+		for _, ref := range FindVarRefs(expression.Expr) {
+			seen[ref] = struct{}{}
+		}
+	}
+
+	if step.When.Expr != nil {
+		collect(step.When)
+	}
+
+	collectRequestRefs(step.Request, collect)
+	collectExpectRefs(step.Expect, collect)
+
+	for _, capExpr := range step.Capture {
+		collect(capExpr)
+	}
+
+	if step.Keyword != nil {
+		collect(step.Keyword.Name)
+		collect(step.Keyword.Inputs)
+	}
+
+	collectMobileRefs(step.Mobile, collect)
+	collectSQLRefs(step.SQL, collect)
+	collectSkipRefs(step.SkipRules, collect)
+
+	for ref := range seen {
+		if _, ok := declared[ref]; !ok {
+			return fmt.Errorf("step %q references unknown variable vars.%s", step.Name, ref)
+		}
+	}
+
+	return nil
 }
