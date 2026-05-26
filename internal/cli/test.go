@@ -12,6 +12,7 @@ import (
 	httpprovider "github.com/hyperxlab/tales/internal/provider/http"
 	keywordprovider "github.com/hyperxlab/tales/internal/provider/keyword"
 	mobileprovider "github.com/hyperxlab/tales/internal/provider/mobile"
+	sqlprovider "github.com/hyperxlab/tales/internal/provider/sql"
 	"github.com/hyperxlab/tales/internal/report"
 	"github.com/hyperxlab/tales/internal/report/visual"
 	talesruntime "github.com/hyperxlab/tales/internal/runtime"
@@ -90,6 +91,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		httpprovider.New(),
 		keywordprovider.New(),
 		mobileprovider.NewApple(mobileprovider.WithCaptureMode(captureMode)),
+		sqlprovider.New(),
 	))
 
 	result, err := runner.Run(ctx, suite, talesruntime.Options{

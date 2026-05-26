@@ -348,6 +348,10 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 		return r.executeMobileStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
 	}
 
+	if step.Provider == sqlProviderType {
+		return r.executeSQLStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
+	}
+
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
 
 	requestValues, timeout, err := evaluateRequest(evaluator, scope, scenarioName, step)

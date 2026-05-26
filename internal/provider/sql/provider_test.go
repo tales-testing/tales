@@ -62,9 +62,9 @@ func TestProviderExecutesExec(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	rowsAffected := out.Response["rows_affected"]
-	if !rowsAffected.RawEquals(cty.NumberIntVal(1)) {
-		t.Errorf("rows_affected: want 1 got %#v", rowsAffected)
+	jsonValue := out.Response["json"]
+	if !jsonValue.GetAttr("rows_affected").RawEquals(cty.NumberIntVal(1)) {
+		t.Errorf("json.rows_affected: want 1 got %#v", jsonValue.GetAttr("rows_affected"))
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -98,13 +98,13 @@ func TestProviderExecutesQuery(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	rowCount := out.Response["row_count"]
-	if !rowCount.RawEquals(cty.NumberIntVal(1)) {
-		t.Errorf("row_count: want 1 got %#v", rowCount)
+	jsonValue := out.Response["json"]
+	if !jsonValue.GetAttr("row_count").RawEquals(cty.NumberIntVal(1)) {
+		t.Errorf("json.row_count: want 1 got %#v", jsonValue.GetAttr("row_count"))
 	}
 
-	rowsValue := out.Response["rows"]
-	if rowsValue.Type().FriendlyName() == "tuple of 0 elements" {
+	rowsValue := jsonValue.GetAttr("rows")
+	if rowsValue.LengthInt() == 0 {
 		t.Fatal("rows tuple should not be empty")
 	}
 
@@ -161,12 +161,13 @@ func TestProviderExecRowsAffectedNullOnDriverError(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	if !out.Response["rows_affected"].IsNull() {
-		t.Errorf("rows_affected: want null got %#v", out.Response["rows_affected"])
+	jsonValue := out.Response["json"]
+	if !jsonValue.GetAttr("rows_affected").IsNull() {
+		t.Errorf("rows_affected: want null got %#v", jsonValue.GetAttr("rows_affected"))
 	}
 
-	if !out.Response["last_insert_id"].IsNull() {
-		t.Errorf("last_insert_id: want null got %#v", out.Response["last_insert_id"])
+	if !jsonValue.GetAttr("last_insert_id").IsNull() {
+		t.Errorf("last_insert_id: want null got %#v", jsonValue.GetAttr("last_insert_id"))
 	}
 }
 

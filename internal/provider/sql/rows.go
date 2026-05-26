@@ -74,7 +74,10 @@ func scanRows(ctx context.Context, db *dbsql.DB, sqlText string, args []any) ([]
 }
 
 // toQueryResponse builds a cty Object describing the result of a query step,
-// suitable for assignment to provider.Output.Response.
+// suitable for assignment to provider.Output.Response. The result is wrapped
+// under a "json" key so .tales scenarios can write `expect { json = {...} }`
+// and `capture { x = response.json.rows[0].y }` consistently with the HTTP
+// provider.
 func toQueryResponse(rows []scannedRow, columns []string) map[string]cty.Value {
 	rowValues := make([]cty.Value, 0, len(rows))
 
@@ -102,16 +105,19 @@ func toQueryResponse(rows []scannedRow, columns []string) map[string]cty.Value {
 		columnsList = cty.TupleVal(columnValues)
 	}
 
-	return map[string]cty.Value{
+	jsonValue := cty.ObjectVal(map[string]cty.Value{
 		"row_count": cty.NumberIntVal(int64(len(rows))),
 		"columns":   columnsList,
 		"rows":      rowsList,
-	}
+	})
+
+	return map[string]cty.Value{"json": jsonValue}
 }
 
 // toExecResponse builds the cty.Value map for an exec step. RowsAffected /
 // LastInsertId driver errors map to null so suites can assert with optional
-// or any() matchers.
+// or any() matchers. Like toQueryResponse, the payload is exposed under the
+// "json" key.
 func toExecResponse(result dbsql.Result) map[string]cty.Value {
 	rowsAffected := cty.NullVal(cty.Number)
 
@@ -129,8 +135,10 @@ func toExecResponse(result dbsql.Result) map[string]cty.Value {
 		}
 	}
 
-	return map[string]cty.Value{
+	jsonValue := cty.ObjectVal(map[string]cty.Value{
 		"rows_affected":  rowsAffected,
 		"last_insert_id": lastInsertID,
-	}
+	})
+
+	return map[string]cty.Value{"json": jsonValue}
 }
