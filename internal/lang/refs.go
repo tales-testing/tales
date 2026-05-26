@@ -309,7 +309,9 @@ func collectSkipRefs(rules []model.SkipRule, collect func(model.Expression)) {
 // each var may reference only vars declared earlier in the same block, no
 // var name is duplicated, and every vars.<name> consumed by the rest of the
 // step (request, expect, capture, etc.) is declared in this step's vars.
-// Cross-step var sharing is intentionally not supported — use capture.
+// when and skip rules are evaluated before the step body, so they cannot
+// reference vars — those usages produce a dedicated error. Cross-step var
+// sharing is intentionally not supported — use capture.
 func ValidateStepVars(step *model.Step) error {
 	declared := make(map[string]struct{}, len(step.Vars))
 
@@ -331,16 +333,26 @@ func ValidateStepVars(step *model.Step) error {
 		declared[v.Name] = struct{}{}
 	}
 
+	if step.When.Expr != nil {
+		if refs := FindVarRefs(step.When.Expr); len(refs) > 0 {
+			return fmt.Errorf("step %q cannot reference vars.%s in when: when is evaluated before the step body", step.Name, refs[0])
+		}
+	}
+
+	for _, rule := range step.SkipRules {
+		for _, expression := range []model.Expression{rule.Condition, rule.Reason, rule.OS, rule.Arch, rule.EnvSet, rule.Env} {
+			if refs := FindVarRefs(expression.Expr); len(refs) > 0 {
+				return fmt.Errorf("step %q cannot reference vars.%s in skip rules: skip rules are evaluated before the step body", step.Name, refs[0])
+			}
+		}
+	}
+
 	seen := map[string]struct{}{}
 
 	collect := func(expression model.Expression) {
 		for _, ref := range FindVarRefs(expression.Expr) {
 			seen[ref] = struct{}{}
 		}
-	}
-
-	if step.When.Expr != nil {
-		collect(step.When)
 	}
 
 	collectRequestRefs(step.Request, collect)
@@ -357,7 +369,6 @@ func ValidateStepVars(step *model.Step) error {
 
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
-	collectSkipRefs(step.SkipRules, collect)
 
 	for ref := range seen {
 		if _, ok := declared[ref]; !ok {
