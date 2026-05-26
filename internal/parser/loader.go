@@ -163,9 +163,46 @@ func validateSuite(suite *model.Suite, diags *hcl.Diagnostics) {
 		}
 
 		validateScenarioStepOrder(sc, diags)
+		validateScenarioStepVars(sc, diags)
 	}
 
 	validateKeywordStepNames(suite, diags)
+	validateKeywordStepVars(suite, diags)
+}
+
+// validateScenarioStepVars enforces the step-local vars contract for every
+// step and teardown step in the scenario.
+func validateScenarioStepVars(sc *model.Scenario, diags *hcl.Diagnostics) {
+	for _, step := range sc.Steps {
+		if err := lang.ValidateStepVars(step); err != nil {
+			*diags = append(*diags, diagError("Invalid step vars", fmt.Sprintf("Scenario %q: %v", sc.Name, err), nil))
+		}
+	}
+
+	for _, step := range sc.Teardown {
+		if err := lang.ValidateStepVars(step); err != nil {
+			*diags = append(*diags, diagError("Invalid step vars", fmt.Sprintf("Scenario %q teardown: %v", sc.Name, err), nil))
+		}
+	}
+}
+
+// validateKeywordStepVars enforces the step-local vars contract for keyword
+// sub-steps as well.
+func validateKeywordStepVars(suite *model.Suite, diags *hcl.Diagnostics) {
+	names := make([]string, 0, len(suite.Keywords))
+	for name := range suite.Keywords {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	for _, name := range names {
+		for _, step := range suite.Keywords[name].Steps {
+			if err := lang.ValidateStepVars(step); err != nil {
+				*diags = append(*diags, diagError("Invalid step vars", fmt.Sprintf("Keyword %q: %v", name, err), nil))
+			}
+		}
+	}
 }
 
 // validateKeywordStepNames rejects duplicate step names within a keyword.

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/hashicorp/hcl/v2"
@@ -192,6 +193,12 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 			capture, cDiags := bodyToNamedExprMap(path, rs.Capture.Body)
 			diags = append(diags, cDiags...)
 			step.Capture = capture
+		}
+
+		if rs.Vars != nil {
+			vars, vDiags := decodeStepVars(path, rs.Vars)
+			diags = append(diags, vDiags...)
+			step.Vars = vars
 		}
 
 		if rs.Provider == "keyword" {
@@ -469,6 +476,71 @@ func stringToDuration(value cty.Value) (time.Duration, error) {
 	}
 
 	return interval, nil
+}
+
+// decodeStepVars decodes a vars block while preserving the textual
+// declaration order of its attributes. The runtime relies on this order so
+// that later vars can read earlier ones via vars.<name>.
+func decodeStepVars(path string, raw *varsBlock) ([]model.StepVar, hcl.Diagnostics) {
+	if raw == nil {
+		return nil, nil
+	}
+
+	diags := make(hcl.Diagnostics, 0)
+
+	syntaxBody, ok := raw.Body.(*hclsyntax.Body)
+	if !ok {
+		attrs, attrDiags := raw.Body.JustAttributes()
+		diags = append(diags, attrDiags...)
+
+		names := make([]string, 0, len(attrs))
+		for name := range attrs {
+			names = append(names, name)
+		}
+
+		sort.Strings(names)
+
+		result := make([]model.StepVar, 0, len(names))
+
+		for _, name := range names {
+			attr := attrs[name]
+			result = append(result, model.StepVar{
+				Name: name,
+				Expr: model.Expression{Expr: attr.Expr, File: path, Line: attr.Range.Start.Line},
+			})
+		}
+
+		return result, diags
+	}
+
+	for _, block := range syntaxBody.Blocks {
+		blockRange := block.DefRange()
+		diags = append(diags, diagError(
+			"Unexpected vars sub-block",
+			fmt.Sprintf("vars supports attributes only, found block %q.", block.Type),
+			&blockRange,
+		))
+	}
+
+	items := make([]*hclsyntax.Attribute, 0, len(syntaxBody.Attributes))
+	for _, attr := range syntaxBody.Attributes {
+		items = append(items, attr)
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Range().Start.Byte < items[j].Range().Start.Byte
+	})
+
+	result := make([]model.StepVar, 0, len(items))
+
+	for _, attr := range items {
+		result = append(result, model.StepVar{
+			Name: attr.Name,
+			Expr: model.Expression{Expr: attr.Expr, File: path, Line: attr.Range().Start.Line},
+		})
+	}
+
+	return result, diags
 }
 
 func bodyToNamedExprMap(path string, body hcl.Body) (map[string]model.Expression, hcl.Diagnostics) {

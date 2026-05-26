@@ -10,6 +10,7 @@ type Step struct {
 	Line      int
 	DependsOn []string
 	When      Expression
+	Vars      []StepVar
 	Request   *Request
 	Expect    *Expect
 	Capture   map[string]Expression
@@ -18,6 +19,15 @@ type Step struct {
 	SQL       *SQLCall
 	Retry     *Retry
 	SkipRules []SkipRule
+}
+
+// StepVar is one step-local variable declared in a vars block. Vars are
+// evaluated in declaration order before the provider runs and are scoped to
+// the current step only — later vars and the request/expect/capture
+// expressions can read them via vars.<name>.
+type StepVar struct {
+	Name string
+	Expr Expression
 }
 
 // Request holds provider-agnostic request inputs.
