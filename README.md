@@ -263,6 +263,11 @@ Exit codes:
 - `request.body { json = ... }` for JSON payloads.
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
+- `request.body { multipart { file { ... } field { ... } } }` for
+  `multipart/form-data` uploads. File parts read from `path` (relative
+  to the `.tales` file) or from an inline `content` expression; the
+  `Content-Type` header is set automatically with the generated
+  boundary. See *Multipart file upload* below.
 - `request.auth.basic` for HTTP Basic Authentication.
 - `vars { ... }` to declare step-local variables evaluated once before the
   provider runs — required for signing a request body (compute the body
@@ -296,6 +301,67 @@ request {
 ```
 
 `body.form` values are encoded with `application/x-www-form-urlencoded` semantics, so characters such as `&`, `=`, `+`, `%`, `#`, and spaces are safe in generated values.
+
+## Multipart file upload
+
+`request.body { multipart { ... } }` builds a `multipart/form-data`
+payload from an ordered list of `file { ... }` and `field { ... }`
+children. Declaration order is preserved on the wire so signatures or
+hashes computed over the body remain stable. `file` parts read their
+bytes from `path` (a string resolved relative to the `.tales` file) or
+from an inline `content` expression; the `Content-Type` request header
+is set automatically with the boundary `mime/multipart` generated.
+
+```hcl
+generator "bytes" "attachment_blob" {
+  length   = 32
+  encoding = "hex"
+}
+
+step "http" "upload" {
+  request {
+    method = "POST"
+    url    = "${config.base_url}/upload"
+
+    body {
+      multipart {
+        file {
+          field        = "avatar"
+          path         = "./avatar.txt"          # relative to this .tales
+          content_type = "text/plain"
+        }
+        file {
+          field        = "attachment"
+          content      = generate("attachment_blob")
+          filename     = "attachment.bin"
+          content_type = "application/octet-stream"
+        }
+        field {
+          name  = "description"
+          value = "fixture upload"
+        }
+      }
+    }
+  }
+}
+```
+
+Rules:
+
+- Each `file` block must declare **exactly one** of `path` or `content`.
+  Both `filename` and `content_type` are optional; when omitted, the
+  provider derives `filename` from `path` (or falls back to the field
+  name) and sniffs `content_type` from the extension or payload.
+- Each `field` block requires `name` and `value`.
+- The `multipart` block cannot be combined with `json`, `form`, or
+  `raw` — `body` must declare exactly one transport.
+- Paths are resolved at runtime relative to the `.tales` file owning
+  the step, so fixtures sit naturally next to the scenario.
+
+A worked end-to-end example lives in
+[e2e/pass/file_upload.tales](e2e/pass/file_upload.tales) (uses the
+`/upload` mockserver endpoint, which hashes each part with SHA-256 so
+the scenario can pin the exact wire payload).
 
 ## Step-local vars
 
