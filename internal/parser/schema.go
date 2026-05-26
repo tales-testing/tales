@@ -86,6 +86,17 @@ type requestBlock struct {
 }
 
 type bodyBlock struct {
+	JSON      hcl.Expression  `hcl:"json,optional"`
+	Form      hcl.Expression  `hcl:"form,optional"`
+	Raw       hcl.Expression  `hcl:"raw,optional"`
+	Multipart *multipartBlock `hcl:"multipart,block"`
+}
+
+// multipartBlock is decoded manually below (decodeMultipartBlock) by walking
+// hclsyntax.Body.Blocks so file / field children keep their declaration
+// order on the wire — the deterministic ordering matters for callers that
+// sign or hash the multipart payload.
+type multipartBlock struct {
 	Body hcl.Body `hcl:",remain"`
 }
 

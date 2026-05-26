@@ -267,66 +267,260 @@ func decodeRequestBody(path string, raw []bodyBlock) (*model.RequestBody, hcl.Di
 	}
 
 	first := raw[0]
-	attrs, attrDiags := first.Body.JustAttributes()
-	diags = append(diags, attrDiags...)
-
-	allowed := map[string]struct{}{
-		"json": {},
-		"form": {},
-		"raw":  {},
-	}
-
-	for name, attr := range attrs {
-		if _, ok := allowed[name]; !ok {
-			attrRange := attr.Range
-			diags = append(diags, diagError("Unknown request body field", fmt.Sprintf("body field %q is not supported. Use one of json, form, or raw.", name), &attrRange))
-		}
-	}
 
 	count := 0
 
 	var firstRange *hcl.Range
 
-	jsonAttr, hasJSON := attrs["json"]
-	if hasJSON {
+	if exprIsSet(first.JSON) {
 		count++
-		valueRange := jsonAttr.Range
+
+		valueRange := first.JSON.Range()
 		firstRange = &valueRange
 	}
 
-	formAttr, hasForm := attrs["form"]
-	if hasForm {
+	if exprIsSet(first.Form) {
 		count++
-		valueRange := formAttr.Range
 
+		valueRange := first.Form.Range()
 		if firstRange == nil {
 			firstRange = &valueRange
 		}
 	}
 
-	rawAttr, hasRaw := attrs["raw"]
-	if hasRaw {
+	if exprIsSet(first.Raw) {
 		count++
-		valueRange := rawAttr.Range
 
+		valueRange := first.Raw.Range()
 		if firstRange == nil {
 			firstRange = &valueRange
 		}
+	}
+
+	var multipart *model.MultipartBody
+
+	if first.Multipart != nil {
+		count++
+
+		mp, mpDiags := decodeMultipartBlock(path, first.Multipart)
+		diags = append(diags, mpDiags...)
+		multipart = mp
 	}
 
 	if count == 0 {
-		diags = append(diags, diagError("Missing request body content", "body block must define exactly one of json, form, or raw.", nil))
+		diags = append(diags, diagError("Missing request body content", "body block must define exactly one of json, form, raw, or a multipart block.", nil))
 	}
 
 	if count > 1 {
-		diags = append(diags, diagError("Conflicting request body fields", "body block must define exactly one of json, form, or raw.", firstRange))
+		diags = append(diags, diagError("Conflicting request body fields", "body block must define exactly one of json, form, raw, or a multipart block.", firstRange))
 	}
 
 	return &model.RequestBody{
-		JSON: attrExpr(path, jsonAttr),
-		Form: attrExpr(path, formAttr),
-		Raw:  attrExpr(path, rawAttr),
+		JSON:      expr(path, first.JSON),
+		Form:      expr(path, first.Form),
+		Raw:       expr(path, first.Raw),
+		Multipart: multipart,
 	}, diags
+}
+
+// decodeMultipartBlock decodes a body { multipart { ... } } block, preserving
+// the textual order of file / field children so the serialized wire
+// representation is deterministic. Each file block must declare exactly one
+// of path / content; each field block must declare both name and value.
+//
+// gohcl is intentionally not used for the file / field children because its
+// slice decoding loses the interleaved declaration order between file and
+// field blocks. Instead we walk the underlying hclsyntax.Body and decode
+// each child by hand.
+func decodeMultipartBlock(path string, raw *multipartBlock) (*model.MultipartBody, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+
+	syntaxBody, ok := raw.Body.(*hclsyntax.Body)
+	if !ok {
+		bodyRange := raw.Body.MissingItemRange()
+		diags = append(diags, diagError(
+			"Unsupported multipart body type",
+			"multipart blocks require HCL native syntax to preserve part declaration order; non-native bodies (e.g. JSON) are not supported.",
+			&bodyRange,
+		))
+
+		return nil, diags
+	}
+
+	for name, attr := range syntaxBody.Attributes {
+		attrRange := attr.Range()
+		diags = append(diags, diagError(
+			"Unexpected multipart attribute",
+			fmt.Sprintf("multipart blocks only accept file { } and field { } children, found attribute %q.", name),
+			&attrRange,
+		))
+	}
+
+	body := &model.MultipartBody{}
+
+	for _, block := range syntaxBody.Blocks {
+		switch block.Type {
+		case "file":
+			part, partDiags := decodeMultipartFile(path, block)
+			diags = append(diags, partDiags...)
+
+			if part != nil {
+				body.Parts = append(body.Parts, model.MultipartPart{File: part})
+			}
+		case "field":
+			part, partDiags := decodeMultipartField(path, block)
+			diags = append(diags, partDiags...)
+
+			if part != nil {
+				body.Parts = append(body.Parts, model.MultipartPart{Field: part})
+			}
+		default:
+			blockRange := block.DefRange()
+			diags = append(diags, diagError(
+				"Unknown multipart child",
+				fmt.Sprintf("multipart supports file and field blocks only, found %q.", block.Type),
+				&blockRange,
+			))
+		}
+	}
+
+	return body, diags
+}
+
+var multipartFileAllowed = map[string]struct{}{
+	"field":        {},
+	"path":         {},
+	"content":      {},
+	"filename":     {},
+	"content_type": {},
+}
+
+func decodeMultipartFile(path string, block *hclsyntax.Block) (*model.MultipartFilePart, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+
+	if len(block.Body.Blocks) > 0 {
+		blockRange := block.Body.Blocks[0].DefRange()
+		diags = append(diags, diagError(
+			"Unexpected multipart.file sub-block",
+			fmt.Sprintf("multipart.file accepts attributes only, found block %q.", block.Body.Blocks[0].Type),
+			&blockRange,
+		))
+	}
+
+	for name, attr := range block.Body.Attributes {
+		if _, ok := multipartFileAllowed[name]; !ok {
+			attrRange := attr.Range()
+			diags = append(diags, diagError(
+				"Unknown multipart.file attribute",
+				fmt.Sprintf("multipart.file attribute %q is not supported. Use field, path, content, filename, or content_type.", name),
+				&attrRange,
+			))
+		}
+	}
+
+	attr := block.Body.Attributes
+
+	fieldAttr, hasField := attr["field"]
+	if !hasField {
+		blockRange := block.DefRange()
+		diags = append(diags, diagError(
+			"Missing multipart file field",
+			"multipart.file requires a field attribute (the form field name).",
+			&blockRange,
+		))
+	}
+
+	pathAttr, hasPath := attr["path"]
+	contentAttr, hasContent := attr["content"]
+
+	switch {
+	case !hasPath && !hasContent:
+		blockRange := block.DefRange()
+		diags = append(diags, diagError(
+			"Missing multipart file source",
+			"multipart.file must declare exactly one of path or content.",
+			&blockRange,
+		))
+	case hasPath && hasContent:
+		pathRange := pathAttr.Range()
+		diags = append(diags, diagError(
+			"Conflicting multipart file source",
+			"multipart.file must declare exactly one of path or content, not both.",
+			&pathRange,
+		))
+	}
+
+	return &model.MultipartFilePart{
+		Field:       hclsyntaxAttrExpr(path, fieldAttr),
+		Path:        hclsyntaxAttrExpr(path, pathAttr),
+		Content:     hclsyntaxAttrExpr(path, contentAttr),
+		Filename:    hclsyntaxAttrExpr(path, attr["filename"]),
+		ContentType: hclsyntaxAttrExpr(path, attr["content_type"]),
+	}, diags
+}
+
+var multipartFieldAllowed = map[string]struct{}{
+	"name":  {},
+	"value": {},
+}
+
+func decodeMultipartField(path string, block *hclsyntax.Block) (*model.MultipartFieldPart, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+
+	if len(block.Body.Blocks) > 0 {
+		blockRange := block.Body.Blocks[0].DefRange()
+		diags = append(diags, diagError(
+			"Unexpected multipart.field sub-block",
+			fmt.Sprintf("multipart.field accepts attributes only, found block %q.", block.Body.Blocks[0].Type),
+			&blockRange,
+		))
+	}
+
+	for name, attr := range block.Body.Attributes {
+		if _, ok := multipartFieldAllowed[name]; !ok {
+			attrRange := attr.Range()
+			diags = append(diags, diagError(
+				"Unknown multipart.field attribute",
+				fmt.Sprintf("multipart.field attribute %q is not supported. Use name or value.", name),
+				&attrRange,
+			))
+		}
+	}
+
+	attr := block.Body.Attributes
+
+	nameAttr, hasName := attr["name"]
+	if !hasName {
+		blockRange := block.DefRange()
+		diags = append(diags, diagError(
+			"Missing multipart field name",
+			"multipart.field requires a name attribute.",
+			&blockRange,
+		))
+	}
+
+	valueAttr, hasValue := attr["value"]
+	if !hasValue {
+		blockRange := block.DefRange()
+		diags = append(diags, diagError(
+			"Missing multipart field value",
+			"multipart.field requires a value attribute.",
+			&blockRange,
+		))
+	}
+
+	return &model.MultipartFieldPart{
+		Name:  hclsyntaxAttrExpr(path, nameAttr),
+		Value: hclsyntaxAttrExpr(path, valueAttr),
+	}, diags
+}
+
+func hclsyntaxAttrExpr(path string, attr *hclsyntax.Attribute) model.Expression {
+	if attr == nil {
+		return model.Expression{}
+	}
+
+	return model.Expression{Expr: attr.Expr, File: path, Line: attr.Range().Start.Line}
 }
 
 func decodeRequestAuth(path string, raw []authBlock) (*model.RequestAuth, hcl.Diagnostics) {
