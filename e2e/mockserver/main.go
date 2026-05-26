@@ -19,7 +19,7 @@ import (
 )
 
 // webhookSignedSecret is the HMAC key shared with the matching .tales scenarios
-// via config.anchorify_webhook_secret. Hardcoded in tests; never log it.
+// via config.webhook_secret. Hardcoded in tests; never log it.
 const webhookSignedSecret = "test-secret"
 
 type user struct {

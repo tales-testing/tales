@@ -222,6 +222,68 @@ func TestStepVarsEvaluationFailureSurfacesAsVarsError(t *testing.T) {
 	}
 }
 
+func TestStepVarsVisibleInKeywordNameAndInputs(t *testing.T) {
+	t.Parallel()
+
+	httpProv := &keywordFlowProvider{}
+	runner := NewRunner(provider.NewRegistry(httpProv))
+
+	suite := &model.Suite{
+		Keywords: map[string]*model.Keyword{
+			"authenticate": {
+				Name: "authenticate",
+				Inputs: map[string]model.Expression{
+					"email":    expr("string"),
+					"password": expr("string"),
+				},
+				Steps: []*model.Step{{
+					Provider: "http",
+					Name:     "auth_user",
+					Request: &model.Request{
+						Method: expr(`"POST"`),
+						URL:    expr(`"http://example.test/auth"`),
+						Body:   bodyJSONExpr(`{ email = input.email, password = input.password }`),
+					},
+					Expect: &model.Expect{Status: expr("200")},
+				}},
+				Outputs: map[string]model.Expression{
+					"token": expr("result.auth_user.response.json.access_token"),
+				},
+			},
+		},
+		Scenarios: []*model.Scenario{{
+			Name: "vars in keyword call",
+			File: "test.tales",
+			Steps: []*model.Step{{
+				Provider: "keyword",
+				Name:     "auth",
+				Vars: []model.StepVar{
+					{Name: "kw", Expr: expr(`"authenticate"`)},
+					{Name: "creds", Expr: expr(`{ email = "user@example.com", password = "Passw0rd!" }`)},
+				},
+				Keyword: &model.KeywordCall{
+					Name:   expr(`vars.kw`),
+					Inputs: expr(`vars.creds`),
+				},
+			}},
+		}},
+	}
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1})
+	if err != nil {
+		t.Fatalf("unexpected run error: %v", err)
+	}
+
+	scenario := result.Scenarios[0]
+	if scenario.Status != report.StatusPass {
+		t.Fatalf("scenario should pass, got %s, failure=%v", scenario.Status, scenario.Failure)
+	}
+
+	if scenario.Steps[0].Status != report.StatusPass {
+		t.Fatalf("keyword step should pass, got %s, failure=%#v", scenario.Steps[0].Status, scenario.Steps[0].Failure)
+	}
+}
+
 func TestStepVarsHMACOverJSONBodyIsConsistent(t *testing.T) {
 	t.Parallel()
 

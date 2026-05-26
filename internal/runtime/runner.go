@@ -913,7 +913,23 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 		return stepReport
 	}
 
-	callName, callInputs, requestSummary, err := r.evaluateKeywordCall(evaluator, scenarioName, config, state, input, step)
+	scope := lang.ScopeData{
+		Config:   config,
+		Result:   state.GetResultMap(),
+		Request:  map[string]cty.Value{},
+		Response: map[string]cty.Value{},
+		Input:    ensureValueMap(input),
+	}
+
+	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
+		stepReport.Status = report.StatusFail
+		stepReport.Failure = &report.ErrorDetail{Kind: "vars", Path: failedVar, Message: err.Error()}
+		stepReport.Duration = time.Since(start)
+
+		return stepReport
+	}
+
+	callName, callInputs, requestSummary, err := r.evaluateKeywordCall(evaluator, scope, scenarioName, step)
 	if err != nil {
 		stepReport.Status = report.StatusFail
 		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: err.Error()}
@@ -985,15 +1001,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 	return stepReport
 }
 
-func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) (string, map[string]cty.Value, map[string]interface{}, error) {
-	scope := lang.ScopeData{
-		Config:   config,
-		Result:   state.GetResultMap(),
-		Request:  map[string]cty.Value{},
-		Response: map[string]cty.Value{},
-		Input:    ensureValueMap(input),
-	}
-
+func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step) (string, map[string]cty.Value, map[string]interface{}, error) {
 	nameValue, err := evaluator.Eval(step.Keyword.Name, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "keyword.name"})
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("keyword.name: %w", err)
