@@ -1,0 +1,86 @@
+version = 1
+
+config {
+  base_url        = env("BASE_URL", "http://localhost:1337")
+  webhook_secret  = "test-secret"
+}
+
+# This scenario proves end to end that:
+#   - step-local vars are evaluated once before the request runs;
+#   - jsonencode produces a canonical body that can be signed and sent
+#     byte-for-byte as the raw request body;
+#   - hmac_sha256_hex over "<ts>.<body>" matches what the mock server
+#     recomputes server-side from the bytes it actually received.
+# A first step writes a marker so the webhook body can reference a real
+# id captured from a previous response — exercising vars + result. refs
+# in the same body.
+scenario "Signed webhook" {
+  tags = ["http", "webhook", "signature"]
+
+  step "http" "create_marker" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/markers"
+
+      body {
+        json = {
+          id    = "webhook-${now_unix()}"
+          label = "signed-webhook-source"
+        }
+      }
+    }
+
+    expect {
+      status = 201
+    }
+
+    capture {
+      marker_id = response.json.id
+    }
+  }
+
+  step "http" "send_signed_webhook" {
+    vars {
+      ts = now_unix()
+
+      body = jsonencode({
+        id          = "evt-${result.create_marker.marker_id}"
+        type        = "notarization.completed"
+        api_version = "v1"
+        created_at  = now_rfc3339()
+
+        data = {
+          notarization = {
+            external_id    = result.create_marker.marker_id
+            status         = "completed"
+            hash_algorithm = "SHA256"
+          }
+        }
+      })
+
+      sig = hmac_sha256_hex(config.webhook_secret, "${vars.ts}.${vars.body}")
+    }
+
+    request {
+      method = "POST"
+      url    = "${config.base_url}/webhook/signed"
+
+      headers = {
+        Content-Type          = "application/json"
+        X-Anchorify-Signature = "t=${vars.ts},v1=${vars.sig}"
+      }
+
+      body {
+        raw = vars.body
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        ok = true
+      }
+    }
+  }
+}
