@@ -1,0 +1,83 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+generator "bytes" "attachment_blob" {
+  length   = 32
+  encoding = "hex"
+}
+
+# Exercises body { multipart { ... } } end to end:
+#   - one file part loaded from disk via path (./avatar.txt, resolved
+#     relative to this .tales file);
+#   - one file part whose content comes from generate("attachment_blob")
+#     — deterministic thanks to --seed;
+#   - one plain field.
+# The mockserver hashes each file part with SHA-256 and echoes back size +
+# filename + content_type, so the scenario can pin the exact wire payload
+# without trying to predict the multipart boundary.
+scenario "Multipart file upload" {
+  tags = ["http", "upload", "multipart"]
+
+  step "http" "upload" {
+    vars {
+      blob = generate("attachment_blob")
+    }
+
+    request {
+      method = "POST"
+      url    = "${config.base_url}/upload"
+
+      body {
+        multipart {
+          file {
+            field        = "avatar"
+            path         = "./avatar.txt"
+            content_type = "text/plain"
+          }
+          file {
+            field        = "attachment"
+            content      = vars.blob
+            filename     = "attachment.bin"
+            content_type = "application/octet-stream"
+          }
+          field {
+            name  = "description"
+            value = "fixture upload"
+          }
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        ok = true
+
+        files = [
+          {
+            field        = "avatar"
+            filename     = "avatar.txt"
+            content_type = "text/plain"
+            size         = 18
+            sha256       = "b8ca39da68fb691e09951b7cc21437c43a8cc6094498d0320d1763c00384bd55"
+          },
+          {
+            field        = "attachment"
+            filename     = "attachment.bin"
+            content_type = "application/octet-stream"
+            size         = 64
+            sha256       = is_string()
+          },
+        ]
+
+        fields = {
+          description = "fixture upload"
+        }
+      }
+    }
+  }
+}

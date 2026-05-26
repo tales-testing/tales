@@ -84,6 +84,7 @@ func main() {
 	r.HandleFunc("/markers", state.createMarker).Methods(http.MethodPost)
 	r.HandleFunc("/markers/{id}", state.getMarker).Methods(http.MethodGet)
 	r.HandleFunc("/webhook/signed", state.signedWebhook).Methods(http.MethodPost)
+	r.HandleFunc("/upload", state.upload).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts/{id}", state.getPost).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts/{id}", state.deletePost).Methods(http.MethodDelete)
@@ -360,6 +361,66 @@ func (s *serverState) createMarker(w http.ResponseWriter, req *http.Request) {
 	s.mu.Unlock()
 
 	writeJSON(w, http.StatusCreated, body)
+}
+
+// upload accepts a multipart/form-data POST and reports back, for each file
+// part, its declared field name, filename, content type, byte length, and a
+// SHA-256 hex digest of the bytes actually received. Plain form fields are
+// echoed under "fields". The scenario asserts on the hashes / lengths so the
+// test pins the exact wire payload Tales produced without depending on a
+// boundary the user can't predict.
+func (s *serverState) upload(w http.ResponseWriter, req *http.Request) {
+	if err := req.ParseMultipartForm(8 << 20); err != nil { //nolint:gosec // G120: in-process test mock; size capped to 8 MiB on the line above
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot parse multipart"})
+
+		return
+	}
+
+	files := make([]map[string]interface{}, 0)
+
+	for fieldName, headers := range req.MultipartForm.File {
+		for _, hdr := range headers {
+			f, openErr := hdr.Open()
+			if openErr != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot open file part"})
+
+				return
+			}
+
+			body, readErr := io.ReadAll(f)
+			_ = f.Close()
+
+			if readErr != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot read file part"})
+
+				return
+			}
+
+			sum := sha256.Sum256(body)
+
+			files = append(files, map[string]interface{}{
+				"field":        fieldName,
+				"filename":     hdr.Filename,
+				"content_type": hdr.Header.Get("Content-Type"),
+				"size":         len(body),
+				"sha256":       hex.EncodeToString(sum[:]),
+			})
+		}
+	}
+
+	fields := map[string]string{}
+
+	for name, values := range req.MultipartForm.Value {
+		if len(values) > 0 {
+			fields[name] = values[0]
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":     true,
+		"files":  files,
+		"fields": fields,
+	})
 }
 
 // signedWebhook validates an HMAC-SHA256 signed POST against the shared
