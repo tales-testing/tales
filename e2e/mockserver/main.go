@@ -363,11 +363,11 @@ func (s *serverState) createMarker(w http.ResponseWriter, req *http.Request) {
 }
 
 // signedWebhook validates an HMAC-SHA256 signed POST against the shared
-// secret. It expects an X-Anchorify-Signature header formatted as
-// "t=<unix>,v1=<hex>" and computes its own digest over "<t>.<raw_body>" to
-// compare in constant time. Timestamps outside a ±5 minute window are
-// rejected as expired. Error responses never echo back the expected
-// signature so the secret is never reflected in test output.
+// secret. It expects an X-Signature header formatted as "t=<unix>,v1=<hex>"
+// and computes its own digest over "<t>.<raw_body>" to compare in constant
+// time. Timestamps outside a ±5 minute window are rejected as expired.
+// Error responses never echo back the expected signature so the secret is
+// never reflected in test output.
 func (s *serverState) signedWebhook(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -376,7 +376,7 @@ func (s *serverState) signedWebhook(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	header := req.Header.Get("X-Anchorify-Signature")
+	header := req.Header.Get("X-Signature")
 	if header == "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "missing signature"})
 

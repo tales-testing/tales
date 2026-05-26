@@ -66,8 +66,8 @@ scenario "Signed webhook" {
       url    = "${config.base_url}/webhook/signed"
 
       headers = {
-        Content-Type          = "application/json"
-        X-Anchorify-Signature = "t=${vars.ts},v1=${vars.sig}"
+        Content-Type = "application/json"
+        X-Signature  = "t=${vars.ts},v1=${vars.sig}"
       }
 
       body {
