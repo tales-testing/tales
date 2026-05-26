@@ -30,7 +30,23 @@ Run this checklist before considering a `.tales` suite done.
 - Do not use `coalesce(...)` unless the local runtime explicitly documents lazy fallback support
 - For protobuf/ConnectRPC payloads that may omit default-valued fields (`""`, `0`, `[]`, unspecified enums), use `optional(...)` around the expected value; reserve `required(...)` as an explicit readability wrapper and `any()` for "must be present, any value"
 
-## 4) Mobile (iOS) specifics
+## 4) SQL specifics
+
+When the suite contains `step "sql"` blocks:
+
+- `config.sql.connections.<name>.driver` is `postgres` (alias `pgx`) or `mysql`
+- `config.sql.connections.<name>.dsn` is sourced from `env(...)` — never inline
+- Each SQL step declares `connection = "<name>"` and exactly one of `exec { ... }` or `query { ... }`
+- Placeholders match the driver: `$1`, `$2`, … for Postgres; `?` for MySQL
+- `args` is a list of scalars only (string / number / bool / null) — no lists / objects
+- Optional scenarios use `skip_unless { env_set = ["<DSN_ENV>"] }` so `make e2e` keeps passing without a DB
+- Schema-modifying suites use `DROP IF EXISTS` + `CREATE` to stay idempotent across failed runs
+- Captures read from `response.json.<path>` (e.g. `response.json.rows[0].vip`)
+- `expect { json = { rows_affected = 1 } }` for exec; `{ row_count = N, rows = [...] }` for query
+- `last_insert_id` is `null` on PostgreSQL — use `RETURNING` + a follow-up `query` step
+- SQL setup is **paired** with an HTTP / UI assertion that observes the user-visible effect
+
+## 5) Mobile (iOS) specifics
 
 When the suite contains `step "mobile"` blocks:
 
@@ -45,7 +61,7 @@ When the suite contains `step "mobile"` blocks:
 - `text` / `value` expectations use literals or matchers (`contains`, `matches`), not over-specified equality
 - `tales test ./suite --seed 1234 --parallel 1` is the safe default; only raise `--parallel` when targets are distinct
 
-## 5) Command validation
+## 6) Command validation
 
 ```bash
 tales validate <path>

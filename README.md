@@ -11,6 +11,9 @@ Scenarios are written in declarative HCL2 files with the `.tales` extension.
 - Deterministic seeded data generation.
 - Scenarios run in parallel; steps within a scenario run sequentially in file order.
 - Built-in HTTP provider (including ConnectRPC JSON over HTTP).
+- Built-in SQL provider (`step "sql"`, PostgreSQL + MySQL) for preparing
+  internal state that is not exposed through the public API. See
+  [docs/providers/sql.md](docs/providers/sql.md).
 - Native iOS UI automation via XCUITest (`step "mobile"`), no Appium / no
   Maestro at runtime. The XCUITest driver is **embedded** in the `tales`
   binary and built on first use into `~/Library/Caches/tales/apple-driver/`,
@@ -255,6 +258,8 @@ Exit codes:
 
 - `scenario "..." { ... }`
 - `step "http" "name" { ... }`
+- `step "sql" "name" { connection = "<name>"; exec { ... } | query { ... } }`
+  — see [docs/providers/sql.md](docs/providers/sql.md).
 - `request.body { json = ... }` for JSON payloads.
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
