@@ -22,8 +22,8 @@ scenario "Signed webhook bad signature" {
       url    = "${config.base_url}/webhook/signed"
 
       headers = {
-        Content-Type          = "application/json"
-        X-Anchorify-Signature = "t=${vars.ts},v1=deadbeef"
+        Content-Type = "application/json"
+        X-Signature  = "t=${vars.ts},v1=deadbeef"
       }
 
       body {
