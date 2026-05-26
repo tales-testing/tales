@@ -18,7 +18,18 @@ type Input struct {
 	Request  map[string]cty.Value
 	Expect   map[string]cty.Value
 	Mobile   *MobileExecution
+	SQL      *SQLExecution
 	Timeout  time.Duration
+}
+
+// SQLExecution carries the resolved data for one sql step ready to be
+// executed by the SQL provider. The runner evaluates step expressions into
+// these concrete Go values before invoking the provider.
+type SQLExecution struct {
+	Connection string
+	Mode       string // "exec" or "query"
+	SQL        string
+	Args       []any
 }
 
 // Output is provider execution output.
