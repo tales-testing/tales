@@ -264,6 +264,10 @@ Exit codes:
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
 - `request.auth.basic` for HTTP Basic Authentication.
+- `vars { ... }` to declare step-local variables evaluated once before the
+  provider runs — required for signing a request body (compute the body
+  string and its HMAC once, send the same bytes). See *Step-local vars*
+  below.
 - `expect` assertions for status/headers/json.
 - `capture` to expose a stable contract for next steps.
 - `result.<step_name>.<field>` for cross-step references.
@@ -293,6 +297,60 @@ request {
 
 `body.form` values are encoded with `application/x-www-form-urlencoded` semantics, so characters such as `&`, `=`, `+`, `%`, `#`, and spaces are safe in generated values.
 
+## Step-local vars
+
+A `vars { ... }` block declared inside a `step` introduces variables that
+are evaluated **once**, in **declaration order**, **before** the provider
+runs. Later vars can read earlier ones via `vars.<name>`; the cumulative
+value is then visible to the step's `request`, `expect`, and `capture`
+expressions through the `vars` scope variable.
+
+Use it whenever a value must be stable across multiple interpolation sites
+in the same step — most commonly when signing a request: the timestamp,
+the canonical JSON body, and the HMAC over both must be computed exactly
+once.
+
+```hcl
+step "http" "send_webhook" {
+  vars {
+    ts   = now_unix()
+    body = jsonencode({
+      id   = "evt-${result.create.id}"
+      type = "notarization.completed"
+    })
+    sig  = hmac_sha256_hex(config.webhook_secret, "${vars.ts}.${vars.body}")
+  }
+
+  request {
+    method = "POST"
+    url    = "${config.api_base}/webhook"
+
+    headers = {
+      Content-Type    = "application/json"
+      X-Signature     = "t=${vars.ts},v1=${vars.sig}"
+    }
+
+    body {
+      raw = vars.body
+    }
+  }
+}
+```
+
+Rules:
+
+- vars are **step-local**. They are not visible to other steps — use
+  `capture` to share a value with later steps.
+- vars are **immutable** after evaluation.
+- A var can only reference vars declared **earlier in the same block**.
+  Forward references and self-references are rejected at load time
+  (exit code `2`).
+- `when` and `skip_if` / `skip_unless` are evaluated *before* the step
+  body, so they cannot reference `vars.<name>` — that is rejected at
+  load time with a clear error.
+- The same `vars.<name>` must hold the same value at every interpolation
+  site. This is guaranteed precisely because `vars` are evaluated once.
+
 ## Execution Model
 
 - **Scenarios** run in parallel, up to `--parallel` at a time (default `1`).
@@ -316,14 +374,29 @@ General:
 - `env(name)`
 - `env(name, default)`
 - `generate(name)`
-- `jsonencode(value)`
+- `jsonencode(value)` — serializes any value to a canonical JSON string.
+  Object keys are sorted alphabetically; sets are sorted by their JSON
+  encoding; numbers preserve precision. The deterministic output is what
+  makes it safe to sign — two calls on the same value produce the same
+  bytes.
 - `url_encode(value)`
+- `now_unix()` — current Unix timestamp in seconds as a number. Uses the
+  wall clock (non-deterministic). Capture in a `vars { ts = now_unix() }`
+  block to reuse the same value at every interpolation site.
+- `now_rfc3339()` — current UTC time formatted per RFC3339, e.g.
+  `"2026-05-26T15:42:31Z"`. Same caveats as `now_unix()`.
+- `hmac_sha256_hex(secret, message)` — HMAC-SHA256 returned as a lowercase
+  hex string. Pair with `jsonencode` and step-local `vars` to sign a
+  request body that the server can re-verify byte for byte.
 
 Top-level expression variables:
 
 - `host.os` — `runtime.GOOS` (e.g. `"darwin"`, `"linux"`, `"windows"`)
 - `host.arch` — `runtime.GOARCH` (e.g. `"amd64"`, `"arm64"`)
 - `config.<key>`, `result.<step>.<field>`, plus `request`, `response`, `input` in step scope
+- `vars.<name>` — step-local variables declared in the step's `vars {}`
+  block. Only visible inside the step that declares them. See *Step-local
+  vars* above.
 
 Matchers:
 
