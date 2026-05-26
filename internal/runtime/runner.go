@@ -606,11 +606,127 @@ func evaluateRequestBody(evaluator *lang.Evaluator, scope lang.ScopeData, scenar
 		return err
 	}
 
+	if step.Request.Body.Multipart != nil {
+		parts, err := evaluateMultipartParts(evaluator, scope, scenarioName, step)
+		if err != nil {
+			return fmt.Errorf("multipart: %w", err)
+		}
+
+		body["multipart"] = parts
+	}
+
 	if len(body) > 0 {
 		values["body"] = cty.ObjectVal(body)
 	}
 
 	return nil
+}
+
+// evaluateMultipartParts evaluates each multipart part's expressions in
+// declaration order and packs the result as a cty.TupleVal so per-part
+// heterogeneity (file vs field, path vs content) survives the cty round-trip
+// without forcing every part to share the same attribute set.
+func evaluateMultipartParts(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step) (cty.Value, error) {
+	parts := make([]cty.Value, 0, len(step.Request.Body.Multipart.Parts))
+
+	for i, part := range step.Request.Body.Multipart.Parts {
+		switch {
+		case part.File != nil:
+			value, err := evaluateMultipartFilePart(evaluator, scope, scenarioName, step, i, part.File)
+			if err != nil {
+				return cty.NilVal, err
+			}
+
+			parts = append(parts, value)
+		case part.Field != nil:
+			value, err := evaluateMultipartFieldPart(evaluator, scope, scenarioName, step, i, part.Field)
+			if err != nil {
+				return cty.NilVal, err
+			}
+
+			parts = append(parts, value)
+		}
+	}
+
+	if len(parts) == 0 {
+		return cty.EmptyTupleVal, nil
+	}
+
+	return cty.TupleVal(parts), nil
+}
+
+func evaluateMultipartFilePart(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, index int, file *model.MultipartFilePart) (cty.Value, error) {
+	attrs := map[string]cty.Value{"kind": cty.StringVal("file")}
+
+	eval := func(name string, expression model.Expression) error {
+		if expression.Empty() {
+			return nil
+		}
+
+		val, err := evaluator.Eval(expression, scope, lang.GenerateMeta{
+			Scenario: scenarioName,
+			Step:     step.Name,
+			ExprPath: fmt.Sprintf("request.body.multipart[%d].%s", index, name),
+		})
+		if err != nil {
+			return fmt.Errorf("part %d %s: %w", index, name, err)
+		}
+
+		attrs[name] = val
+
+		return nil
+	}
+
+	if err := eval("field", file.Field); err != nil {
+		return cty.NilVal, err
+	}
+
+	if err := eval("path", file.Path); err != nil {
+		return cty.NilVal, err
+	}
+
+	if err := eval("content", file.Content); err != nil {
+		return cty.NilVal, err
+	}
+
+	if err := eval("filename", file.Filename); err != nil {
+		return cty.NilVal, err
+	}
+
+	if err := eval("content_type", file.ContentType); err != nil {
+		return cty.NilVal, err
+	}
+
+	return cty.ObjectVal(attrs), nil
+}
+
+func evaluateMultipartFieldPart(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, index int, field *model.MultipartFieldPart) (cty.Value, error) {
+	attrs := map[string]cty.Value{"kind": cty.StringVal("field")}
+
+	eval := func(name string, expression model.Expression) error {
+		val, err := evaluator.Eval(expression, scope, lang.GenerateMeta{
+			Scenario: scenarioName,
+			Step:     step.Name,
+			ExprPath: fmt.Sprintf("request.body.multipart[%d].%s", index, name),
+		})
+		if err != nil {
+			return fmt.Errorf("part %d %s: %w", index, name, err)
+		}
+
+		attrs[name] = val
+
+		return nil
+	}
+
+	if err := eval("name", field.Name); err != nil {
+		return cty.NilVal, err
+	}
+
+	if err := eval("value", field.Value); err != nil {
+		return cty.NilVal, err
+	}
+
+	return cty.ObjectVal(attrs), nil
 }
 
 func evaluateRequestAuth(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, values map[string]cty.Value) error {
