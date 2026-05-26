@@ -80,7 +80,7 @@ scenario "iOS UI driver quirk diagnostic" {
     }
   }
 
-  # Mirrors a real-world signup-finish pattern verbatim: a single Tales
+  # Closely mirrors a real-world signup-finish pattern: a single Tales
   # step that types the second SecureField .newPassword AND then
   # immediately taps three Toggles whose bounding boxes sit under the
   # soft keyboard the previous input opened. Reproduces both:
