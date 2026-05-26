@@ -55,7 +55,7 @@ scenario "iOS UI driver quirk diagnostic" {
 
   # First focus on a SecureField(.newPassword). Done in an isolated step
   # so the keyboard it opens stays present when the next step runs —
-  # this mirrors how Sealway's signup_inputs leaves the keyboard up
+  # this mirrors a real-world signup flow that leaves the keyboard up
   # between scenario steps and exposes the autofill banner truncation
   # observed on the second focus.
   step "mobile" "secure_field_first_focus" {
@@ -80,10 +80,10 @@ scenario "iOS UI driver quirk diagnostic" {
     }
   }
 
-  # Mirrors Sealway's signup_finish step verbatim: a single Tales step
-  # that types the second SecureField .newPassword AND then immediately
-  # taps three Toggles whose bounding boxes sit under the soft keyboard
-  # the previous input opened. Reproduces both:
+  # Mirrors a real-world signup-finish pattern verbatim: a single Tales
+  # step that types the second SecureField .newPassword AND then
+  # immediately taps three Toggles whose bounding boxes sit under the
+  # soft keyboard the previous input opened. Reproduces both:
   #   1) the deterministic 5/16 truncation on the second SecureField
   #      because the autofill banner inherited from the first focus
   #      eats the leading keystrokes;
