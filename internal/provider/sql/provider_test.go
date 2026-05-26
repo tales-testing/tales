@@ -3,6 +3,8 @@ package sql
 import (
 	"context"
 	dbsql "database/sql"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -229,6 +231,47 @@ func TestProviderErrorOmitsArgValues(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "args: 2 value(s) omitted") {
 		t.Errorf("error must mention omitted args count, got: %s", err.Error())
+	}
+}
+
+func TestProviderMaskedDSNPreservesErrorChain(t *testing.T) {
+	t.Parallel()
+
+	config := map[string]cty.Value{
+		"sql": cty.ObjectVal(map[string]cty.Value{
+			"connections": cty.ObjectVal(map[string]cty.Value{
+				"app": cty.ObjectVal(map[string]cty.Value{
+					"driver": cty.StringVal("postgres"),
+					"dsn":    cty.StringVal("postgres://user:topsecret@host/db"),
+				}),
+			}),
+		}),
+	}
+
+	p, db, mock := newProviderWithMock(t)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectExec("UPDATE").
+		WillReturnError(fmt.Errorf("driver said postgres://user:topsecret@host/db is busy: %w", dbsql.ErrConnDone))
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Config: config,
+		SQL: &provider.SQLExecution{
+			Connection: "app",
+			Mode:       "exec",
+			SQL:        "UPDATE t SET x = 1",
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected exec error")
+	}
+
+	if strings.Contains(err.Error(), "topsecret") {
+		t.Errorf("masked DSN leaked through error: %s", err.Error())
+	}
+
+	if !errors.Is(err, dbsql.ErrConnDone) {
+		t.Errorf("errors.Is must still resolve the wrapped driver error, got: %v", err)
 	}
 }
 

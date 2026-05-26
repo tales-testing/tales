@@ -96,7 +96,7 @@ func TestSQLStepExecPassesExpect(t *testing.T) {
 	}
 }
 
-func TestSQLStepQueryCaptureFedsNextStep(t *testing.T) {
+func TestSQLStepQueryCaptureFeedsNextStep(t *testing.T) {
 	t.Parallel()
 
 	sqlProv, mock := newRuntimeSQLProvider(t)
