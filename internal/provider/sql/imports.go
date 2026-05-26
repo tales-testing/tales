@@ -1,8 +1,10 @@
 package sql
 
 // Blank imports register database/sql drivers used by the SQL provider.
-// Kept in their own file so the rest of the package compiles without the
-// drivers when tests inject a custom database/sql driver (e.g. sqlmock).
+// They live in their own file so the dependency on the concrete drivers
+// is isolated from the rest of the package source — handy when grepping
+// for imports during reviews, and a single touch point if Tales ever
+// gates extra drivers behind build tags.
 import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"

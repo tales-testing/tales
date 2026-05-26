@@ -216,10 +216,10 @@ func sqlExecutionError(mode string, conn ConnectionConfig, exec *provider.SQLExe
 		mode, conn.Name, conn.Driver, exec.SQL, len(exec.Args), withMaskedDSN(err, conn.DSN))
 }
 
-// withMaskedDSN scrubs DSN credential fragments out of an error message.
-// Some drivers embed the DSN verbatim in their error strings; replacing the
-// raw substring keeps the wrapped error chain intact while preventing the
-// secret from reaching reports or logs.
+// withMaskedDSN scrubs DSN credential fragments out of an error message
+// while preserving the wrapped chain so callers keep using errors.Is/As.
+// Some drivers embed the DSN verbatim in their error strings; we override
+// Error() but still Unwrap() to the original.
 func withMaskedDSN(err error, dsn string) error {
 	if err == nil || dsn == "" {
 		return err
@@ -235,5 +235,15 @@ func withMaskedDSN(err error, dsn string) error {
 		return err
 	}
 
-	return fmt.Errorf("%s", msg)
+	return &maskedError{msg: msg, wrapped: err}
 }
+
+// maskedError wraps an error with a sanitized message but keeps the
+// original reachable through errors.Unwrap.
+type maskedError struct {
+	msg     string
+	wrapped error
+}
+
+func (e *maskedError) Error() string { return e.msg }
+func (e *maskedError) Unwrap() error { return e.wrapped }

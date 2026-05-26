@@ -93,7 +93,7 @@ scenario "sql query" {
       args = ["org_123"]
     }
     capture {
-      id = response.rows[0].id
+      id = response.json.rows[0].id
     }
   }
 }
