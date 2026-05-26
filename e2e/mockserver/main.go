@@ -1,8 +1,12 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +17,10 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+// webhookSignedSecret is the HMAC key shared with the matching .tales scenarios
+// via config.anchorify_webhook_secret. Hardcoded in tests; never log it.
+const webhookSignedSecret = "test-secret"
 
 type user struct {
 	id     string
@@ -75,6 +83,7 @@ func main() {
 	r.HandleFunc("/verify-email", state.verifyEmail).Methods(http.MethodPost)
 	r.HandleFunc("/markers", state.createMarker).Methods(http.MethodPost)
 	r.HandleFunc("/markers/{id}", state.getMarker).Methods(http.MethodGet)
+	r.HandleFunc("/webhook/signed", state.signedWebhook).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts/{id}", state.getPost).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts/{id}", state.deletePost).Methods(http.MethodDelete)
@@ -351,6 +360,96 @@ func (s *serverState) createMarker(w http.ResponseWriter, req *http.Request) {
 	s.mu.Unlock()
 
 	writeJSON(w, http.StatusCreated, body)
+}
+
+// signedWebhook validates an HMAC-SHA256 signed POST against the shared
+// secret. It expects an X-Anchorify-Signature header formatted as
+// "t=<unix>,v1=<hex>" and computes its own digest over "<t>.<raw_body>" to
+// compare in constant time. Timestamps outside a ±5 minute window are
+// rejected as expired. Error responses never echo back the expected
+// signature so the secret is never reflected in test output.
+func (s *serverState) signedWebhook(w http.ResponseWriter, req *http.Request) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot read body"})
+
+		return
+	}
+
+	header := req.Header.Get("X-Anchorify-Signature")
+	if header == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "missing signature"})
+
+		return
+	}
+
+	tsStr, sigStr, ok := parseSignatureHeader(header)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid signature header"})
+
+		return
+	}
+
+	ts, err := strconv.ParseInt(tsStr, 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid timestamp"})
+
+		return
+	}
+
+	skew := time.Now().Unix() - ts
+	if skew < 0 {
+		skew = -skew
+	}
+
+	if skew > 300 {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "expired"})
+
+		return
+	}
+
+	mac := hmac.New(sha256.New, []byte(webhookSignedSecret))
+	mac.Write([]byte(tsStr + "." + string(body)))
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	if !hmac.Equal([]byte(expected), []byte(sigStr)) {
+		writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"error": "invalid signature"})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// parseSignatureHeader splits an "t=<unix>,v1=<hex>" header. It tolerates
+// the parts arriving in either order and ignores unknown keys.
+func parseSignatureHeader(value string) (string, string, bool) {
+	var (
+		ts  string
+		sig string
+	)
+
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+
+		k, v, found := strings.Cut(part, "=")
+		if !found {
+			continue
+		}
+
+		switch k {
+		case "t":
+			ts = v
+		case "v1":
+			sig = v
+		}
+	}
+
+	if ts == "" || sig == "" {
+		return "", "", false
+	}
+
+	return ts, sig, true
 }
 
 // getMarker returns a marker previously stored by createMarker.

@@ -1,0 +1,38 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# Asserts end to end that an HMAC mismatch on the signed webhook endpoint
+# surfaces as a step failure (the server returns 401, the step expects
+# 200, the .tales run exits 1). Pinning this path matters: silent
+# acceptance of a wrong signature would defeat the whole feature.
+scenario "Signed webhook bad signature" {
+  tags = ["http", "webhook", "signature", "failure"]
+
+  step "http" "send_bad_signature" {
+    vars {
+      ts   = now_unix()
+      body = jsonencode({ id = "evt-bad", type = "test" })
+    }
+
+    request {
+      method = "POST"
+      url    = "${config.base_url}/webhook/signed"
+
+      headers = {
+        Content-Type          = "application/json"
+        X-Anchorify-Signature = "t=${vars.ts},v1=deadbeef"
+      }
+
+      body {
+        raw = vars.body
+      }
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}
