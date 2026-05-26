@@ -68,6 +68,10 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 		collect(step.When)
 	}
 
+	for _, v := range step.Vars {
+		collect(v.Expr)
+	}
+
 	collectRequestRefs(step.Request, collect)
 	collectExpectRefs(step.Expect, collect)
 

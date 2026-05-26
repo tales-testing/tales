@@ -296,6 +296,43 @@ scenario "vars" {
 	}
 }
 
+func TestLoadPathVarsForwardResultReferenceIsRejected(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "vars" {
+  step "http" "first" {
+    vars {
+      forward = result.second.value
+    }
+    request {
+      method = "GET"
+      url    = "http://example.test"
+    }
+  }
+  step "http" "second" {
+    request {
+      method = "GET"
+      url    = "http://example.test"
+    }
+    capture {
+      value = "x"
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeVarsTale(t, content))
+	if !diags.HasErrors() {
+		t.Fatalf("expected forward result.<step> reference error")
+	}
+
+	if !strings.Contains(diags.Error(), "defined later") {
+		t.Fatalf("expected 'defined later' diagnostic, got: %s", diags.Error())
+	}
+}
+
 func TestLoadPathVarsAvailableInExpectAndCapture(t *testing.T) {
 	t.Parallel()
 

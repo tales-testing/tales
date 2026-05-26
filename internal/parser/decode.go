@@ -481,6 +481,11 @@ func stringToDuration(value cty.Value) (time.Duration, error) {
 // decodeStepVars decodes a vars block while preserving the textual
 // declaration order of its attributes. The runtime relies on this order so
 // that later vars can read earlier ones via vars.<name>.
+//
+// .tales files always parse to a *hclsyntax.Body (HCL native syntax). Any
+// other body type cannot expose attribute source ordering, so rather than
+// silently sorting alphabetically — which would break the documented
+// declaration-order contract — we emit a diagnostic and refuse to decode.
 func decodeStepVars(path string, raw *varsBlock) ([]model.StepVar, hcl.Diagnostics) {
 	if raw == nil {
 		return nil, nil
@@ -490,27 +495,14 @@ func decodeStepVars(path string, raw *varsBlock) ([]model.StepVar, hcl.Diagnosti
 
 	syntaxBody, ok := raw.Body.(*hclsyntax.Body)
 	if !ok {
-		attrs, attrDiags := raw.Body.JustAttributes()
-		diags = append(diags, attrDiags...)
+		bodyRange := raw.Body.MissingItemRange()
+		diags = append(diags, diagError(
+			"Unsupported vars body type",
+			"vars blocks require HCL native syntax to preserve attribute declaration order; non-native bodies (e.g. JSON) are not supported.",
+			&bodyRange,
+		))
 
-		names := make([]string, 0, len(attrs))
-		for name := range attrs {
-			names = append(names, name)
-		}
-
-		sort.Strings(names)
-
-		result := make([]model.StepVar, 0, len(names))
-
-		for _, name := range names {
-			attr := attrs[name]
-			result = append(result, model.StepVar{
-				Name: name,
-				Expr: model.Expression{Expr: attr.Expr, File: path, Line: attr.Range.Start.Line},
-			})
-		}
-
-		return result, diags
+		return nil, diags
 	}
 
 	for _, block := range syntaxBody.Blocks {
