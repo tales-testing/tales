@@ -91,6 +91,53 @@ e2e: build
 	done; \
 	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 4 --report-junit $(BUILD_DIR)/reports/e2e.junit.xml --report-jsonl $(BUILD_DIR)/reports/e2e.jsonl ./e2e/pass
 
+# SQL e2e infra. Local docker-compose remaps ports (5433/3307) to avoid host
+# conflicts; CI uses default ports through GitHub Actions services.
+SQL_COMPOSE_FILE ?= docker-compose.yml
+LOCAL_POSTGRES_DSN ?= postgres://tales:tales@127.0.0.1:5433/tales?sslmode=disable
+LOCAL_MYSQL_DSN    ?= tales:tales@tcp(127.0.0.1:3307)/tales?parseTime=true
+
+.PHONY: sql-up sql-down e2e-sql
+sql-up:
+	@docker compose -f $(SQL_COMPOSE_FILE) up -d
+	@echo "Waiting for postgres + mysql to become healthy..."
+	@for i in $$(seq 1 60); do \
+	  pg=$$(docker compose -f $(SQL_COMPOSE_FILE) ps --format json postgres | grep -o '"Health":"[^"]*"' | head -n1); \
+	  my=$$(docker compose -f $(SQL_COMPOSE_FILE) ps --format json mysql    | grep -o '"Health":"[^"]*"' | head -n1); \
+	  if echo "$$pg" | grep -q healthy && echo "$$my" | grep -q healthy; then \
+	    echo "postgres + mysql healthy ($${i}s)"; exit 0; \
+	  fi; \
+	  sleep 1; \
+	done; echo "containers did not become healthy"; exit 1
+
+sql-down:
+	@docker compose -f $(SQL_COMPOSE_FILE) down -v
+
+e2e-sql: build sql-up
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	BASE_URL=http://localhost:1337 \
+	POSTGRES_DSN="$(LOCAL_POSTGRES_DSN)" MYSQL_DSN="$(LOCAL_MYSQL_DSN)" \
+	  $(TALES_BIN) test --seed 1234 --parallel 4 \
+	    --report-junit $(BUILD_DIR)/reports/e2e-sql.junit.xml \
+	    --report-jsonl $(BUILD_DIR)/reports/e2e-sql.jsonl \
+	    ./e2e/pass
+
 .PHONY: check-ios-host
 check-ios-host:
 	@if [ "$$(uname -s)" != "Darwin" ]; then \

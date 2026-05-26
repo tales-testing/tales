@@ -129,12 +129,17 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 	steps := make([]*model.Step, 0, len(rawSteps))
 
 	for _, rs := range rawSteps {
+		when := model.Expression{}
+		if exprIsSet(rs.When) {
+			when = expr(path, rs.When)
+		}
+
 		step := &model.Step{
 			Provider:  rs.Provider,
 			Name:      rs.Name,
 			File:      path,
 			DependsOn: append([]string(nil), rs.DependsOn...),
-			When:      expr(path, rs.When),
+			When:      when,
 			Capture:   map[string]model.Expression{},
 		}
 		if rs.When != nil {

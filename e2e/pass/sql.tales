@@ -1,0 +1,196 @@
+version = 1
+
+config {
+  sql = {
+    connections = {
+      pg = {
+        driver = "postgres"
+        dsn    = env("POSTGRES_DSN", "")
+      }
+      my = {
+        driver = "mysql"
+        dsn    = env("MYSQL_DSN", "")
+      }
+    }
+  }
+}
+
+scenario "Postgres setup, query, teardown" {
+  tags = ["sql", "postgres"]
+
+  skip_unless {
+    env_set = ["POSTGRES_DSN"]
+    reason  = "POSTGRES_DSN must point at a reachable PostgreSQL for this scenario to run"
+  }
+
+  step "sql" "drop_existing" {
+    connection = "pg"
+
+    exec {
+      sql = "DROP TABLE IF EXISTS tales_orgs"
+    }
+  }
+
+  step "sql" "create_table" {
+    connection = "pg"
+
+    exec {
+      sql = "CREATE TABLE tales_orgs (id TEXT PRIMARY KEY, vip BOOLEAN NOT NULL DEFAULT FALSE)"
+    }
+  }
+
+  step "sql" "insert_org" {
+    connection = "pg"
+
+    exec {
+      sql  = "INSERT INTO tales_orgs (id, vip) VALUES ($1, $2)"
+      args = ["org_123", false]
+    }
+
+    expect {
+      json = {
+        rows_affected = 1
+      }
+    }
+  }
+
+  step "sql" "make_org_vip" {
+    connection = "pg"
+
+    exec {
+      sql  = "UPDATE tales_orgs SET vip = $1 WHERE id = $2"
+      args = [true, "org_123"]
+    }
+
+    expect {
+      json = {
+        rows_affected = 1
+      }
+    }
+  }
+
+  step "sql" "get_org" {
+    connection = "pg"
+
+    query {
+      sql  = "SELECT id, vip FROM tales_orgs WHERE id = $1"
+      args = ["org_123"]
+    }
+
+    expect {
+      json = {
+        row_count = 1
+        rows = [
+          {
+            id  = "org_123"
+            vip = true
+          },
+        ]
+      }
+    }
+
+    capture {
+      vip = response.json.rows[0].vip
+    }
+  }
+
+  teardown {
+    step "sql" "drop_table" {
+      connection = "pg"
+
+      exec {
+        sql = "DROP TABLE IF EXISTS tales_orgs"
+      }
+    }
+  }
+}
+
+scenario "MySQL setup, query, teardown" {
+  tags = ["sql", "mysql"]
+
+  skip_unless {
+    env_set = ["MYSQL_DSN"]
+    reason  = "MYSQL_DSN must point at a reachable MySQL server for this scenario to run"
+  }
+
+  step "sql" "drop_existing" {
+    connection = "my"
+
+    exec {
+      sql = "DROP TABLE IF EXISTS tales_orgs"
+    }
+  }
+
+  step "sql" "create_table" {
+    connection = "my"
+
+    exec {
+      sql = "CREATE TABLE tales_orgs (id VARCHAR(64) PRIMARY KEY, vip TINYINT(1) NOT NULL DEFAULT 0)"
+    }
+  }
+
+  step "sql" "insert_org" {
+    connection = "my"
+
+    exec {
+      sql  = "INSERT INTO tales_orgs (id, vip) VALUES (?, ?)"
+      args = ["org_123", false]
+    }
+
+    expect {
+      json = {
+        rows_affected = 1
+      }
+    }
+  }
+
+  step "sql" "make_org_vip" {
+    connection = "my"
+
+    exec {
+      sql  = "UPDATE tales_orgs SET vip = ? WHERE id = ?"
+      args = [true, "org_123"]
+    }
+
+    expect {
+      json = {
+        rows_affected = 1
+      }
+    }
+  }
+
+  step "sql" "get_org" {
+    connection = "my"
+
+    query {
+      sql  = "SELECT id, vip FROM tales_orgs WHERE id = ?"
+      args = ["org_123"]
+    }
+
+    expect {
+      json = {
+        row_count = 1
+        rows = [
+          {
+            id  = "org_123"
+            vip = 1
+          },
+        ]
+      }
+    }
+
+    capture {
+      vip = response.json.rows[0].vip
+    }
+  }
+
+  teardown {
+    step "sql" "drop_table" {
+      connection = "my"
+
+      exec {
+        sql = "DROP TABLE IF EXISTS tales_orgs"
+      }
+    }
+  }
+}
