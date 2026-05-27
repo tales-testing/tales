@@ -1,16 +1,16 @@
 // Example skeleton for a future French translation of the landing page.
 // Copy this file to `fr.ts`, fill in the translations, and update the landing
 // page to switch dictionaries based on the visitor locale. The structure
-// must mirror `en.ts` exactly — every key in `en.ts` must exist here.
+// must mirror `en.ts` exactly, every key in `en.ts` must exist here.
 //
 // This file is .ts.example so it isn't imported by accident and so the
 // TypeScript compiler ignores it.
 
 export default {
 	meta: {
-		title: 'Tales — Tests end-to-end déclaratifs en un seul binaire Go',
+		title: 'Tales, Tests end-to-end déclaratifs en un seul binaire Go',
 		description:
-			'Tests end-to-end, écrits une fois, rejouables pour toujours — en un seul binaire Go.',
+			'Tests end-to-end, écrits une fois, rejouables pour toujours, en un seul binaire Go.',
 	},
 
 	nav: {
@@ -21,7 +21,7 @@ export default {
 
 	hero: {
 		eyebrow: 'Tests d\'intégration, réinventés',
-		headline: 'Tests end-to-end, écrits une fois, rejouables pour toujours — en un seul binaire Go.',
+		headline: 'Tests end-to-end, écrits une fois, rejouables pour toujours, en un seul binaire Go.',
 		subhead: '',
 		ctaPrimary: 'Commencer',
 		ctaSecondary: 'Voir sur GitHub',

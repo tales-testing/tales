@@ -62,7 +62,7 @@ step "http" "get_user" {
 }
 ```
 
-You can mix capture references with literal values, env vars, generators, etc. — anywhere an expression is valid.
+You can mix capture references with literal values, env vars, generators, etc., anywhere an expression is valid.
 
 ## What you can capture
 
@@ -83,7 +83,7 @@ capture {
   # Status code (rarely useful but possible)
   status     = response.status_code
 
-  # Echoes of the request — useful for tests that round-trip
+  # Echoes of the request, useful for tests that round-trip
   sent_email = request.body.json.email
 
   # Computed values
@@ -91,9 +91,9 @@ capture {
 }
 ```
 
-For SQL steps, `response.json.rows[i].<column>` works the same way — see [SQL provider](/docs/providers/sql/) for the row shape.
+For SQL steps, `response.json.rows[i].<column>` works the same way, see [SQL provider](/docs/providers/sql/) for the row shape.
 
-For mobile steps, the runtime injects two extra helpers — `value("id")` and `text("id")` — which read the current accessibility tree:
+For mobile steps, the runtime injects two extra helpers, `value("id")` and `text("id")`, which read the current accessibility tree:
 
 ```hcl
 capture {
@@ -128,13 +128,13 @@ The same applies to `depends_on`. Source order is the source of truth.
 
 ## Captures across scenarios
 
-Captures **never cross scenario boundaries**. Each scenario starts with an empty `result` namespace. To share state between scenarios, persist it externally (database row, file, env var injected at the suite level) — or, more often, refactor the dependency into a [keyword](/docs/writing-scenarios/keywords/).
+Captures **never cross scenario boundaries**. Each scenario starts with an empty `result` namespace. To share state between scenarios, persist it externally (database row, file, env var injected at the suite level), or, more often, refactor the dependency into a [keyword](/docs/writing-scenarios/keywords/).
 
 ## Captures and skip cascade
 
-If a step is skipped (via `skip_if`, `skip_unless`, or because a dependency failed/skipped), its `capture` block does not run. Any downstream step referencing `result.<skipped_step>.<key>` is automatically skipped with a `depends on skipped step "..."` reason — see [Conditional execution](/docs/writing-scenarios/conditional-execution/#cascade).
+If a step is skipped (via `skip_if`, `skip_unless`, or because a dependency failed/skipped), its `capture` block does not run. Any downstream step referencing `result.<skipped_step>.<key>` is automatically skipped with a `depends on skipped step "..."` reason, see [Conditional execution](/docs/writing-scenarios/conditional-execution/#cascade).
 
-This means you can write naïve downstream steps without defensive `can(...)` checks — the cascade handles it for you.
+This means you can write naïve downstream steps without defensive `can(...)` checks, the cascade handles it for you.
 
 <Aside type="tip" title="Defensive teardown">
 	The one place to use `can(result.foo.id)` is in `teardown` steps. Teardown always runs, even when the main flow fails before producing the capture. Wrap delete / cleanup operations in `when = can(result.create_user.id)` so they no-op when there's nothing to clean up.

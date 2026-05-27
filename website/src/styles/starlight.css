@@ -1,15 +1,15 @@
-/* Tales — Starlight CSS variable overrides
+/* Tales / Starlight CSS variable overrides
  * Maps Starlight's --sl-color-* tokens onto our Slate + Violet palette.
  * Reference: https://starlight.astro.build/guides/css-and-tailwind/#theming
  */
 
 :root {
-	/* Brand accent — violet */
+	/* Brand accent: violet */
 	--sl-color-accent-low: #2e1065;
 	--sl-color-accent: #8b5cf6;
 	--sl-color-accent-high: #c4b5fd;
 
-	/* Greys — slate */
+	/* Greys: slate */
 	--sl-color-white: #f1f5f9;
 	--sl-color-gray-1: #e2e8f0;
 	--sl-color-gray-2: #cbd5e1;
@@ -50,7 +50,7 @@
 	--sl-nav-height: 4rem;
 }
 
-/* Light mode — kept for visitors who switch */
+/* Light mode: kept for visitors who switch */
 :root[data-theme='light'] {
 	--sl-color-accent-low: #ede9fe;
 	--sl-color-accent: #7c3aed;

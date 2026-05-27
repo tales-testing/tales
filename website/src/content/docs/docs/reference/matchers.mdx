@@ -1,6 +1,6 @@
 ---
 title: Matchers
-description: Assertion matchers — contains, matches, optional, required, any, is_*, one_of, can, exists, not_exists.
+description: Assertion matchers, contains, matches, optional, required, any, is_*, one_of, can, exists, not_exists.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -75,7 +75,7 @@ These describe the *presence* of a JSON key, not its value.
 
 ### `required(<inner>)`
 
-Explicit "this key must be present". The default behaviour for keys you write in `expect.json` — `required()` just makes the intent visible.
+Explicit "this key must be present". The default behaviour for keys you write in `expect.json`, `required()` just makes the intent visible.
 
 ```hcl
 json = {
@@ -141,7 +141,7 @@ expect {
 
 Use `strict` for API contracts where unexpected fields signal a regression.
 
-## Soft probe — `can(expr)`
+## Soft probe, `can(expr)`
 
 `can(expr)` evaluates `expr` and returns `true` if it succeeded without error, `false` if it threw. Use it in `when` clauses to gate on the *presence* of an upstream capture without writing fragile null checks.
 
@@ -187,8 +187,8 @@ headers = {
 
 A few things that *look* like matchers but aren't:
 
-- `generate("name")` — produces a value, not a predicate.
-- `env("NAME")` — reads env, produces a value.
-- `jsonencode(v)`, `hmac_sha256_hex(k, m)`, `regex_find(s, p)` — value-producing helpers, not predicates.
+- `generate("name")`, produces a value, not a predicate.
+- `env("NAME")`, reads env, produces a value.
+- `jsonencode(v)`, `hmac_sha256_hex(k, m)`, `regex_find(s, p)`, value-producing helpers, not predicates.
 
-If you find yourself writing `json = { field = generate("x") }`, you're asserting the field equals a generated value — that works because generators are deterministic, but the test will break if the generator config changes. Capture the value once and reference the capture instead.
+If you find yourself writing `json = { field = generate("x") }`, you're asserting the field equals a generated value, that works because generators are deterministic, but the test will break if the generator config changes. Capture the value once and reference the capture instead.

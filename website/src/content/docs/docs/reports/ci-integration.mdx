@@ -1,6 +1,6 @@
 ---
 title: CI integration
-description: Drop-in recipes for running Tales on GitHub Actions, GitLab CI, and CircleCI — with JUnit, JSONL, and visual HTML artifacts.
+description: Drop-in recipes for running Tales on GitHub Actions (with the official setup-tales-action), GitLab CI, and CircleCI. JUnit, JSONL, and visual HTML artifacts included.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
@@ -13,9 +13,32 @@ This page shows minimal but production-ready recipes for the three most common C
 
 A complete Tales job has three concerns:
 
-1. **Install the binary** (one of: release archive, `go install`, source build).
+1. **Install the binary** (Homebrew, the [`tales-testing/setup-tales-action`](https://github.com/tales-testing/setup-tales-action) GitHub Action, the release archive, `go install`, or a source build).
 2. **Run the suite** with a deterministic seed, a sensible parallelism, and outputs for all three reporters.
-3. **Publish artifacts** — JUnit for the dashboard, the HTML report and JSONL for forensic debugging.
+3. **Publish artifacts**: JUnit for the dashboard, the HTML report and JSONL for forensic debugging.
+
+## GitHub Action (recommended on GitHub)
+
+If you run on GitHub Actions, prefer the official [`tales-testing/setup-tales-action`](https://github.com/tales-testing/setup-tales-action) over `curl`-ing the release tarball. It pins a version, caches the binary, and exposes `tales` on `PATH` for subsequent steps.
+
+```yaml
+- name: Install Tales
+  uses: tales-testing/setup-tales-action@v1
+  with:
+    version: v0.1.0   # pin a tag in production. Use "latest" only for spike PRs.
+
+- name: Run scenarios
+  run: |
+    tales test ./e2e/pass \
+      --seed 1234 \
+      --parallel 8 \
+      --timeout 10m \
+      --report-junit ./reports/junit.xml \
+      --report-jsonl ./reports/events.jsonl \
+      --report-html  ./reports/visual.html
+```
+
+The GitHub Actions recipe below uses the action; the `curl`-based fallback is kept for environments that cannot reach the marketplace.
 
 ## Recipes
 
@@ -46,11 +69,9 @@ A complete Tales job has three concerns:
 		      - uses: actions/checkout@v4
 
 		      - name: Install Tales
-		        run: |
-		          curl -fsSL -o tales.tar.gz \
-		            https://github.com/hyperxlab/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
-		          tar -xzf tales.tar.gz
-		          install -m 0755 tales /usr/local/bin/tales
+		        uses: tales-testing/setup-tales-action@v1
+		        with:
+		          version: latest
 
 		      - name: Run tests
 		        env:
@@ -96,7 +117,7 @@ A complete Tales job has three concerns:
 		    BASE_URL:     http://localhost:1337
 		  before_script:
 		    - apt-get update && apt-get install -y curl ca-certificates
-		    - curl -fsSL -o tales.tar.gz https://github.com/hyperxlab/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
+		    - curl -fsSL -o tales.tar.gz https://github.com/tales-testing/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
 		    - tar -xzf tales.tar.gz
 		    - install -m 0755 tales /usr/local/bin/tales
 		  script:
@@ -134,7 +155,7 @@ A complete Tales job has three concerns:
 		          name: Install Tales
 		          command: |
 		            curl -fsSL -o tales.tar.gz \
-		              https://github.com/hyperxlab/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
+		              https://github.com/tales-testing/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
 		            tar -xzf tales.tar.gz
 		            sudo install -m 0755 tales /usr/local/bin/tales
 		      - run:
@@ -170,10 +191,10 @@ tales test ./e2e/pass --seed 1234
 A fixed seed means:
 
 - Every run produces the same generated data (emails, passwords, IDs).
-- A red CI build is replayable locally — copy the seed, copy the command, get the same failure.
+- A red CI build is replayable locally: copy the seed, copy the command, get the same failure.
 - Flake hunting becomes a deterministic exercise instead of a guessing game.
 
-If you want to *guarantee* coverage across different generated values, run the suite twice with two different seeds in a matrix — but keep the seeds explicit, not random.
+If you want to *guarantee* coverage across different generated values, run the suite twice with two different seeds in a matrix, but keep the seeds explicit, not random.
 
 ## Parallelism
 
@@ -181,7 +202,7 @@ If you want to *guarantee* coverage across different generated values, run the s
 
 ## Timeout
 
-Always set `--timeout` in CI. A hung simulator or unreachable database will otherwise sit on a worker until the CI system kills the entire job — with no clue which scenario stalled.
+Always set `--timeout` in CI. A hung simulator or unreachable database will otherwise sit on a worker until the CI system kills the entire job, with no clue which scenario stalled.
 
 ```bash
 --timeout 10m
@@ -201,5 +222,5 @@ When the timeout fires, Tales prints the list of in-flight scenarios and exits w
 Wire your CI to treat any non-zero exit code as failure.
 
 <Aside type="tip" title="One JUnit reporter, multiple log surfaces">
-	The JUnit XML lives in the dashboard for quick triage. The JSONL is what you grep with `jq` for "show me every step that took more than 1s last week". The HTML report is what you share with a teammate when you need to explain a mobile failure. Generate all three — they cost nothing extra and you'll thank yourself the next time a test goes red.
+	The JUnit XML lives in the dashboard for quick triage. The JSONL is what you grep with `jq` for "show me every step that took more than 1s last week". The HTML report is what you share with a teammate when you need to explain a mobile failure. Generate all three: they cost nothing extra and you'll thank yourself the next time a test goes red.
 </Aside>

@@ -4,9 +4,9 @@
 
 export default {
 	meta: {
-		title: 'Tales — Declarative end-to-end testing in a single Go binary',
+		title: 'Tales: declarative end-to-end testing in a single Go binary',
 		description:
-			'End-to-end tests, written once, replayable forever — in a single Go binary. HCL2 syntax, deterministic faker, HTTP + SQL + iOS providers, visual HTML report.',
+			'End-to-end tests, written once, replayable forever, in a single Go binary. An open-source alternative to Robot Framework, Karate, and Venom, with HCL2 syntax, deterministic faker, HTTP + SQL + iOS providers, and a visual HTML report.',
 	},
 
 	nav: {
@@ -18,9 +18,9 @@ export default {
 	hero: {
 		eyebrow: 'Integration testing, reinvented',
 		headline:
-			'End-to-end tests, written once, replayable forever — in a single Go binary.',
+			'End-to-end tests, written once, replayable forever, in a single Go binary.',
 		subhead:
-			'Tales is the integration testing tool we wished existed. No Python toolchain to babysit. No DSL that turns into a JavaScript codebase. One declarative HCL2 syntax, one seedable run, one tool for API, SQL, and iOS workflows.',
+			'Tales is the integration testing tool we wished existed. A modern alternative to Robot Framework, Karate, and Venom, without the Python toolchain to babysit, the JavaScript creep, or the YAML soup. One declarative HCL2 syntax, one seedable run, one tool for API, SQL, and iOS workflows.',
 		ctaPrimary: 'Get started',
 		ctaSecondary: 'View on GitHub',
 	},
@@ -47,7 +47,7 @@ export default {
 	why: {
 		title: 'Why Tales exists',
 		subtitle:
-			'Built after years of fighting the same problems with Robot Framework and Karate.',
+			'Built after years of fighting the same problems with Robot Framework, Karate, and Venom.',
 		items: [
 			{
 				title: 'No Python env to babysit',
@@ -55,11 +55,15 @@ export default {
 			},
 			{
 				title: 'No DSL-meets-JavaScript creep',
-				body: 'Karate scenarios tend to grow JavaScript blocks until they are a codebase. Tales is fully declarative HCL2 with built-in functions, generators, and matchers — what you write is what you read.',
+				body: 'Karate scenarios tend to grow JavaScript blocks until they are a codebase. Tales is fully declarative HCL2 with built-in functions, generators, and matchers: what you write is what you read.',
+			},
+			{
+				title: 'No YAML soup either',
+				body: 'Venom and similar YAML-driven runners get hard to read once scenarios chain captures and conditionals. HCL2 keeps the same declarative spirit, but with typed values, comments, and expressions that scale to real workflows.',
 			},
 			{
 				title: 'API, SQL, iOS in one runner',
-				body: 'Stop juggling separate tools for HTTP, database fixtures, and mobile UI tests. Tales runs them in the same scenario file, with the same syntax, in the same report.',
+				body: 'Stop juggling separate tools for HTTP, database state, and mobile UI tests. Tales runs them in the same scenario file, with the same syntax, in the same report. Android and web browser providers are on the roadmap.',
 			},
 		],
 	},
@@ -74,7 +78,7 @@ export default {
 			},
 			{
 				title: 'Declarative HCL2',
-				body: 'Readable scenarios that diff cleanly. The DSL is the test — no callbacks, no glue code, no JavaScript escape hatch.',
+				body: 'Readable scenarios that diff cleanly. The DSL is the test: no callbacks, no glue code, no JavaScript escape hatch.',
 			},
 			{
 				title: 'Deterministic faker',
@@ -86,7 +90,7 @@ export default {
 			},
 			{
 				title: 'HTTP / SQL / iOS providers',
-				body: 'Drive your API, seed your database (Postgres, MySQL), tap through a real iOS simulator — all from one tool.',
+				body: 'Drive your API, set up database state (Postgres, MySQL), tap through a real iOS simulator: all from one tool. Android and web browser providers are on the roadmap.',
 			},
 			{
 				title: 'Parallel by default',
@@ -106,7 +110,7 @@ export default {
 	quickstart: {
 		title: 'See it in 30 seconds',
 		subtitle:
-			'Three tabs — a scenario, the command that runs it, the report your CI gets.',
+			'Three tabs: a scenario, the command that runs it, the report your CI gets.',
 		tabs: {
 			scenario: 'Scenario',
 			cli: 'CLI',
@@ -204,7 +208,7 @@ HTML report: ./reports/visual.html`,
 
 	useCases: {
 		title: 'Built for real-world test problems',
-		subtitle: 'Pick a starting point — every use case is one binary away.',
+		subtitle: 'Pick a starting point. Every use case is one binary away.',
 		items: [
 			{
 				tag: 'API',
@@ -227,8 +231,8 @@ HTML report: ./reports/visual.html`,
 			},
 			{
 				tag: 'SQL',
-				title: 'Database fixtures',
-				body: 'Set up and tear down database state alongside your HTTP scenarios. Postgres and MySQL, scalar args with int64 precision, DSNs masked in reports.',
+				title: 'Database hooks',
+				body: 'Run plain SQL statements (Postgres or MySQL) inside a scenario to flip a flag, seed a row, or read internal state the public API does not expose. Not a migration tool, not a fixture loader: a thin escape hatch alongside your HTTP assertions.',
 				snippet: `config {
   sql {
     connections {
@@ -249,7 +253,7 @@ step "sql" "insert_org" {
 			{
 				tag: 'Mobile',
 				title: 'iOS smoke tests',
-				body: 'Drive a real iOS simulator with an embedded XCUITest driver — zero Swift code to write, no test target to maintain. Visual report shows every tap.',
+				body: 'Drive a real iOS simulator with an embedded XCUITest driver: zero Swift code to write, no test target to maintain. Visual report shows every tap. Android is on the roadmap.',
 				snippet: `step "mobile" "fill_login" {
   platform = "ios"
   target   = "iphone"
@@ -280,25 +284,37 @@ step "sql" "insert_org" {
 
 	determinism: {
 		title: 'Same seed. Same data. Every run.',
-		body: 'Tales generators are seeded — pass `--seed 1234` once and your CI gets the same emails, passwords, person names, and IDs as your laptop. No more "works on my machine". No more rerunning a CI job five times hoping the flake goes away.',
+		body: 'Tales generators are seeded: pass `--seed 1234` once and your CI gets the same emails, passwords, person names, and IDs as your laptop. No more "works on my machine". No more rerunning a CI job five times hoping the flake goes away.',
 		bullet1: 'A single `--seed` flag controls every faker call across every scenario.',
-		bullet2: 'Generator outputs are mixed with scenario, step, and generator names — so identical runs produce identical values even under `--parallel`.',
+		bullet2: 'Generator outputs are mixed with scenario, step, and generator names, so identical runs produce identical values even under `--parallel`.',
 		bullet3: 'Reproduce a red CI build by copying its seed into your local command line. The data lines up byte for byte.',
 	},
 
 	install: {
 		title: 'Install Tales',
-		subtitle: 'Two paths. Pick whichever fits your stack.',
+		subtitle: 'Four ways in. Pick whichever fits your stack.',
+		homebrew: {
+			title: 'Homebrew (macOS / Linux)',
+			body: 'The fastest path on a laptop. Linux and macOS, amd64 and arm64.',
+			code: 'brew install tales-testing/tap/tales',
+		},
 		fromRelease: {
 			title: 'Pre-built binary',
 			body: 'Grab the latest release tarball for Linux or macOS (amd64 / arm64) from GitHub Releases.',
-			href: 'https://github.com/hyperxlab/tales/releases',
+			href: 'https://github.com/tales-testing/tales/releases',
 			cta: 'Open releases',
 		},
 		fromSource: {
 			title: 'Build from source',
 			body: 'You will need Go 1.26+. The Makefile handles the rest.',
-			code: 'git clone https://github.com/hyperxlab/tales\ncd tales\nmake install',
+			code: 'git clone https://github.com/tales-testing/tales\ncd tales\nmake install',
+		},
+		githubAction: {
+			title: 'GitHub Action',
+			body: 'Drop one step into your workflow to pin and install Tales on the runner. Used by the example CI recipes.',
+			code: '- uses: tales-testing/setup-tales-action@v1\n  with:\n    version: latest',
+			href: 'https://github.com/tales-testing/setup-tales-action',
+			cta: 'View on GitHub',
 		},
 	},
 
@@ -318,10 +334,10 @@ step "sql" "insert_org" {
 			{
 				title: 'Project',
 				links: [
-					{ label: 'GitHub', href: 'https://github.com/hyperxlab/tales' },
-					{ label: 'Releases', href: 'https://github.com/hyperxlab/tales/releases' },
-					{ label: 'Issues', href: 'https://github.com/hyperxlab/tales/issues' },
-					{ label: 'License (MIT)', href: 'https://github.com/hyperxlab/tales/blob/master/LICENSE.md' },
+					{ label: 'GitHub', href: 'https://github.com/tales-testing/tales' },
+					{ label: 'Releases', href: 'https://github.com/tales-testing/tales/releases' },
+					{ label: 'Issues', href: 'https://github.com/tales-testing/tales/issues' },
+					{ label: 'License (MIT)', href: 'https://github.com/tales-testing/tales/blob/master/LICENSE.md' },
 				],
 			},
 		],

@@ -1,11 +1,11 @@
 ---
 title: Keywords
-description: Reusable flows with typed inputs and named outputs — defined once, called from any scenario.
+description: Reusable flows with typed inputs and named outputs, defined once, called from any scenario.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-A `keyword` is a reusable flow — a named bundle of steps with declared inputs and outputs that any scenario can call. Use keywords to factor out the boilerplate that several scenarios share: a login flow, a "create tenant + admin user" bootstrap, a "verify email + claim password" handshake.
+A `keyword` is a reusable flow, a named bundle of steps with declared inputs and outputs that any scenario can call. Use keywords to factor out the boilerplate that several scenarios share: a login flow, a "create tenant + admin user" bootstrap, a "verify email + claim password" handshake.
 
 Keywords keep .tales suites DRY without dragging in a templating engine: they are part of the DSL, evaluated by the runner, with the same expression semantics as a scenario.
 
@@ -47,7 +47,7 @@ keyword "authenticate" {
 A keyword takes:
 
 - An `inputs { ... }` block declaring typed parameters. Types are HCL types (`string`, `number`, `bool`, `list(...)`, `map(...)`).
-- One or more `step` blocks — the same syntax as inside a scenario, with their own `capture`, `retry`, `vars`, etc.
+- One or more `step` blocks, the same syntax as inside a scenario, with their own `capture`, `retry`, `vars`, etc.
 - An `outputs { ... }` block declaring named values exposed to the caller.
 
 Inputs are accessible via `input.<name>` (or `input.inputs.<name>`) anywhere in the keyword body. Outputs are evaluated *after* the keyword's steps complete and are exposed to the caller as `result.<call_name>.<output_name>`.
@@ -150,7 +150,7 @@ keyword "register_and_login" {
 
 ## Skip rules and keywords
 
-`skip_if` / `skip_unless` on a `keyword` step gate the **call**, not the keyword definition. The keyword's internal steps cannot have their own skip rules independent of the call site — keep complex conditional logic out of keywords and at the scenario level.
+`skip_if` / `skip_unless` on a `keyword` step gate the **call**, not the keyword definition. The keyword's internal steps cannot have their own skip rules independent of the call site, keep complex conditional logic out of keywords and at the scenario level.
 
 <Aside type="tip" title="Keep keywords focused">
 	A good keyword does one thing well: log in, create a tenant, send a signed webhook. If a keyword starts to feel like a mini-scenario with branching logic, that is a signal to split it into two smaller keywords and let the caller compose them.

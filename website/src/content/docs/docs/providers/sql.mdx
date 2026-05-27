@@ -1,23 +1,27 @@
 ---
 title: SQL (PostgreSQL / MySQL)
-description: The Tales SQL provider — connection configuration, exec / query steps, DSN masking, and limitations.
+description: The Tales SQL provider, an escape hatch for state your public API does not expose. Connection setup, exec / query steps, DSN masking, and limitations.
 ---
 
 import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
 
-The `sql` provider is a pragmatic helper for preparing and tearing down application state that is not exposed through the public HTTP / mobile API. It is **not** a replacement for those providers — use it to set up the preconditions, then verify the business behaviour through the same surface your users see.
+<Aside type="caution" title="Not a fixture loader. Not a migration tool.">
+  The `sql` provider is intentionally narrow: it runs arbitrary SQL statements inside a scenario so you can drive state your public API does not expose. It does **not** manage schema, load fixtures, snapshot tables, or seed datasets. Use a real migration tool (Atlas, Goose, sqlc, Flyway, Liquibase, etc.) for schema and bulk data, then use Tales SQL only as a thin escape hatch.
+</Aside>
+
+The `sql` provider lets a scenario reach into the database to perform the few operations the public HTTP / mobile API does not allow: flip an internal feature flag, bump a counter, mark an account as verified, or read back a server-side value that is never returned over the wire. Once that state is in place, the behaviour itself is asserted through the regular HTTP / UI surface, the same way a real user would experience it.
 
 ## When to use it
 
 <CardGrid>
 	<Card title="Use it for" icon="approve-check">
 		- Toggling internal flags the API does not let you mutate (`vip = true`, feature gates, throttling counters).
-		- Resetting or seeding a small number of rows for a specific scenario.
-		- Inspecting server state inside a `teardown` to make a clean cleanup decision.
+		- Flipping a single row from one state to another so the next HTTP step can observe a specific scenario.
+		- Inspecting server state inside a `teardown` to decide whether a cleanup step is still needed.
 	</Card>
 	<Card title="Don't use it for" icon="error">
-		- Asserting that the user-facing behaviour works — always pair a SQL setup with an HTTP / UI assertion that observes the visible effect.
-		- Bulk fixtures, migrations, schema management, snapshots — use a real migration tool.
+		- Loading fixtures, seeding datasets, applying migrations, managing schema, taking snapshots. That is your migration tool's job, not Tales.
+		- Asserting that the user-facing behaviour works. Always pair a SQL setup with an HTTP / UI assertion that observes the visible effect.
 		- Reading user-facing data through SQL "to be fast". The whole point of Tales is to pass through the same API a user does.
 	</Card>
 </CardGrid>
@@ -31,7 +35,7 @@ Tales V1 embeds two drivers:
 | `postgres` (or `pgx`) | `github.com/jackc/pgx/v5/stdlib`  | `$1`, `$2`   |
 | `mysql`               | `github.com/go-sql-driver/mysql`  | `?`          |
 
-Other drivers are rejected at runtime with `unsupported sql driver "<name>"`. Each step author writes the placeholder syntax their driver expects — Tales does not rewrite SQL between dialects.
+Other drivers are rejected at runtime with `unsupported sql driver "<name>"`. Each step author writes the placeholder syntax their driver expects. Tales does not rewrite SQL between dialects.
 
 ## Connection config
 
@@ -50,7 +54,7 @@ config {
 }
 ```
 
-`env("DATABASE_URL", "")` is the recommended pattern so the same suite can run locally (with a Docker container) and in CI (with a managed instance). Pair it with `skip_unless { env_set = ["DATABASE_URL"] }` if the SQL preconditions are optional — see [Conditional execution](/docs/writing-scenarios/conditional-execution/).
+`env("DATABASE_URL", "")` is the recommended pattern so the same suite can run locally (with a Docker container) and in CI (with a managed instance). Pair it with `skip_unless { env_set = ["DATABASE_URL"] }` if the SQL preconditions are optional. See [Conditional execution](/docs/writing-scenarios/conditional-execution/).
 
 <Aside type="note" title="DSNs are never copied into reports">
 	Only the connection name, driver alias, SQL text and arg *count* appear in the JSONL / HTML / JUnit outputs. The DSN itself is masked through a centralised `MaskDSN` helper and replaced with `***` in any wrapped error message.
@@ -60,10 +64,10 @@ config {
 
 Tales injects a default dial timeout into the DSN when none is set, so a missing or unreachable database fails fast instead of stalling on the OS TCP retry stack (~127s on Linux when SYN packets are dropped):
 
-- **MySQL** — `timeout=10s` is appended unless the DSN already carries `timeout=...`.
-- **Postgres** — `connect_timeout=10` is appended unless the DSN already carries `connect_timeout=...` (both URL and `key=value` flavors).
+- **MySQL**: `timeout=10s` is appended unless the DSN already carries `timeout=...`.
+- **Postgres**: `connect_timeout=10` is appended unless the DSN already carries `connect_timeout=...` (both URL and `key=value` flavors).
 
-The user-supplied value always wins. The first time a connection is used, Tales also runs a bounded `PingContext` (10s, or sooner if `--timeout` / per-step `request.timeout` is stricter) and surfaces a clear error if connectivity is broken — the connection is not cached when ping fails.
+The user-supplied value always wins. The first time a connection is used, Tales also runs a bounded `PingContext` (10s, or sooner if `--timeout` / per-step `request.timeout` is stricter) and surfaces a clear error if connectivity is broken. The connection is not cached when ping fails.
 
 ## Exec step
 
@@ -94,7 +98,7 @@ Exec response shape:
 ```
 
 - `rows_affected` is `null` when the driver does not support it (so suites using `one_of` or `optional(any())` still pass).
-- `last_insert_id` is `null` on PostgreSQL by design — use a `RETURNING` clause and a `query` step if you need the new id.
+- `last_insert_id` is `null` on PostgreSQL by design. Use a `RETURNING` clause and a `query` step if you need the new id.
 
 ## Query step
 
@@ -137,7 +141,7 @@ Query response shape:
 }
 ```
 
-- `rows` is a list of objects keyed by column name. Always alias your columns when joining two tables that share a name — duplicate column names fail the step with `duplicate SQL column "id"; use aliases in query`.
+- `rows` is a list of objects keyed by column name. Always alias your columns when joining two tables that share a name: duplicate column names fail the step with `duplicate SQL column "id"; use aliases in query`.
 - `[]byte` columns are decoded as UTF-8 strings; non-UTF-8 bytes cause an explicit error rather than silent corruption.
 - `time.Time` columns are returned as RFC3339Nano strings.
 - PostgreSQL `jsonb` columns come back as strings. Use HCL's `jsondecode(response.json.rows[0].metadata).field` to descend into them.
@@ -196,7 +200,7 @@ Lists, tuples and objects are rejected explicitly: `unsupported SQL arg type at 
 
 ## Security and masking
 
-- DSNs are masked through a centralised `MaskDSN` helper. They never appear in reports — only the connection name, driver alias, SQL text and the *count* of args do.
+- DSNs are masked through a centralised `MaskDSN` helper. They never appear in reports: only the connection name, driver alias, SQL text and the *count* of args do.
 - Error wrappers replace any embedded DSN substring with `***`.
 - Args are reported in `Output.Request.args` exactly as written. If a step binds a secret, mark the value as such on the call site (capture it from a previous step's response so it is never inlined in the `.tales` file).
 
@@ -210,5 +214,5 @@ SQL steps appear with `provider: "sql"` in the JSONL, JUnit and HTML reports. Th
 - No automatic placeholder rewriting between dialects. Write `$1` for Postgres and `?` for MySQL.
 - No transactions span multiple steps. Each step uses the shared `*sql.DB` pool.
 - Only scalar args (string / number / bool / null). Lists and objects are rejected at the runtime boundary.
-- `last_insert_id` is `null` on PostgreSQL — use `RETURNING` + query.
+- `last_insert_id` is `null` on PostgreSQL. Use `RETURNING` + query.
 - JSON columns are returned as strings; use `jsondecode(...)` if you need to walk them.

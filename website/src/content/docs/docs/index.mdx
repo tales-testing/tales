@@ -1,19 +1,19 @@
 ---
 title: Documentation
-description: The Tales documentation index — pick a section to dive in.
+description: The Tales documentation index, pick a section to dive in.
 ---
 
 import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 export const base = import.meta.env.BASE_URL;
 
-End-to-end tests, written once, replayable forever — in a single Go binary. Pick a section below, or start with the [introduction](/docs/getting-started/introduction/) if it's your first visit.
+End-to-end tests, written once, replayable forever, in a single Go binary. Pick a section below, or start with the [introduction](/docs/getting-started/introduction/) if it's your first visit.
 
 ## Where to go
 
 <CardGrid>
 	<LinkCard title="Get started" href={`${base}docs/getting-started/introduction/`} description="Install Tales, write your first scenario, learn the CLI." />
-	<LinkCard title="Writing scenarios" href={`${base}docs/writing-scenarios/dsl-overview/`} description="The DSL — scenarios, steps, vars, captures, retry, keywords." />
+	<LinkCard title="Writing scenarios" href={`${base}docs/writing-scenarios/dsl-overview/`} description="The DSL, scenarios, steps, vars, captures, retry, keywords." />
 	<LinkCard title="Providers" href={`${base}docs/providers/http/`} description="HTTP, SQL (Postgres / MySQL), Mobile iOS, Keyword." />
 	<LinkCard title="Generators & expressions" href={`${base}docs/reference/generators/`} description="Faker types, built-in functions, matchers, expression variables." />
 	<LinkCard title="Reports & CI" href={`${base}docs/reports/console/`} description="Console, JUnit XML, JSONL, visual HTML, CI integration recipes." />

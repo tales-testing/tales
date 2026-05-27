@@ -46,8 +46,8 @@ step "http" "find_verification_email" {
 
 ### When to use it
 
-- **Polling for an external event** — a confirmation email lands, a webhook is delivered, a background job updates a row.
-- **Soft retries on slow infrastructure** — first request after a cold start takes longer than a steady-state call.
+- **Polling for an external event**, a confirmation email lands, a webhook is delivered, a background job updates a row.
+- **Soft retries on slow infrastructure**, first request after a cold start takes longer than a steady-state call.
 
 ### When **not** to use it
 
@@ -69,7 +69,7 @@ step "http" "delete_user" {
 }
 ```
 
-`can(expr)` returns `true` when `expr` evaluates without error and `false` otherwise — perfect for "skip if the prerequisite capture is missing".
+`can(expr)` returns `true` when `expr` evaluates without error and `false` otherwise, perfect for "skip if the prerequisite capture is missing".
 
 `when` is evaluated **before** the step body, so it cannot see `vars` from that step. It *can* see `config`, `result.*`, `host`, and the result of any HCL function.
 
@@ -109,7 +109,7 @@ scenario "Create blog post with cleanup" {
 
 - **Always runs** when the scenario was *not* skipped. Even a hard failure in the main flow still triggers teardown.
 - Steps inside `teardown` follow the same rules as scenario steps: source order, `when`, `retry`, `vars`, `capture`, `expect`.
-- A failing teardown step marks the scenario as failed and triggers an exit code of `1` — but later teardown steps still run, so all cleanup gets a chance to happen.
+- A failing teardown step marks the scenario as failed and triggers an exit code of `1`, but later teardown steps still run, so all cleanup gets a chance to happen.
 - Captures produced by teardown steps are local to the teardown block; the scenario is already over by then.
 
 ### Patterns
@@ -157,7 +157,7 @@ teardown {
 }
 ```
 
-Each step is independent — a failing `delete_team` doesn't prevent `delete_user` from running.
+Each step is independent, a failing `delete_team` doesn't prevent `delete_user` from running.
 
 <Aside type="tip" title="Pair retry + teardown for flake-free integration tests">
 	Use `retry` to absorb genuinely asynchronous waits (email arrival, webhook delivery). Use `teardown` to guarantee deterministic cleanup so the next run starts from a known state. Combined, they make scenarios you can replay indefinitely without leaking state.

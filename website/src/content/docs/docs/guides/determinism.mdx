@@ -21,13 +21,13 @@ You get the following guarantees:
 
 - Every `generate(...)` call returns the same value on every run.
 - The order in which scenarios produce their generated values does not depend on `--parallel`.
-- Retries inside a step (`retry { ... }`) re-use the same generated values — so polling does not unexpectedly mutate inputs.
+- Retries inside a step (`retry { ... }`) re-use the same generated values, so polling does not unexpectedly mutate inputs.
 - Multipart upload boundaries (which are random) are deterministic when seeded.
 
 You **don't** get a guarantee about:
 
 - Server timestamps, IDs assigned by the server, or any other server-side non-determinism.
-- The current time (`now_unix`, `now_rfc3339`) — these are intentionally live.
+- The current time (`now_unix`, `now_rfc3339`), these are intentionally live.
 - The order log lines appear on stderr when `--parallel > 1`.
 
 ## How the seed mixer works
@@ -38,7 +38,7 @@ Each call to `generate(name)` mixes the following inputs:
 2. The scenario name.
 3. The step name.
 4. The generator name.
-5. The **expression path** — *where* in the step the call appears.
+5. The **expression path**, *where* in the step the call appears.
 
 The hash of those five inputs seeds a deterministic generator just for that call. The implementation lives in `internal/runtime/seed.go`.
 
@@ -88,7 +88,7 @@ The seed mixer does not include an "attempt number". A retry replays the same st
 
 ## Where wall-clock helpers fit
 
-`now_unix()` and `now_rfc3339()` read the current time. They are non-deterministic by design — there is no useful seedable "now".
+`now_unix()` and `now_rfc3339()` read the current time. They are non-deterministic by design, there is no useful seedable "now".
 
 The right pattern is to compute the timestamp **once per step** in a `vars` block and reference it elsewhere:
 
@@ -119,11 +119,11 @@ A red CI build with `--seed 1234` reproduces exactly with:
 tales test ./e2e/pass --seed 1234
 ```
 
-If the failure was timing-sensitive (a 500 from a slow database, for example), the local run might not reproduce it — that's an actual flake, not a seed issue. Use `--report-jsonl` to see the wall-clock durations from the failing run and compare.
+If the failure was timing-sensitive (a 500 from a slow database, for example), the local run might not reproduce it, that's an actual flake, not a seed issue. Use `--report-jsonl` to see the wall-clock durations from the failing run and compare.
 
 ## Cross-version determinism
 
-The seed contract is stable across patch versions (`v0.1.0` → `v0.1.1`). Major or minor version bumps may change the generator implementations — when they do, the changelog calls it out so you know to regenerate your golden fixtures.
+The seed contract is stable across patch versions (`v0.1.0` → `v0.1.1`). Major or minor version bumps may change the generator implementations, when they do, the changelog calls it out so you know to regenerate your golden fixtures.
 
 <Aside type="tip" title="Use deterministic seeds in CI, exploratory seeds locally">
 	A common pattern: pin the CI seed (`--seed 1234`) for reproducibility, but use `--seed $(date +%s)` locally when you want to randomise inputs. When the random seed surfaces a bug, save the seed in the bug report and add it as a regression fixture.
@@ -142,4 +142,4 @@ tales test ./e2e/pass --seed 1234 --report-jsonl ./current.jsonl
 diff <(jq -S . baseline.jsonl) <(jq -S . current.jsonl)
 ```
 
-A clean diff means full determinism preserved. A diff means a generator or assertion changed — read the release notes.
+A clean diff means full determinism preserved. A diff means a generator or assertion changed, read the release notes.

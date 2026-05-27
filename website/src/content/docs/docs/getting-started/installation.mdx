@@ -1,10 +1,153 @@
 ---
 title: Installation
-description: Documentation page for Installation — placeholder, content coming soon.
+description: Install Tales via Homebrew, the GitHub release tarball, the setup-tales GitHub Action, or from source.
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Aside, Card, CardGrid } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Tales ships as a single static Go binary. Linux and macOS are supported on both `amd64` and `arm64`. There are four installation paths; pick the one that fits where you are running Tales.
+
+## Homebrew (macOS / Linux)
+
+The fastest path on a developer machine. The [`tales-testing/homebrew-tap`](https://github.com/tales-testing/homebrew-tap) repository hosts the formula.
+
+```bash
+brew install tales-testing/tap/tales
+```
+
+To upgrade later:
+
+```bash
+brew update
+brew upgrade tales
+```
+
+The tap installs the same release archive published on GitHub, so what you get locally is byte-identical to what runs in CI.
+
+## GitHub Action (CI)
+
+Use the [`tales-testing/setup-tales-action`](https://github.com/tales-testing/setup-tales-action) GitHub Action to pin and install Tales on a runner.
+
+```yaml
+- name: Install Tales
+  uses: tales-testing/setup-tales-action@v1
+  with:
+    version: latest   # or a pinned tag like v0.1.0
+
+- name: Run scenarios
+  run: tales test ./e2e/pass --seed 1234 --parallel 8
+```
+
+The action caches the binary across runs and exposes `tales --version` to subsequent steps. See [CI integration](/docs/reports/ci-integration/) for full workflow recipes.
+
+<Aside type="tip" title="Pin the version in CI">
+  In production pipelines, prefer a pinned tag (`v0.1.0`) over `latest`. A pinned version means a red build is reproducible months later with the exact same binary.
 </Aside>
+
+## Pre-built binary
+
+Download the release archive for your platform from [GitHub Releases](https://github.com/tales-testing/tales/releases) and drop it into `PATH`.
+
+<Tabs syncKey="os">
+  <TabItem label="Linux (x86_64)">
+    ```bash
+    curl -fsSL -o tales.tar.gz \
+      https://github.com/tales-testing/tales/releases/latest/download/tales_linux_x86_64.tar.gz
+    tar -xzf tales.tar.gz
+    sudo install -m 0755 tales /usr/local/bin/tales
+    tales --version
+    ```
+  </TabItem>
+  <TabItem label="Linux (arm64)">
+    ```bash
+    curl -fsSL -o tales.tar.gz \
+      https://github.com/tales-testing/tales/releases/latest/download/tales_linux_arm64.tar.gz
+    tar -xzf tales.tar.gz
+    sudo install -m 0755 tales /usr/local/bin/tales
+    tales --version
+    ```
+  </TabItem>
+  <TabItem label="macOS">
+    ```bash
+    curl -fsSL -o tales.tar.gz \
+      https://github.com/tales-testing/tales/releases/latest/download/tales_darwin_arm64.tar.gz
+    tar -xzf tales.tar.gz
+    sudo install -m 0755 tales /usr/local/bin/tales
+    # Optional, only needed if Gatekeeper quarantines the archive:
+    xattr -d com.apple.quarantine tales 2>/dev/null || true
+    tales --version
+    ```
+  </TabItem>
+</Tabs>
+
+## From source
+
+Go 1.26+ and a working `git` are required.
+
+```bash
+git clone https://github.com/tales-testing/tales
+cd tales
+make install   # installs to $GOBIN, falls back to $GOPATH/bin
+```
+
+For a one-shot install without a clone:
+
+```bash
+go install github.com/tales-testing/tales/cmd/tales@latest
+```
+
+## Homebrew tap layout
+
+If you maintain your own fork, the formula lives at `Formula/tales.rb` in [`tales-testing/homebrew-tap`](https://github.com/tales-testing/homebrew-tap):
+
+```ruby
+class Tales < Formula
+  desc "Declarative integration and end-to-end testing tool"
+  homepage "https://tales-testing.github.io/tales/"
+  license "MIT"
+  version "0.1.0"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_darwin_arm64.tar.gz"
+      sha256 "REPLACE_WITH_ACTUAL_SHA256"
+    end
+    on_intel do
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_darwin_x86_64.tar.gz"
+      sha256 "REPLACE_WITH_ACTUAL_SHA256"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_linux_arm64.tar.gz"
+      sha256 "REPLACE_WITH_ACTUAL_SHA256"
+    end
+    on_intel do
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_linux_x86_64.tar.gz"
+      sha256 "REPLACE_WITH_ACTUAL_SHA256"
+    end
+  end
+
+  def install
+    bin.install "tales"
+  end
+
+  test do
+    assert_match "tales", shell_output("#{bin}/tales --version")
+  end
+end
+```
+
+The `version`, `url` and `sha256` fields are bumped automatically by the release workflow whenever a new tag is pushed to `tales-testing/tales`.
+
+## Next steps
+
+<CardGrid>
+  <Card title="Your first scenario" icon="rocket">
+    Write, validate, and run a complete scenario in five minutes.
+  </Card>
+  <Card title="CLI essentials" icon="seti:bash">
+    Every flag, every exit code, every environment variable.
+  </Card>
+</CardGrid>

@@ -6,7 +6,7 @@ import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import { visit } from 'unist-util-visit';
 
-const SITE = process.env.SITE_URL ?? 'https://hyperxlab.github.io';
+const SITE = process.env.SITE_URL ?? 'https://tales-testing.github.io';
 const BASE = process.env.BASE_PATH ?? '/tales';
 
 // Prepend BASE to absolute Markdown links so /docs/foo/ deploys correctly
@@ -56,16 +56,21 @@ export default defineConfig({
 				replacesTitle: true,
 			},
 			favicon: '/favicon.svg',
-			customCss: ['./src/styles/global.css', './src/styles/starlight.css'],
+			// global.css is imported by LandingLayout for the marketing pages.
+			// Loading it inside Starlight breaks docs pages: its unlayered body
+			// rule pins the background to the dark Tailwind token even when
+			// Starlight switches into light theme, leaving headings (colored
+			// via `--sl-color-white`, dark in light mode) unreadable.
+			customCss: ['./src/styles/starlight.css'],
 			social: [
 				{
 					icon: 'github',
 					label: 'GitHub',
-					href: 'https://github.com/hyperxlab/tales',
+					href: 'https://github.com/tales-testing/tales',
 				},
 			],
 			editLink: {
-				baseUrl: 'https://github.com/hyperxlab/tales/edit/master/website/',
+				baseUrl: 'https://github.com/tales-testing/tales/edit/master/website/',
 			},
 			defaultLocale: 'root',
 			locales: {

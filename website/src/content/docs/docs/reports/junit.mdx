@@ -1,6 +1,6 @@
 ---
 title: JUnit XML
-description: The Tales JUnit XML reporter — Surefire/JUnit5 compatible output for Jenkins, GitLab CI, CircleCI, and friends.
+description: The Tales JUnit XML reporter, Surefire/JUnit5 compatible output for Jenkins, GitLab CI, CircleCI, and friends.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -13,7 +13,7 @@ JUnit XML is the lingua franca of CI test dashboards. Tales produces a Surefire-
 tales test ./e2e/pass --report-junit ./reports/junit.xml
 ```
 
-The parent directory is created if missing. The output is fully self-contained — no external schema dependencies.
+The parent directory is created if missing. The output is fully self-contained, no external schema dependencies.
 
 ## Schema
 
@@ -62,7 +62,7 @@ The `<testsuite>` element gains a `skipped="N"` attribute, and each skipped scen
 
 ### Action-level data is not flattened
 
-Mobile action records (`tap`, `swipe`, etc.) are intentionally **not** decomposed into `<testcase>` elements. They live in the [JSONL stream](/docs/reports/jsonl/) and the [visual HTML report](/docs/reports/visual/) instead — JUnit consumers don't typically know what to do with sub-step data.
+Mobile action records (`tap`, `swipe`, etc.) are intentionally **not** decomposed into `<testcase>` elements. They live in the [JSONL stream](/docs/reports/jsonl/) and the [visual HTML report](/docs/reports/visual/) instead, JUnit consumers don't typically know what to do with sub-step data.
 
 ## CI integration
 
@@ -77,5 +77,5 @@ tales test ./e2e/pass \
 Then point your CI configuration at `./reports/junit.xml`. Examples in [CI integration](/docs/reports/ci-integration/).
 
 <Aside type="note" title="JUnit and exit codes are independent">
-	Tales writes the JUnit file before exiting. A failing test produces a JUnit file *and* exits with code `1`. A parse error (exit code `2`) does **not** write JUnit — there are no testcases to enumerate yet. Wire your CI to treat both the file and the exit code as authoritative.
+	Tales writes the JUnit file before exiting. A failing test produces a JUnit file *and* exits with code `1`. A parse error (exit code `2`) does **not** write JUnit, there are no testcases to enumerate yet. Wire your CI to treat both the file and the exit code as authoritative.
 </Aside>

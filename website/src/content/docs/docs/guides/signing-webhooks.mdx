@@ -108,7 +108,7 @@ The request body must be **exactly** the bytes we signed. Using `body { json = .
 
 ### `hmac_sha256_hex(secret, "<ts>.<body>")`
 
-The order of components in the signed string is part of the protocol contract — match it byte-for-byte with the receiver. Common patterns:
+The order of components in the signed string is part of the protocol contract, match it byte-for-byte with the receiver. Common patterns:
 
 - Stripe-style: `<ts>.<body>`
 - GitHub-style: just the body (no timestamp)
@@ -127,13 +127,13 @@ Scenario Send signed webhook  FAIL
       actual: 401 Unauthorized
 ```
 
-Use that fixture as the template when verifying a new signing scheme — write the failing case first to confirm your receiver actually rejects bad signatures, then write the success case.
+Use that fixture as the template when verifying a new signing scheme, write the failing case first to confirm your receiver actually rejects bad signatures, then write the success case.
 
 ## Variants
 
-- **Multiple receivers** — capture the body once in `vars`, send the same `body` to several endpoints with their own signatures.
-- **Timestamp tolerance** — receivers often allow a `±5 minute` window. To exercise the rejection edge, set `vars { ts = now_unix() - 600 }` (10 minutes in the past) and assert `status = 401`.
-- **Different secrets per environment** — make `webhook_secret = env("WEBHOOK_SECRET")` non-optional and ensure CI sets it.
+- **Multiple receivers**, capture the body once in `vars`, send the same `body` to several endpoints with their own signatures.
+- **Timestamp tolerance**, receivers often allow a `±5 minute` window. To exercise the rejection edge, set `vars { ts = now_unix() - 600 }` (10 minutes in the past) and assert `status = 401`.
+- **Different secrets per environment**, make `webhook_secret = env("WEBHOOK_SECRET")` non-optional and ensure CI sets it.
 
 <Aside type="caution" title="Never inline a real production secret">
 	Pull secrets from `env(...)` and inject them via CI variables. Tales does not encrypt `.tales` files, and the secret would end up in your git history. The signature in the request will be masked in reports, but the secret read from `config.webhook_secret` would not.

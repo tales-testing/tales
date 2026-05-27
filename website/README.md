@@ -1,6 +1,6 @@
 # Tales website
 
-Source for [tales.dev](https://hyperxlab.github.io/tales/) — landing page (`/`) and documentation (`/docs/`).
+Source for [tales-testing.github.io/tales](https://tales-testing.github.io/tales/), landing page (`/`) and documentation (`/docs/`).
 
 Built with [Astro](https://astro.build) 6, [Starlight](https://starlight.astro.build) and [Tailwind CSS](https://tailwindcss.com) 4. Output is fully static and deploys to GitHub Pages (workflow lives in `.github/workflows/deploy-website.yml`).
 
