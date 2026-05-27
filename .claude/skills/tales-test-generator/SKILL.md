@@ -65,6 +65,7 @@ Use this skill when asked to:
 - `tales validate <path>` — also rejects forward/unknown step references
 - `tales test <path> --seed 1234`
 - `--parallel` only affects scenario-level concurrency; steps within a scenario always run sequentially in file order
+- `--timeout <duration>` (e.g. `30s`, `5m`) caps the whole run — useful in CI so a hung step / stalled mock cannot block the build indefinitely. `0` (default) disables the cap.
 
 6. Fix and re-run until green:
 - parse errors: align fields/blocks with parser schema

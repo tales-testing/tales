@@ -38,6 +38,7 @@ func NewTestCommand() *cli.Command {
 			&cli.StringFlag{Name: "report-jsonl", Usage: "Write JSONL report"},
 			&cli.StringFlag{Name: "report-html", Usage: "Write single-file visual HTML report"},
 			&cli.StringFlag{Name: "capture-screenshots", Usage: "Mobile screenshot capture mode (none|failures|steps|actions)"},
+			&cli.DurationFlag{Name: "timeout", Usage: "Global wall-clock budget for the whole run (e.g. 30s, 5m). 0 disables (default)."},
 		},
 		Action: runTest,
 	}
@@ -87,6 +88,13 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 	captureMode, err := resolveCaptureMode(cmd.String("capture-screenshots"), htmlPath)
 	if err != nil {
 		return cli.Exit(err.Error(), 2)
+	}
+
+	if budget := cmd.Duration("timeout"); budget > 0 {
+		var cancel context.CancelFunc
+
+		ctx, cancel = context.WithTimeout(ctx, budget)
+		defer cancel()
 	}
 
 	runner := talesruntime.NewRunner(provider.NewRegistry(
