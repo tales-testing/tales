@@ -5,6 +5,8 @@ description: What Tales is, who it is for, and how it differs from other integra
 
 import { Aside, CardGrid, Card, LinkCard } from '@astrojs/starlight/components';
 
+export const base = import.meta.env.BASE_URL;
+
 **Tales** is a declarative integration and end-to-end testing tool packaged as a single Go binary. You write tests as `.tales` files using the readable HCL2 syntax, and a single `tales test` command runs them with deterministic, seedable data generation.
 
 ## Who is this for?
@@ -89,7 +91,7 @@ The seed is mixed with the scenario name, the step name, the generator name, and
 
 ## Where to go next
 
-<LinkCard title="Install Tales" href="/docs/getting-started/installation/" description="Pick up a pre-built binary or build from source." />
-<LinkCard title="Your first scenario" href="/docs/getting-started/first-scenario/" description="Write, validate and run a complete scenario in five minutes." />
-<LinkCard title="CLI essentials" href="/docs/getting-started/cli-essentials/" description="Every command, every flag, every exit code." />
-<LinkCard title="DSL overview" href="/docs/writing-scenarios/dsl-overview/" description="Top-level blocks, steps, source order, and the execution model." />
+<LinkCard title="Install Tales" href={`${base}docs/getting-started/installation/`} description="Pick up a pre-built binary or build from source." />
+<LinkCard title="Your first scenario" href={`${base}docs/getting-started/first-scenario/`} description="Write, validate and run a complete scenario in five minutes." />
+<LinkCard title="CLI essentials" href={`${base}docs/getting-started/cli-essentials/`} description="Every command, every flag, every exit code." />
+<LinkCard title="DSL overview" href={`${base}docs/writing-scenarios/dsl-overview/`} description="Top-level blocks, steps, source order, and the execution model." />

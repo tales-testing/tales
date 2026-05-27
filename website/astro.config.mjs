@@ -4,9 +4,33 @@ import starlight from '@astrojs/starlight';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
+import { visit } from 'unist-util-visit';
 
 const SITE = process.env.SITE_URL ?? 'https://hyperxlab.github.io';
 const BASE = process.env.BASE_PATH ?? '/tales';
+
+// Prepend BASE to absolute Markdown links so /docs/foo/ deploys correctly
+// under a sub-path like /tales/. External, mailto, hash, and protocol-relative
+// links are left alone.
+function remarkAbsolutePathBasePrefix() {
+	const base = BASE.replace(/\/$/, '');
+	if (!base) return () => () => {};
+
+	return () => (tree) => {
+		visit(tree, 'link', (node) => {
+			const url = node.url;
+			if (typeof url !== 'string' || url.length === 0) return;
+			if (
+				url.startsWith('/') &&
+				!url.startsWith('//') &&
+				!url.startsWith(`${base}/`) &&
+				url !== base
+			) {
+				node.url = `${base}${url}`;
+			}
+		});
+	};
+}
 
 export default defineConfig({
 	site: SITE,
@@ -115,6 +139,9 @@ export default defineConfig({
 		mdx(),
 		sitemap(),
 	],
+	markdown: {
+		remarkPlugins: [remarkAbsolutePathBasePrefix()],
+	},
 	vite: {
 		plugins: [tailwindcss()],
 	},
