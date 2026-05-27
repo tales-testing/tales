@@ -103,6 +103,7 @@ func main() {
 	r.HandleFunc("/users.v1.UserService/GetUser", state.connectGetUser).Methods(http.MethodPost)
 	r.HandleFunc("/mfa/totp/verify", state.verifyTOTP).Methods(http.MethodPost)
 	r.HandleFunc("/cookies/session", state.sessionCookies).Methods(http.MethodGet)
+	r.HandleFunc("/oauth/pkce/verify", state.verifyPKCE).Methods(http.MethodPost)
 
 	addr := ":" + port
 	server := &http.Server{
@@ -740,6 +741,51 @@ func (s *serverState) sessionCookies(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Add("Set-Cookie", "ia_session=abc123; Path=/; HttpOnly; Secure")
 	w.Header().Add("Set-Cookie", "theme=dark; Path=/")
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// verifyPKCE recomputes the RFC 7636 S256 challenge from the verifier and
+// compares it to the client-supplied value. Reuses lang.PKCEChallenge so the
+// mockserver and the expression function share one implementation.
+func (s *serverState) verifyPKCE(w http.ResponseWriter, req *http.Request) {
+	var payload struct {
+		Verifier  string `json:"verifier"`
+		Challenge string `json:"challenge"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	if payload.Verifier == "" || payload.Challenge == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"valid": false, "error": "verifier and challenge are required"})
+
+		return
+	}
+
+	expected, err := lang.PKCEChallenge(payload.Verifier, lang.PKCEOptions{})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "pkce internal"})
+
+		return
+	}
+
+	if subtleConstantTimeEqual(expected, payload.Challenge) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"valid": true})
+
+		return
+	}
+
+	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"valid": false})
+}
+
+func subtleConstantTimeEqual(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	return hmac.Equal([]byte(a), []byte(b))
 }
 
 func verificationCode(id string) string {
