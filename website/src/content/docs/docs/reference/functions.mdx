@@ -92,9 +92,40 @@ vars {
 }
 ```
 
-## `hmac_sha256_hex(secret, message)`
+## Hash functions
 
-Computes HMAC-SHA256 and returns the lowercase hex digest. The secret is **never** included in error messages.
+Seven `sha*_hex` variants are exposed, each hashing the UTF-8 bytes of its single string argument and returning the lowercase hex digest. Errors never embed the input.
+
+| Function          | Algorithm       | Digest length (hex chars) |
+| ----------------- | --------------- | ------------------------- |
+| `sha1_hex`        | SHA-1           | 40                        |
+| `sha224_hex`      | SHA-224         | 56                        |
+| `sha256_hex`      | SHA-256         | 64                        |
+| `sha384_hex`      | SHA-384         | 96                        |
+| `sha512_hex`      | SHA-512         | 128                       |
+| `sha512_224_hex`  | SHA-512/224     | 56                        |
+| `sha512_256_hex`  | SHA-512/256     | 64                        |
+
+```hcl
+vars {
+  digest = sha256_hex("hello")
+  // digest = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+}
+```
+
+## HMAC functions
+
+The same seven variants are exposed as keyed HMACs. Each takes `(secret, message)` (both strings) and returns the lowercase hex digest. Secrets and messages are never embedded in error messages.
+
+| Function                | Algorithm           |
+| ----------------------- | ------------------- |
+| `hmac_sha1_hex`         | HMAC-SHA-1          |
+| `hmac_sha224_hex`       | HMAC-SHA-224        |
+| `hmac_sha256_hex`       | HMAC-SHA-256        |
+| `hmac_sha384_hex`       | HMAC-SHA-384        |
+| `hmac_sha512_hex`       | HMAC-SHA-512        |
+| `hmac_sha512_224_hex`   | HMAC-SHA-512/224    |
+| `hmac_sha512_256_hex`   | HMAC-SHA-512/256    |
 
 ```hcl
 vars {
@@ -107,17 +138,44 @@ request {
 }
 ```
 
-Pair with `jsonencode` for stable canonical inputs — see the [Signing webhooks](/docs/guides/signing-webhooks/) guide for a full recipe.
+`hmac_sha256_hex` is the recommended default for new signing code. `hmac_sha1_hex` is kept available because RFC 6238 TOTP and a few legacy signing schemes still mandate it. Pair any HMAC with `jsonencode` for a stable canonical signed payload — see the [Signing webhooks](/docs/guides/signing-webhooks/) guide for a full recipe.
 
-## `hmac_sha1_hex(secret, message)`
+## `base64url_encode(value)`
 
-Computes HMAC-SHA1 and returns the lowercase hex digest. Exposed because RFC 6238 TOTP and a handful of legacy signing schemes still require it; prefer `hmac_sha256_hex` for new signing code. The secret is never embedded in error messages.
+Encodes the UTF-8 bytes of the input string using the RFC 4648 URL-safe alphabet (`-` and `_` instead of `+` and `/`) **without padding**.
 
 ```hcl
 vars {
-  sig = hmac_sha1_hex(config.legacy_secret, vars.message)
+  segment = base64url_encode("hello")
+  // segment = "aGVsbG8"
 }
 ```
+
+:::caution[Do not roll your own PKCE]
+`base64url_encode` deliberately encodes the input **string** — composing `base64url_encode(sha256_hex(verifier))` would encode the 64-char *hex* string and produce an invalid PKCE S256 challenge. Use [`pkce_challenge`](#pkce_challengeverifier-options) below, which encodes the raw 32 SHA-256 bytes as the spec requires.
+:::
+
+## `pkce_challenge(verifier, options?)`
+
+Derives an RFC 7636 PKCE `code_challenge` from a `code_verifier`.
+
+```hcl
+vars {
+  verifier  = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+  challenge = pkce_challenge(vars.verifier)
+  // challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+}
+```
+
+`pkce_challenge(verifier)` defaults to the S256 method. Supply an options object to change behaviour:
+
+| Option   | Type   | Default  | Notes                                                |
+| -------- | ------ | -------- | ---------------------------------------------------- |
+| `method` | string | `"S256"` | Either `"S256"` or `"plain"`. Unknown methods error. |
+
+For S256, the function computes `base64url(sha256(ASCII(verifier)))` — encoding the raw 32 hash bytes, **not** the hex string. `plain` returns the verifier unchanged. Unknown option keys and unsupported methods fail explicitly without embedding the verifier.
+
+The `code_verifier` JSON field name is treated as sensitive by Tales' report masking; bodies that send it under that key will not leak the value into JSONL / HTML / console reports.
 
 ## `totp(secret_base32, options?)`
 
