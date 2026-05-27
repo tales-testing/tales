@@ -57,7 +57,17 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 
 	emitSuiteStarted(opts.Events, len(scenarios), opts.Parallel, opts.Seed)
 
+	// runCtx wraps the caller's ctx so we can unblock the deadline watcher
+	// on normal completion. context.Canceled does not satisfy
+	// errors.Is(_, context.DeadlineExceeded), so canceling manually after
+	// wg.Wait correctly distinguishes "the user ran out of budget" from
+	// "the suite finished cleanly".
+	runCtx, runCancel := context.WithCancel(ctx)
+	defer runCancel()
+
 	sem := make(chan struct{}, opts.Parallel)
+	tracker := newLiveScenarioTracker()
+	stalledCh := watchDeadlineFor(runCtx, tracker)
 
 	var (
 		wg         sync.WaitGroup
@@ -78,12 +88,14 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 
 			defer func() { <-sem }()
 
+			tracker.start(sc.Name)
 			emitScenarioStarted(opts.Events, sc.Name)
 
-			scenarioResult, runErr := r.runScenario(ctx, suite, sc, configValues, opts.Seed)
+			scenarioResult, runErr := r.runScenario(runCtx, suite, sc, configValues, opts.Seed)
 			result.Scenarios[index] = scenarioResult
 
 			emitScenarioEnded(opts.Events, scenarioResult)
+			tracker.end(sc.Name)
 
 			if runErr != nil {
 				firstErrMu.Lock()
@@ -101,6 +113,14 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 
 	result.EndedAt = time.Now()
 	result.Duration = result.EndedAt.Sub(result.StartedAt)
+
+	// Unblock the deadline watcher before reading its channel. If the
+	// parent ctx fired first, runCancel is a no-op and the snapshot has
+	// already been published; otherwise this is what makes the watcher
+	// exit on the normal-completion path.
+	runCancel()
+
+	result.StalledScenarios = <-stalledCh
 
 	emitSuiteEnded(opts.Events, result.Duration)
 
