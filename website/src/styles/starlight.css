@@ -1,0 +1,93 @@
+/* Tales — Starlight CSS variable overrides
+ * Maps Starlight's --sl-color-* tokens onto our Slate + Violet palette.
+ * Reference: https://starlight.astro.build/guides/css-and-tailwind/#theming
+ */
+
+:root {
+	/* Brand accent — violet */
+	--sl-color-accent-low: #2e1065;
+	--sl-color-accent: #8b5cf6;
+	--sl-color-accent-high: #c4b5fd;
+
+	/* Greys — slate */
+	--sl-color-white: #f1f5f9;
+	--sl-color-gray-1: #e2e8f0;
+	--sl-color-gray-2: #cbd5e1;
+	--sl-color-gray-3: #94a3b8;
+	--sl-color-gray-4: #64748b;
+	--sl-color-gray-5: #334155;
+	--sl-color-gray-6: #1f2937;
+	--sl-color-black: #0b0f19;
+
+	/* Text + backgrounds */
+	--sl-color-text: var(--sl-color-white);
+	--sl-color-text-accent: var(--sl-color-accent-high);
+	--sl-color-text-invert: var(--sl-color-black);
+	--sl-color-bg: #0b0f19;
+	--sl-color-bg-nav: #0d121d;
+	--sl-color-bg-sidebar: #0d121d;
+	--sl-color-bg-inline-code: #1e293b;
+	--sl-color-bg-accent: var(--sl-color-accent);
+
+	/* Borders */
+	--sl-color-hairline-light: var(--sl-color-gray-5);
+	--sl-color-hairline: var(--sl-color-gray-6);
+	--sl-color-hairline-shade: var(--sl-color-gray-6);
+
+	/* Fonts */
+	--sl-font:
+		'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+		Roboto, sans-serif;
+	--sl-font-mono:
+		'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas,
+		monospace;
+
+	/* Layout */
+	--sl-sidebar-width: 17rem;
+	--sl-content-width: 50rem;
+	--sl-content-pad-x: 1.5rem;
+	--sl-nav-pad-x: 1.5rem;
+	--sl-nav-height: 4rem;
+}
+
+/* Light mode — kept for visitors who switch */
+:root[data-theme='light'] {
+	--sl-color-accent-low: #ede9fe;
+	--sl-color-accent: #7c3aed;
+	--sl-color-accent-high: #5b21b6;
+
+	--sl-color-white: #0f172a;
+	--sl-color-gray-1: #1e293b;
+	--sl-color-gray-2: #334155;
+	--sl-color-gray-3: #475569;
+	--sl-color-gray-4: #64748b;
+	--sl-color-gray-5: #cbd5e1;
+	--sl-color-gray-6: #e2e8f0;
+	--sl-color-gray-7: #f1f5f9;
+	--sl-color-black: #f8fafc;
+
+	--sl-color-text: var(--sl-color-white);
+	--sl-color-text-accent: var(--sl-color-accent-high);
+	--sl-color-text-invert: #ffffff;
+	--sl-color-bg: #ffffff;
+	--sl-color-bg-nav: #f8fafc;
+	--sl-color-bg-sidebar: #f8fafc;
+	--sl-color-bg-inline-code: #f1f5f9;
+}
+
+/* Slight code-block polish */
+.expressive-code {
+	--ec-brdRad: 10px;
+	--ec-frm-edBg: #0a0e1a;
+}
+
+/* Pagefind search modal */
+.pagefind-ui {
+	--pagefind-ui-primary: var(--sl-color-accent);
+	--pagefind-ui-text: var(--sl-color-text);
+	--pagefind-ui-background: var(--sl-color-bg);
+	--pagefind-ui-border: var(--sl-color-hairline);
+	--pagefind-ui-tag: var(--sl-color-bg-nav);
+	--pagefind-ui-border-radius: 10px;
+	--pagefind-ui-font: var(--sl-font);
+}
