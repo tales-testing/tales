@@ -2,7 +2,7 @@
 
 Tales is a single-binary integration and end-to-end testing tool. Scenarios are written in declarative HCL2 files with the `.tales` extension.
 
-**📚 Full documentation: [tales-testing.github.io/tales](https://tales-testing.github.io/tales/)**
+**📚 Full documentation: [taleslabs.org/](https://taleslabs.org/)**
 
 ## Why Tales
 
@@ -11,8 +11,8 @@ Tales is a single-binary integration and end-to-end testing tool. Scenarios are 
 - **Deterministic seeded data** — `--seed 1234` produces byte-identical generated values on every run.
 - **Scenarios in parallel, steps sequential in file order.** Chained captures stay deterministic.
 - **HTTP provider** including ConnectRPC JSON over HTTP and multipart uploads.
-- **SQL provider** (`step "sql"`) for PostgreSQL + MySQL preconditions and teardown. See [docs/providers/sql/](https://tales-testing.github.io/tales/docs/providers/sql/).
-- **Native iOS UI automation via XCUITest** (`step "mobile"`), no Appium / no Maestro. The XCUITest driver is **embedded** in the `tales` binary and built on first use into `~/Library/Caches/tales/apple-driver/`, so a released binary runs iOS tests on any macOS+Xcode host. `tales doctor` (`--json` for CI) inspects the cache, embedded source, Xcode, and simctl state in one place. See [docs/providers/mobile-ios/](https://tales-testing.github.io/tales/docs/providers/mobile-ios/).
+- **SQL provider** (`step "sql"`) for PostgreSQL + MySQL preconditions and teardown. See [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/).
+- **Native iOS UI automation via XCUITest** (`step "mobile"`), no Appium / no Maestro. The XCUITest driver is **embedded** in the `tales` binary and built on first use into `~/Library/Caches/tales/apple-driver/`, so a released binary runs iOS tests on any macOS+Xcode host. `tales doctor` (`--json` for CI) inspects the cache, embedded source, Xcode, and simctl state in one place. See [docs/providers/mobile-ios/](https://taleslabs.org/docs/providers/mobile-ios/).
 - **Reports** — human-readable console output, JUnit XML for CI dashboards, JSONL event stream for log pipelines, single-file visual HTML report with action-by-action screenshot replay.
 
 ## Current Status
@@ -52,7 +52,7 @@ make build
 Tagged releases (`v*`) are built by [the release workflow](.github/workflows/release.yml)
 and published to GitHub Releases. Pre-built binaries are provided for
 `linux/{amd64,arm64}` and `darwin/{amd64,arm64}`, with a `checksums.txt`
-file alongside. See [docs/operations/release/](https://tales-testing.github.io/tales/docs/operations/release/) for the release process and how to verify a downloaded binary.
+file alongside. See [docs/operations/release/](https://taleslabs.org/docs/operations/release/) for the release process and how to verify a downloaded binary.
 
 ## Quick Start
 
@@ -253,7 +253,7 @@ Exit codes:
 - `scenario "..." { ... }`
 - `step "http" "name" { ... }`
 - `step "sql" "name" { connection = "<name>"; exec { ... } | query { ... } }`
-  — see [docs/providers/sql/](https://tales-testing.github.io/tales/docs/providers/sql/).
+  — see [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/).
 - `request.body { json = ... }` for JSON payloads.
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
@@ -273,7 +273,7 @@ Exit codes:
 - `generator "email"`, `generator "password"`, `generator "timezone"`, `generator "locale"`, `generator "person"`, `generator "mac_address"`, and `generator "bytes"` for deterministic test data.
 - `teardown { ... }` for deterministic cleanup.
 - `keyword \"...\" { ... }` for reusable flows.
-- `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/writing-scenarios/conditional-execution/](https://tales-testing.github.io/tales/docs/writing-scenarios/conditional-execution/).
+- `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/writing-scenarios/conditional-execution/](https://taleslabs.org/docs/writing-scenarios/conditional-execution/).
 
 Backward-compatible aliases currently accepted:
 
@@ -602,7 +602,7 @@ Per-action artifacts live under:
 build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-<n>/actions/NNNN-<kind>-<id>/
 ```
 
-See [docs/reports/visual/](https://tales-testing.github.io/tales/docs/reports/visual/) for a full walk-through, security notes, and limitations.
+See [docs/reports/visual/](https://taleslabs.org/docs/reports/visual/) for a full walk-through, security notes, and limitations.
 
 ## E2E and Mock Server
 
@@ -647,7 +647,7 @@ make e2e
 - `internal/provider/keyword`: reusable-flow pseudo-provider.
 - `internal/report`: console / JUnit / JSONL / visual HTML reporting.
 - `e2e/mockserver`: in-memory test API used by E2E.
-- `website/`: Astro + Starlight + Tailwind v4 source of [tales-testing.github.io/tales](https://tales-testing.github.io/tales/).
+- `website/`: Astro + Starlight + Tailwind v4 source of [taleslabs.org/](https://taleslabs.org/).
 
 ## Current Limitations
 
