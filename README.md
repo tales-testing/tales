@@ -457,12 +457,23 @@ General:
   block to reuse the same value at every interpolation site.
 - `now_rfc3339()` — current UTC time formatted per RFC3339, e.g.
   `"2026-05-26T15:42:31Z"`. Same caveats as `now_unix()`.
-- `hmac_sha256_hex(secret, message)` — HMAC-SHA256 returned as a lowercase
-  hex string. Pair with `jsonencode` and step-local `vars` to sign a
-  request body that the server can re-verify byte for byte.
-- `hmac_sha1_hex(secret, message)` — HMAC-SHA1 returned as a lowercase hex
-  string. Exposed for RFC 6238 TOTP and a handful of legacy signing
-  schemes; prefer `hmac_sha256_hex` for new code.
+- `sha1_hex(value)`, `sha224_hex(value)`, `sha256_hex(value)`,
+  `sha384_hex(value)`, `sha512_hex(value)`, `sha512_224_hex(value)`,
+  `sha512_256_hex(value)` — single-argument hash functions returning the
+  lowercase hex digest of the input string's UTF-8 bytes.
+- `hmac_sha1_hex(secret, message)`, `hmac_sha224_hex`, `hmac_sha256_hex`,
+  `hmac_sha384_hex`, `hmac_sha512_hex`, `hmac_sha512_224_hex`,
+  `hmac_sha512_256_hex` — keyed HMAC variants matching the hash set.
+  Lowercase hex output; secrets and messages never appear in errors.
+  `hmac_sha256_hex` is the recommended default for new signing code;
+  `hmac_sha1_hex` exists because RFC 6238 TOTP needs it.
+- `base64url_encode(value)` — RFC 4648 URL-safe Base64 of the input
+  string's bytes, no padding. Note this encodes the *input string*, not
+  a hex digest — do not compose with `sha256_hex` to build a PKCE S256
+  challenge; use `pkce_challenge` instead.
+- `pkce_challenge(verifier, options?)` — RFC 7636 PKCE challenge from a
+  code verifier. Defaults to S256; supports `{method = "plain"}`.
+  S256 encodes the raw 32 SHA-256 bytes, never the hex string.
 - `totp(secret_base32, options?)` — RFC 6238 TOTP code from a Base32
   secret. `totp(secret)` uses the documented defaults (`period=30`,
   `digits=6`, `algorithm="SHA1"`, `timestamp=now_unix()`); pass an
