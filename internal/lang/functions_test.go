@@ -363,6 +363,75 @@ func TestHMACSHA1HexErrorDoesNotLeakSecret(t *testing.T) {
 	}
 }
 
+func TestTOTPDefaultReturnsSixDigits(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")`)
+	got := value.AsString()
+
+	if len(got) != 6 {
+		t.Fatalf("expected 6-digit string, got %q (%d chars)", got, len(got))
+	}
+}
+
+func TestTOTPWithExplicitTimestamp(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", {period = 30, digits = 8, algorithm = "SHA1", timestamp = 59})`)
+	if value.AsString() != "94287082" {
+		t.Fatalf("expected RFC 6238 vector 94287082, got %s", value.AsString())
+	}
+}
+
+func TestTOTPRejectsUnknownOption(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", {foo = 1})`)
+	if err == nil || !strings.Contains(err.Error(), "unknown option") {
+		t.Fatalf("expected unknown option error, got %v", err)
+	}
+}
+
+func TestTOTPRejectsUnsupportedAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", {algorithm = "SHA256"})`)
+	if err == nil || !strings.Contains(err.Error(), "unsupported TOTP algorithm") {
+		t.Fatalf("expected unsupported algorithm error, got %v", err)
+	}
+}
+
+func TestTOTPRejectsTooManyArguments(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", {digits = 6}, {extra = true})`)
+	if err == nil || !strings.Contains(err.Error(), "too many arguments") {
+		t.Fatalf("expected too-many-arguments error, got %v", err)
+	}
+}
+
+func TestTOTPRejectsNonObjectOptions(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", "not-an-object")`)
+	if err == nil || !strings.Contains(err.Error(), "options must be an object") {
+		t.Fatalf("expected options-must-be-an-object error, got %v", err)
+	}
+}
+
+func TestTOTPInvalidSecretIsOpaque(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`totp("BADBADBAD!!!")`)
+	if err == nil {
+		t.Fatalf("expected invalid-secret error")
+	}
+
+	if strings.Contains(err.Error(), "BADBADBAD") {
+		t.Fatalf("error must never echo raw secret material: %v", err)
+	}
+}
+
 func evalTestExpression(t *testing.T, src string) cty.Value {
 	t.Helper()
 
