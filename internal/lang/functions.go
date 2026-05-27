@@ -17,7 +17,12 @@ import (
 	"github.com/zclconf/go-cty/cty/function"
 )
 
-const matcherKey = "__tales_matcher"
+const (
+	matcherKey   = "__tales_matcher"
+	paramName    = "name"
+	paramValue   = "value"
+	paramPattern = "pattern"
+)
 
 func matcherObject(name string, values map[string]cty.Value) cty.Value {
 	payload := map[string]cty.Value{matcherKey: cty.StringVal(name)}
@@ -30,7 +35,7 @@ func matcherObject(name string, values map[string]cty.Value) cty.Value {
 
 func envFunc() function.Function {
 	return function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "name", Type: cty.String}},
+		Params: []function.Parameter{{Name: paramName, Type: cty.String}},
 		VarParam: &function.Parameter{
 			Name: "default",
 			Type: cty.String,
@@ -63,37 +68,37 @@ func matcherNoArg(name string) function.Function {
 
 func matcherSingleArg(name string) function.Function {
 	return function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType}},
+		Params: []function.Parameter{{Name: paramValue, Type: cty.DynamicPseudoType}},
 		Type:   function.StaticReturnType(cty.DynamicPseudoType),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			return matcherObject(name, map[string]cty.Value{"value": args[0]}), nil
+			return matcherObject(name, map[string]cty.Value{paramValue: args[0]}), nil
 		},
 	})
 }
 
 func optionalFunc() function.Function {
 	return function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType, AllowNull: true}},
+		Params: []function.Parameter{{Name: paramValue, Type: cty.DynamicPseudoType, AllowNull: true}},
 		Type:   function.StaticReturnType(cty.DynamicPseudoType),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			return matcherObject("optional", map[string]cty.Value{"value": args[0]}), nil
+			return matcherObject("optional", map[string]cty.Value{paramValue: args[0]}), nil
 		},
 	})
 }
 
 func requiredFunc() function.Function {
 	return function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType, AllowNull: true}},
+		Params: []function.Parameter{{Name: paramValue, Type: cty.DynamicPseudoType, AllowNull: true}},
 		Type:   function.StaticReturnType(cty.DynamicPseudoType),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			return matcherObject("required", map[string]cty.Value{"value": args[0]}), nil
+			return matcherObject("required", map[string]cty.Value{paramValue: args[0]}), nil
 		},
 	})
 }
 
 func matchesFunc() function.Function {
 	return function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "pattern", Type: cty.String}},
+		Params: []function.Parameter{{Name: paramPattern, Type: cty.String}},
 		Type:   function.StaticReturnType(cty.DynamicPseudoType),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			pattern := args[0].AsString()
@@ -101,7 +106,7 @@ func matchesFunc() function.Function {
 				return cty.NilVal, fmt.Errorf("invalid regex %q: %w", pattern, err)
 			}
 
-			return matcherObject("matches", map[string]cty.Value{"value": args[0]}), nil
+			return matcherObject("matches", map[string]cty.Value{paramValue: args[0]}), nil
 		},
 	})
 }
@@ -111,7 +116,7 @@ func oneOfFunc() function.Function {
 		Params: []function.Parameter{{Name: "values", Type: cty.DynamicPseudoType}},
 		Type:   function.StaticReturnType(cty.DynamicPseudoType),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			return matcherObject("one_of", map[string]cty.Value{"value": args[0]}), nil
+			return matcherObject("one_of", map[string]cty.Value{paramValue: args[0]}), nil
 		},
 	})
 }
@@ -119,8 +124,8 @@ func oneOfFunc() function.Function {
 func regexFindFunc() function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{
-			{Name: "value", Type: cty.DynamicPseudoType},
-			{Name: "pattern", Type: cty.String},
+			{Name: paramValue, Type: cty.DynamicPseudoType},
+			{Name: paramPattern, Type: cty.String},
 		},
 		VarParam: &function.Parameter{
 			Name: "group",
@@ -168,7 +173,7 @@ func regexFindFunc() function.Function {
 
 func urlEncodeFunc() function.Function {
 	return function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType}},
+		Params: []function.Parameter{{Name: paramValue, Type: cty.DynamicPseudoType}},
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			return cty.StringVal(url.QueryEscape(diagnostic.ScalarString(args[0]))), nil
@@ -181,7 +186,7 @@ func urlEncodeFunc() function.Function {
 // to use as the input of an HMAC or any other signature scheme.
 func jsonEncodeFunc() function.Function {
 	return function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "value", Type: cty.DynamicPseudoType, AllowNull: true}},
+		Params: []function.Parameter{{Name: paramValue, Type: cty.DynamicPseudoType, AllowNull: true}},
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			canonical, err := ctyToCanonical(args[0])

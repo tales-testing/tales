@@ -7,24 +7,33 @@ import (
 	"github.com/hyperxlab/tales/internal/model"
 )
 
+const (
+	skipAttrConditionName = "condition"
+	skipAttrReason        = "reason"
+	skipAttrOS            = "os"
+	skipAttrArch          = "arch"
+	skipAttrEnvSet        = "env_set"
+	skipAttrEnv           = "env"
+)
+
 // skipAttrCondition is the set of attribute names that count as a
 // skip condition (i.e. populate at least one field other than reason).
 var skipAttrCondition = map[string]struct{}{
-	"condition": {},
-	"os":        {},
-	"arch":      {},
-	"env_set":   {},
-	"env":       {},
+	skipAttrConditionName: {},
+	skipAttrOS:            {},
+	skipAttrArch:          {},
+	skipAttrEnvSet:        {},
+	skipAttrEnv:           {},
 }
 
 // allowedSkipAttrs lists every attribute accepted inside a skip block.
 var allowedSkipAttrs = map[string]struct{}{
-	"condition": {},
-	"reason":    {},
-	"os":        {},
-	"arch":      {},
-	"env_set":   {},
-	"env":       {},
+	skipAttrConditionName: {},
+	skipAttrReason:        {},
+	skipAttrOS:            {},
+	skipAttrArch:          {},
+	skipAttrEnvSet:        {},
+	skipAttrEnv:           {},
 }
 
 // decodeSkipRules turns the raw HCL skip_if / skip_unless blocks into
@@ -81,17 +90,17 @@ func decodeSkipRule(path string, raw skipBlock, kind model.SkipKind) (model.Skip
 		expression := attrExpr(path, attr)
 
 		switch name {
-		case "condition":
+		case skipAttrConditionName:
 			rule.Condition = expression
-		case "reason":
+		case skipAttrReason:
 			rule.Reason = expression
-		case "os":
+		case skipAttrOS:
 			rule.OS = expression
-		case "arch":
+		case skipAttrArch:
 			rule.Arch = expression
-		case "env_set":
+		case skipAttrEnvSet:
 			rule.EnvSet = expression
-		case "env":
+		case skipAttrEnv:
 			rule.Env = expression
 		}
 

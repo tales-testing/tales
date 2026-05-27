@@ -19,12 +19,14 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+const pathArgsUsage = "<path>"
+
 // NewTestCommand returns test command.
 func NewTestCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "test",
 		Usage:     "Execute .tales scenarios",
-		ArgsUsage: "<path>",
+		ArgsUsage: pathArgsUsage,
 		Flags: []cli.Flag{
 			&cli.Int64Flag{Name: "seed", Value: 0, Usage: "Deterministic seed"},
 			&cli.IntFlag{Name: "parallel", Value: runtime.NumCPU(), Usage: "Scenario parallelism"},

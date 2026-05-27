@@ -8,6 +8,19 @@ import (
 	"github.com/hyperxlab/tales/internal/diagnostic"
 )
 
+const (
+	jsonlKeyType       = "type"
+	jsonlKeyPhase      = "phase"
+	jsonlKeyScenario   = "scenario"
+	jsonlKeyStep       = "step"
+	jsonlKeyProvider   = "provider"
+	jsonlKeyKind       = "kind"
+	jsonlKeyStatus     = "status"
+	jsonlKeyDurationMS = "duration_ms"
+	jsonlKeySeed       = "seed"
+	jsonlKeyFile       = "file"
+)
+
 // WriteJSONL writes compact newline-delimited events.
 func WriteJSONL(path string, result *SuiteResult) error {
 	file, err := os.Create(path)
@@ -61,17 +74,17 @@ func encodeActionEvents(encoder *json.Encoder, seed int64, phase string, step *S
 		}
 
 		event := map[string]interface{}{
-			"type":        "action",
-			"phase":       phase,
-			"scenario":    step.Scenario,
-			"step":        step.Name,
-			"provider":    step.Provider,
-			"index":       action.Index,
-			"kind":        action.Kind,
-			"label":       action.Label,
-			"status":      action.Status,
-			"duration_ms": action.Duration.Milliseconds(),
-			"seed":        seed,
+			jsonlKeyType:       "action",
+			jsonlKeyPhase:      phase,
+			jsonlKeyScenario:   step.Scenario,
+			jsonlKeyStep:       step.Name,
+			jsonlKeyProvider:   step.Provider,
+			"index":            action.Index,
+			jsonlKeyKind:       action.Kind,
+			"label":            action.Label,
+			jsonlKeyStatus:     action.Status,
+			jsonlKeyDurationMS: action.Duration.Milliseconds(),
+			jsonlKeySeed:       seed,
 		}
 
 		if action.SelectorID != "" {
@@ -108,12 +121,12 @@ func encodeActionEvents(encoder *json.Encoder, seed int64, phase string, step *S
 
 func encodeScenarioEvent(encoder *json.Encoder, seed int64, scenario *ScenarioResult) error {
 	event := map[string]interface{}{
-		"type":        "scenario",
-		"status":      scenario.Status,
-		"file":        scenario.File,
-		"scenario":    scenario.Name,
-		"duration_ms": scenario.Duration.Milliseconds(),
-		"seed":        seed,
+		jsonlKeyType:       "scenario",
+		jsonlKeyStatus:     scenario.Status,
+		jsonlKeyFile:       scenario.File,
+		jsonlKeyScenario:   scenario.Name,
+		jsonlKeyDurationMS: scenario.Duration.Milliseconds(),
+		jsonlKeySeed:       seed,
 	}
 	if scenario.Failure != nil {
 		event["error"] = sanitizeErrorDetail(scenario.Failure)
@@ -132,15 +145,15 @@ func encodeScenarioEvent(encoder *json.Encoder, seed int64, scenario *ScenarioRe
 
 func encodeStepEvent(encoder *json.Encoder, seed int64, phase string, step *StepResult) error {
 	stepEvent := map[string]interface{}{
-		"type":        "step",
-		"phase":       phase,
-		"status":      step.Status,
-		"file":        step.File,
-		"scenario":    step.Scenario,
-		"step":        step.Name,
-		"provider":    step.Provider,
-		"duration_ms": step.Duration.Milliseconds(),
-		"seed":        seed,
+		jsonlKeyType:       "step",
+		jsonlKeyPhase:      phase,
+		jsonlKeyStatus:     step.Status,
+		jsonlKeyFile:       step.File,
+		jsonlKeyScenario:   step.Scenario,
+		jsonlKeyStep:       step.Name,
+		jsonlKeyProvider:   step.Provider,
+		jsonlKeyDurationMS: step.Duration.Milliseconds(),
+		jsonlKeySeed:       seed,
 	}
 	if step.StatusCode > 0 {
 		stepEvent["status_code"] = step.StatusCode
@@ -186,10 +199,10 @@ func sanitizeErrorDetail(detail *ErrorDetail) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"kind":    detail.Kind,
-		"path":    detail.Path,
-		"want":    diagnostic.Normalize(detail.Want),
-		"got":     diagnostic.Normalize(detail.Got),
-		"message": detail.Message,
+		jsonlKeyKind: detail.Kind,
+		"path":       detail.Path,
+		"want":       diagnostic.Normalize(detail.Want),
+		"got":        diagnostic.Normalize(detail.Got),
+		"message":    detail.Message,
 	}
 }

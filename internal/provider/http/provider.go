@@ -15,7 +15,10 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
-const providerTypeHTTP = "http"
+const (
+	providerTypeHTTP = "http"
+	headersKey       = "headers"
+)
 
 // Provider executes HTTP steps.
 type Provider struct {
@@ -186,7 +189,7 @@ func appendQuery(requestURL string, request map[string]cty.Value) (string, error
 func resolveHeaders(request map[string]cty.Value) (map[string]string, error) {
 	headers := map[string]string{}
 
-	headersVal, ok := request["headers"]
+	headersVal, ok := request[headersKey]
 	if !ok || headersVal.IsNull() {
 		return headers, nil
 	}
@@ -454,15 +457,15 @@ func buildOutput(
 		Duration:   duration,
 		StatusCode: resp.StatusCode,
 		Request: map[string]cty.Value{
-			"method":  cty.StringVal(method),
-			"url":     cty.StringVal(requestURL),
-			"headers": toStringMapValue(headers),
+			"method":   cty.StringVal(method),
+			"url":      cty.StringVal(requestURL),
+			headersKey: toStringMapValue(headers),
 		},
 		Response: map[string]cty.Value{
-			"status":  cty.NumberIntVal(int64(resp.StatusCode)),
-			"headers": cty.ObjectVal(responseHeaders),
-			"body":    cty.StringVal(string(respBytes)),
-			"json":    responseJSON,
+			"status":   cty.NumberIntVal(int64(resp.StatusCode)),
+			headersKey: cty.ObjectVal(responseHeaders),
+			"body":     cty.StringVal(string(respBytes)),
+			"json":     responseJSON,
 		},
 	}
 

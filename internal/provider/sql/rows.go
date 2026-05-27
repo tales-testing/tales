@@ -8,6 +8,8 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+const responseJSONKey = "json"
+
 // scanRows iterates a *sql.Rows, returning a structured representation of the
 // query result usable as a cty value via toQueryResponse.
 type scannedRow struct {
@@ -111,7 +113,7 @@ func toQueryResponse(rows []scannedRow, columns []string) map[string]cty.Value {
 		"rows":      rowsList,
 	})
 
-	return map[string]cty.Value{"json": jsonValue}
+	return map[string]cty.Value{responseJSONKey: jsonValue}
 }
 
 // toExecResponse builds the cty.Value map for an exec step. RowsAffected /
@@ -140,5 +142,5 @@ func toExecResponse(result dbsql.Result) map[string]cty.Value {
 		"last_insert_id": lastInsertID,
 	})
 
-	return map[string]cty.Value{"json": jsonValue}
+	return map[string]cty.Value{responseJSONKey: jsonValue}
 }

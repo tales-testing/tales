@@ -1,3 +1,4 @@
+//nolint:goconst // mockserver is fixture code; literal strings keep handlers readable
 package main
 
 import (

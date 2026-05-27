@@ -22,7 +22,7 @@ func runGenerator(generatorType string, params map[string]cty.Value, rnd generat
 		}
 
 		return cty.StringVal(email), nil
-	case "password":
+	case keyPassword:
 		password, err := runPasswordGenerator(params, rnd)
 		if err != nil {
 			return cty.NilVal, err
@@ -48,7 +48,7 @@ func runGenerator(generatorType string, params map[string]cty.Value, rnd generat
 			"first_name": cty.StringVal(person.FirstName),
 			"last_name":  cty.StringVal(person.LastName),
 			"gender":     cty.StringVal(person.Gender),
-			"name":       cty.StringVal(person.String()),
+			keyName:      cty.StringVal(person.String()),
 		}), nil
 	case "mac_address":
 		macAddress, err := runMACAddressGenerator(params, rnd)

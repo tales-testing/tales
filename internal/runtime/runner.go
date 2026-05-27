@@ -241,7 +241,7 @@ func recordDepCascadeSkip(sResult *report.ScenarioResult, step *model.Step, scen
 		Scenario:   scenarioName,
 		Name:       step.Name,
 		Provider:   step.Provider,
-		Phase:      "step",
+		Phase:      phaseStep,
 		Status:     report.StatusSkip,
 		SkipReason: reason,
 	})
@@ -258,7 +258,7 @@ func recordHaltedSkip(sResult *report.ScenarioResult, step *model.Step, scenario
 		Scenario:   scenarioName,
 		Name:       step.Name,
 		Provider:   step.Provider,
-		Phase:      "step",
+		Phase:      phaseStep,
 		Status:     report.StatusSkip,
 		SkipReason: "not run: an earlier step in the scenario failed",
 	})
@@ -316,7 +316,7 @@ func (r *Runner) executeStepInPhase(ctx context.Context, evaluator *lang.Evaluat
 		if retry.Interval > 0 {
 			if !sleepWithContext(ctx, retry.Interval) {
 				attemptResult.Status = report.StatusFail
-				attemptResult.Failure = &report.ErrorDetail{Kind: "runtime", Message: "step retry interrupted by context cancellation"}
+				attemptResult.Failure = &report.ErrorDetail{Kind: kindRuntime, Message: "step retry interrupted by context cancellation"}
 				attemptResult.Duration = time.Since(start)
 
 				return attemptResult
@@ -333,14 +333,14 @@ func (r *Runner) executeStepInPhase(ctx context.Context, evaluator *lang.Evaluat
 		return lastResult
 	}
 
-	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusFail, Attempts: retry.Attempts, StartedAt: start, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: "runtime", Message: "step was not executed"}}
+	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusFail, Attempts: retry.Attempts, StartedAt: start, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: kindRuntime, Message: "step was not executed"}}
 }
 
 func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string, attempt int) *report.StepResult {
 	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusPass}
 	start := time.Now()
 
-	if step.Provider == "keyword" {
+	if step.Provider == kindKeyword {
 		return r.executeKeywordStep(ctx, evaluator, suite, scenarioName, config, state, input, step, start, stepReport)
 	}
 
@@ -356,7 +356,7 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 
 	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "vars", Path: failedVar, Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindVars, Path: failedVar, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -365,7 +365,7 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 	requestValues, timeout, err := evaluateRequest(evaluator, scope, scenarioName, step)
 	if err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindEval, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -374,7 +374,7 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 	providerImpl, ok := r.providers.Get(step.Provider)
 	if !ok {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: fmt.Sprintf("unknown provider %q", step.Provider)}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindProvider, Message: fmt.Sprintf("unknown provider %q", step.Provider)}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -383,7 +383,7 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 	output, err := providerImpl.Execute(ctx, provider.Input{Scenario: scenarioName, Step: step, Phase: phase, Attempt: attempt, Config: config, Request: requestValues, Timeout: timeout})
 	if err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindProvider, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -407,15 +407,15 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 	}
 
 	resultValue := map[string]cty.Value{
-		"request":  cty.ObjectVal(output.Request),
-		"response": cty.ObjectVal(output.Response),
+		outputRequest:  cty.ObjectVal(output.Request),
+		outputResponse: cty.ObjectVal(output.Response),
 	}
 
 	for key, captureExpr := range step.Capture {
 		captureVal, err := evaluator.Eval(captureExpr, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "capture." + key})
 		if err != nil {
 			stepReport.Status = report.StatusFail
-			stepReport.Failure = &report.ErrorDetail{Kind: "capture", Path: key, Message: err.Error()}
+			stepReport.Failure = &report.ErrorDetail{Kind: kindCapture, Path: key, Message: err.Error()}
 			stepReport.Duration = time.Since(start)
 
 			return stepReport
@@ -656,7 +656,7 @@ func evaluateMultipartParts(evaluator *lang.Evaluator, scope lang.ScopeData, sce
 }
 
 func evaluateMultipartFilePart(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, index int, file *model.MultipartFilePart) (cty.Value, error) {
-	attrs := map[string]cty.Value{"kind": cty.StringVal("file")}
+	attrs := map[string]cty.Value{attrKind: cty.StringVal("file")}
 
 	eval := func(name string, expression model.Expression) error {
 		if expression.Empty() {
@@ -701,7 +701,7 @@ func evaluateMultipartFilePart(evaluator *lang.Evaluator, scope lang.ScopeData, 
 }
 
 func evaluateMultipartFieldPart(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, index int, field *model.MultipartFieldPart) (cty.Value, error) {
-	attrs := map[string]cty.Value{"kind": cty.StringVal("field")}
+	attrs := map[string]cty.Value{attrKind: cty.StringVal("field")}
 
 	eval := func(name string, expression model.Expression) error {
 		val, err := evaluator.Eval(expression, scope, lang.GenerateMeta{
@@ -722,7 +722,7 @@ func evaluateMultipartFieldPart(evaluator *lang.Evaluator, scope lang.ScopeData,
 		return cty.NilVal, err
 	}
 
-	if err := eval("value", field.Value); err != nil {
+	if err := eval(keyValue, field.Value); err != nil {
 		return cty.NilVal, err
 	}
 
@@ -754,8 +754,8 @@ func evaluateRequestAuth(evaluator *lang.Evaluator, scope lang.ScopeData, scenar
 
 	values["auth"] = cty.ObjectVal(map[string]cty.Value{
 		"basic": cty.ObjectVal(map[string]cty.Value{
-			"username": usernameValue,
-			"password": passwordValue,
+			"username":  usernameValue,
+			keyPassword: passwordValue,
 		}),
 	})
 
@@ -1023,7 +1023,7 @@ func evalWhen(condition model.Expression, evaluator *lang.Evaluator, scope lang.
 func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, start time.Time, stepReport *report.StepResult) *report.StepResult {
 	if step.Keyword == nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: "keyword step is missing keyword call configuration"}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindKeyword, Message: "keyword step is missing keyword call configuration"}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -1039,7 +1039,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 
 	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "vars", Path: failedVar, Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindVars, Path: failedVar, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -1048,7 +1048,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 	callName, callInputs, requestSummary, err := r.evaluateKeywordCall(evaluator, scope, scenarioName, step)
 	if err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindEval, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -1057,7 +1057,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 	keyword, ok := suite.Keywords[callName]
 	if !ok {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("unknown keyword %q", callName)}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindKeyword, Message: fmt.Sprintf("unknown keyword %q", callName)}
 		stepReport.Duration = time.Since(start)
 		stepReport.Request = requestSummary
 
@@ -1066,7 +1066,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 
 	if err := validateKeywordInputs(keyword, callInputs); err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindKeyword, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 		stepReport.Request = requestSummary
 
@@ -1078,7 +1078,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 	keywordState, stateErr := newKeywordState(outerResults, keyword.Steps)
 	if stateErr != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: stateErr.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindKeyword, Message: stateErr.Error()}
 		stepReport.Duration = time.Since(start)
 		stepReport.Request = requestSummary
 
@@ -1099,7 +1099,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 	outputValues, err := evaluateKeywordOutputs(evaluator, scenarioName, step.Name, config, keywordState, callInputs, keyword)
 	if err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "keyword", Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindKeyword, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 		stepReport.Request = requestSummary
 
@@ -1145,7 +1145,7 @@ func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scope lang.Scope
 	}
 
 	requestSummary := diagnostic.FromCTYMap(map[string]cty.Value{
-		"name":   cty.StringVal(keywordName),
+		keyName:  cty.StringVal(keywordName),
 		"inputs": cty.ObjectVal(inputValues),
 	})
 
@@ -1179,7 +1179,7 @@ func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) (*S
 
 func (r *Runner) executeKeywordSteps(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, keywordState *ScenarioState, input map[string]cty.Value, keyword *model.Keyword, externalDeps map[string]struct{}) *report.ErrorDetail {
 	if err := lang.ValidateStepOrder(keyword.Steps, externalDeps); err != nil {
-		return &report.ErrorDetail{Kind: "keyword", Message: fmt.Sprintf("keyword %q graph error: %v", keyword.Name, err)}
+		return &report.ErrorDetail{Kind: kindKeyword, Message: fmt.Sprintf("keyword %q graph error: %v", keyword.Name, err)}
 	}
 
 	for _, step := range keyword.Steps {
@@ -1191,7 +1191,7 @@ func (r *Runner) executeKeywordSteps(ctx context.Context, evaluator *lang.Evalua
 			}
 
 			return &report.ErrorDetail{
-				Kind:    "keyword",
+				Kind:    kindKeyword,
 				Path:    step.Name,
 				Message: fmt.Sprintf("keyword %q step %q failed: %s", keyword.Name, step.Name, message),
 			}

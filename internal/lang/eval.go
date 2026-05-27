@@ -82,7 +82,7 @@ func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData,
 	}
 
 	ctx.Functions["generate"] = function.New(&function.Spec{
-		Params: []function.Parameter{{Name: "name", Type: cty.String}},
+		Params: []function.Parameter{{Name: paramName, Type: cty.String}},
 		Type:   function.StaticReturnType(cty.DynamicPseudoType),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			if e.generate == nil {

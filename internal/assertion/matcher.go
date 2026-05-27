@@ -15,6 +15,9 @@ const (
 	matcherOptional  = "optional"
 	matcherRequired  = "required"
 	matcherAny       = "any"
+
+	kindAssertion        = "assertion"
+	msgValueDoesNotExist = "value does not exist"
 )
 
 type matcherHandler func(args map[string]cty.Value, actual cty.Value, path string) error
@@ -56,7 +59,7 @@ func isMatcher(value cty.Value) (string, map[string]cty.Value, bool) {
 func applyMatcher(name string, args map[string]cty.Value, actual cty.Value, path string) error {
 	handler, ok := matcherHandlers[name]
 	if !ok {
-		return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("unknown matcher %q", name)}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: fmt.Sprintf("unknown matcher %q", name)}
 	}
 
 	return handler(args, actual, path)
@@ -69,7 +72,7 @@ func matchExists(args map[string]cty.Value, actual cty.Value, path string) error
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value does not exist"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: msgValueDoesNotExist}
 }
 
 func matchNotExists(args map[string]cty.Value, actual cty.Value, path string) error {
@@ -79,7 +82,7 @@ func matchNotExists(args map[string]cty.Value, actual cty.Value, path string) er
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value exists but should not"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value exists but should not"}
 }
 
 func matchIsString(args map[string]cty.Value, actual cty.Value, path string) error {
@@ -89,7 +92,7 @@ func matchIsString(args map[string]cty.Value, actual cty.Value, path string) err
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value is not a string"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value is not a string"}
 }
 
 func matchIsNumber(args map[string]cty.Value, actual cty.Value, path string) error {
@@ -99,7 +102,7 @@ func matchIsNumber(args map[string]cty.Value, actual cty.Value, path string) err
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value is not a number"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value is not a number"}
 }
 
 func matchIsBool(args map[string]cty.Value, actual cty.Value, path string) error {
@@ -109,7 +112,7 @@ func matchIsBool(args map[string]cty.Value, actual cty.Value, path string) error
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value is not a bool"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value is not a bool"}
 }
 
 func matchIsArray(args map[string]cty.Value, actual cty.Value, path string) error {
@@ -119,7 +122,7 @@ func matchIsArray(args map[string]cty.Value, actual cty.Value, path string) erro
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value is not an array"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value is not an array"}
 }
 
 func matchIsObject(args map[string]cty.Value, actual cty.Value, path string) error {
@@ -129,13 +132,13 @@ func matchIsObject(args map[string]cty.Value, actual cty.Value, path string) err
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value is not an object"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value is not an object"}
 }
 
 func matchContains(args map[string]cty.Value, actual cty.Value, path string) error {
 	needle, ok := args["value"]
 	if !ok {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "contains matcher is missing value"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "contains matcher is missing value"}
 	}
 
 	if actual.Type() == cty.String && needle.Type() == cty.String {
@@ -143,7 +146,7 @@ func matchContains(args map[string]cty.Value, actual cty.Value, path string) err
 			return nil
 		}
 
-		return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("%q does not contain %q", actual.AsString(), needle.AsString())}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: fmt.Sprintf("%q does not contain %q", actual.AsString(), needle.AsString())}
 	}
 
 	if actual.Type().IsListType() || actual.Type().IsTupleType() {
@@ -154,32 +157,32 @@ func matchContains(args map[string]cty.Value, actual cty.Value, path string) err
 			}
 		}
 
-		return &Mismatch{Kind: "assertion", Path: path, Message: "array does not contain expected value"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "array does not contain expected value"}
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "contains matcher requires string or array"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "contains matcher requires string or array"}
 }
 
 func matchRegex(args map[string]cty.Value, actual cty.Value, path string) error {
 	patternVal, ok := args["value"]
 	if !ok || patternVal.Type() != cty.String {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "matches matcher requires regex pattern"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "matches matcher requires regex pattern"}
 	}
 
 	if actual.Type() != cty.String {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "matches matcher requires actual string"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "matches matcher requires actual string"}
 	}
 
 	re, err := regexp.Compile(patternVal.AsString())
 	if err != nil {
-		return &Mismatch{Kind: "assertion", Path: path, Message: err.Error()}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: err.Error()}
 	}
 
 	if re.MatchString(actual.AsString()) {
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("%q does not match %q", actual.AsString(), patternVal.AsString())}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: fmt.Sprintf("%q does not match %q", actual.AsString(), patternVal.AsString())}
 }
 
 func matchAny(args map[string]cty.Value, actual cty.Value, path string) error {
@@ -217,11 +220,11 @@ func fieldWrapper(value cty.Value) (kind string, inner cty.Value, ok bool) {
 func matchOneOf(args map[string]cty.Value, actual cty.Value, path string) error {
 	values, ok := args["value"]
 	if !ok {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "one_of matcher is missing values"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "one_of matcher is missing values"}
 	}
 
 	if !values.Type().IsTupleType() && !values.Type().IsListType() {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "one_of matcher requires list"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "one_of matcher requires list"}
 	}
 
 	for it := values.ElementIterator(); it.Next(); {
@@ -231,5 +234,5 @@ func matchOneOf(args map[string]cty.Value, actual cty.Value, path string) error 
 		}
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Message: "value is not in allowed list"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value is not in allowed list"}
 }

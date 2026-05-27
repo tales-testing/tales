@@ -367,7 +367,7 @@ func decodeMultipartBlock(path string, raw *multipartBlock) (*model.MultipartBod
 			if part != nil {
 				body.Parts = append(body.Parts, model.MultipartPart{File: part})
 			}
-		case "field":
+		case multipartFieldBlock:
 			part, partDiags := decodeMultipartField(path, block)
 			diags = append(diags, partDiags...)
 
@@ -387,12 +387,17 @@ func decodeMultipartBlock(path string, raw *multipartBlock) (*model.MultipartBod
 	return body, diags
 }
 
+const (
+	multipartFieldBlock = "field"
+	multipartValueAttr  = "value"
+)
+
 var multipartFileAllowed = map[string]struct{}{
-	"field":        {},
-	"path":         {},
-	"content":      {},
-	"filename":     {},
-	"content_type": {},
+	multipartFieldBlock: {},
+	"path":              {},
+	"content":           {},
+	"filename":          {},
+	"content_type":      {},
 }
 
 func decodeMultipartFile(path string, block *hclsyntax.Block) (*model.MultipartFilePart, hcl.Diagnostics) {
@@ -420,7 +425,7 @@ func decodeMultipartFile(path string, block *hclsyntax.Block) (*model.MultipartF
 
 	attr := block.Body.Attributes
 
-	fieldAttr, hasField := attr["field"]
+	fieldAttr, hasField := attr[multipartFieldBlock]
 	if !hasField {
 		blockRange := block.DefRange()
 		diags = append(diags, diagError(
@@ -460,8 +465,8 @@ func decodeMultipartFile(path string, block *hclsyntax.Block) (*model.MultipartF
 }
 
 var multipartFieldAllowed = map[string]struct{}{
-	"name":  {},
-	"value": {},
+	"name":             {},
+	multipartValueAttr: {},
 }
 
 func decodeMultipartField(path string, block *hclsyntax.Block) (*model.MultipartFieldPart, hcl.Diagnostics) {
@@ -499,7 +504,7 @@ func decodeMultipartField(path string, block *hclsyntax.Block) (*model.Multipart
 		))
 	}
 
-	valueAttr, hasValue := attr["value"]
+	valueAttr, hasValue := attr[multipartValueAttr]
 	if !hasValue {
 		blockRange := block.DefRange()
 		diags = append(diags, diagError(

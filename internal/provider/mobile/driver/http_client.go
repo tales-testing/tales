@@ -22,6 +22,9 @@ const (
 	// hiding genuine driver hangs.
 	defaultRequestTimeout = 30 * time.Second
 	bodySnippetLimit      = 256
+
+	payloadBundleIDKey = "bundleId"
+	payloadDurationKey = "duration"
 )
 
 // Client is the HTTP/JSON implementation of Driver, targeting the
@@ -113,7 +116,7 @@ func (c *Client) Hierarchy(ctx context.Context, bundleID string) (*tree.ViewNode
 
 // Tap posts to /tap.
 func (c *Client) Tap(ctx context.Context, bundleID, id string, x, y float64) error {
-	payload := map[string]any{"bundleId": bundleID, "x": x, "y": y}
+	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y}
 	if id != "" {
 		payload["id"] = id
 	}
@@ -124,12 +127,12 @@ func (c *Client) Tap(ctx context.Context, bundleID, id string, x, y float64) err
 // Swipe posts to /swipe.
 func (c *Client) Swipe(ctx context.Context, bundleID string, startX, startY, endX, endY, duration float64) error {
 	payload := map[string]any{
-		"bundleId": bundleID,
-		"startX":   startX,
-		"startY":   startY,
-		"endX":     endX,
-		"endY":     endY,
-		"duration": duration,
+		payloadBundleIDKey: bundleID,
+		"startX":           startX,
+		"startY":           startY,
+		"endX":             endX,
+		"endY":             endY,
+		payloadDurationKey: duration,
 	}
 
 	return c.postJSON(ctx, "/swipe", payload)
@@ -137,7 +140,7 @@ func (c *Client) Swipe(ctx context.Context, bundleID string, startX, startY, end
 
 // LongPress posts to /longPress.
 func (c *Client) LongPress(ctx context.Context, bundleID, id string, x, y, duration float64) error {
-	payload := map[string]any{"bundleId": bundleID, "x": x, "y": y, "duration": duration}
+	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y, payloadDurationKey: duration}
 	if id != "" {
 		payload["id"] = id
 	}
@@ -147,7 +150,7 @@ func (c *Client) LongPress(ctx context.Context, bundleID, id string, x, y, durat
 
 // DoubleTap posts to /doubleTap.
 func (c *Client) DoubleTap(ctx context.Context, bundleID, id string, x, y float64) error {
-	payload := map[string]any{"bundleId": bundleID, "x": x, "y": y}
+	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y}
 	if id != "" {
 		payload["id"] = id
 	}
@@ -157,12 +160,12 @@ func (c *Client) DoubleTap(ctx context.Context, bundleID, id string, x, y float6
 
 // PressKey posts to /pressKey.
 func (c *Client) PressKey(ctx context.Context, bundleID, key string) error {
-	return c.postJSON(ctx, "/pressKey", map[string]any{"bundleId": bundleID, "key": key})
+	return c.postJSON(ctx, "/pressKey", map[string]any{payloadBundleIDKey: bundleID, "key": key})
 }
 
 // PressButton posts to /pressButton.
 func (c *Client) PressButton(ctx context.Context, bundleID, button string) error {
-	return c.postJSON(ctx, "/pressButton", map[string]any{"bundleId": bundleID, "button": button})
+	return c.postJSON(ctx, "/pressButton", map[string]any{payloadBundleIDKey: bundleID, "button": button})
 }
 
 // SetOrientation posts to /orientation.
@@ -172,7 +175,7 @@ func (c *Client) SetOrientation(ctx context.Context, orientation string) error {
 
 // InputText posts to /inputText.
 func (c *Client) InputText(ctx context.Context, bundleID, id, text string, paste bool) error {
-	payload := map[string]any{"bundleId": bundleID, "text": text}
+	payload := map[string]any{payloadBundleIDKey: bundleID, "text": text}
 	if id != "" {
 		payload["id"] = id
 	}
@@ -190,7 +193,7 @@ func (c *Client) EraseText(ctx context.Context, bundleID string, characters int)
 		return fmt.Errorf("eraseText: characters must be non-negative, got %d", characters)
 	}
 
-	return c.postJSON(ctx, "/eraseText", map[string]any{"bundleId": bundleID, "characters": characters})
+	return c.postJSON(ctx, "/eraseText", map[string]any{payloadBundleIDKey: bundleID, "characters": characters})
 }
 
 // Screenshot fetches GET /screenshot returning the raw PNG bytes.

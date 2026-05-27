@@ -18,6 +18,8 @@ import (
 	"github.com/hyperxlab/tales/internal/report"
 )
 
+const visualReportTitle = "Tales Visual Report"
+
 // Report is the top-level JSON payload embedded in the HTML data island.
 type Report struct {
 	Title       string     `json:"title"`
@@ -72,7 +74,7 @@ type Action struct {
 func Build(result *report.SuiteResult, htmlPath string) Report {
 	if result == nil {
 		return Report{
-			Title:       "Tales Visual Report",
+			Title:       visualReportTitle,
 			GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 			Status:      string(report.StatusUnknown),
 			Scenarios:   []Scenario{},
@@ -85,7 +87,7 @@ func Build(result *report.SuiteResult, htmlPath string) Report {
 	}
 
 	out := Report{
-		Title:       "Tales Visual Report",
+		Title:       visualReportTitle,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Seed:        result.Seed,
 		DurationMS:  result.Duration.Milliseconds(),

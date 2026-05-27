@@ -14,7 +14,7 @@ func NewValidateCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "validate",
 		Usage:     "Validate .tales files",
-		ArgsUsage: "<path>",
+		ArgsUsage: pathArgsUsage,
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			path := "."
 			if cmd.NArg() > 0 {

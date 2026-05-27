@@ -22,6 +22,11 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+const (
+	artifactTypeKey = "type"
+	artifactPathKey = "path"
+)
+
 // defaultPollInterval is the wait between two hierarchy fetches during mobile
 // action and expectation polling.
 const defaultPollInterval = 250 * time.Millisecond
@@ -201,8 +206,8 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	if err != nil {
 		if a, ok := driverLogArtifactFromError(err); ok {
 			output.Response["artifacts"] = cty.ListVal([]cty.Value{cty.ObjectVal(map[string]cty.Value{
-				"type": cty.StringVal(a.Type),
-				"path": cty.StringVal(a.Path),
+				artifactTypeKey: cty.StringVal(a.Type),
+				artifactPathKey: cty.StringVal(a.Path),
 			})})
 		}
 
@@ -1143,8 +1148,8 @@ func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Inp
 	values := make([]cty.Value, 0, len(artifacts))
 	for _, a := range artifacts {
 		values = append(values, cty.ObjectVal(map[string]cty.Value{
-			"type": cty.StringVal(a.Type),
-			"path": cty.StringVal(a.Path),
+			artifactTypeKey: cty.StringVal(a.Type),
+			artifactPathKey: cty.StringVal(a.Path),
 		}))
 	}
 

@@ -27,7 +27,7 @@ func (r *Runner) executeSQLStep(ctx context.Context, evaluator *lang.Evaluator, 
 
 	if step.SQL == nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: "sql step is missing exec or query block"}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindEval, Message: "sql step is missing exec or query block"}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -37,7 +37,7 @@ func (r *Runner) executeSQLStep(ctx context.Context, evaluator *lang.Evaluator, 
 
 	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "vars", Path: failedVar, Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindVars, Path: failedVar, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -46,7 +46,7 @@ func (r *Runner) executeSQLStep(ctx context.Context, evaluator *lang.Evaluator, 
 	execution, evalErr := evaluateSQLExecution(evaluator, scope, scenarioName, step)
 	if evalErr != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: evalErr.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindEval, Message: evalErr.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -55,7 +55,7 @@ func (r *Runner) executeSQLStep(ctx context.Context, evaluator *lang.Evaluator, 
 	providerImpl, ok := r.providers.Get(step.Provider)
 	if !ok {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: fmt.Sprintf("unknown provider %q", step.Provider)}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindProvider, Message: fmt.Sprintf("unknown provider %q", step.Provider)}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -71,7 +71,7 @@ func (r *Runner) executeSQLStep(ctx context.Context, evaluator *lang.Evaluator, 
 	})
 	if err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindProvider, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -94,15 +94,15 @@ func (r *Runner) executeSQLStep(ctx context.Context, evaluator *lang.Evaluator, 
 	}
 
 	resultValue := map[string]cty.Value{
-		"request":  cty.ObjectVal(output.Request),
-		"response": cty.ObjectVal(output.Response),
+		outputRequest:  cty.ObjectVal(output.Request),
+		outputResponse: cty.ObjectVal(output.Response),
 	}
 
 	for key, captureExpr := range step.Capture {
 		captureVal, err := evaluator.Eval(captureExpr, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "capture." + key})
 		if err != nil {
 			stepReport.Status = report.StatusFail
-			stepReport.Failure = &report.ErrorDetail{Kind: "capture", Path: key, Message: err.Error()}
+			stepReport.Failure = &report.ErrorDetail{Kind: kindCapture, Path: key, Message: err.Error()}
 			stepReport.Duration = time.Since(start)
 
 			return stepReport

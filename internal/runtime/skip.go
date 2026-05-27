@@ -30,7 +30,7 @@ func applyScenarioSkip(evaluator *lang.Evaluator, scenario *model.Scenario, sRes
 	skipped, reason, err := evaluateSkipRules(evaluator, scenario.SkipRules, scope, meta)
 	if err != nil {
 		sResult.Status = report.StatusFail
-		sResult.Failure = &report.ErrorDetail{Kind: "skip", Message: err.Error()}
+		sResult.Failure = &report.ErrorDetail{Kind: kindSkip, Message: err.Error()}
 		sResult.Duration = time.Since(start)
 
 		return true
@@ -66,9 +66,9 @@ func evaluateStepSkip(evaluator *lang.Evaluator, step *model.Step, scenarioName 
 			Scenario: scenarioName,
 			Name:     step.Name,
 			Provider: step.Provider,
-			Phase:    "step",
+			Phase:    phaseStep,
 			Status:   report.StatusFail,
-			Failure:  &report.ErrorDetail{Kind: "skip", Message: err.Error()},
+			Failure:  &report.ErrorDetail{Kind: kindSkip, Message: err.Error()},
 		}
 	}
 
@@ -81,7 +81,7 @@ func evaluateStepSkip(evaluator *lang.Evaluator, step *model.Step, scenarioName 
 		Scenario:   scenarioName,
 		Name:       step.Name,
 		Provider:   step.Provider,
-		Phase:      "step",
+		Phase:      phaseStep,
 		Status:     report.StatusSkip,
 		SkipReason: reason,
 	}

@@ -173,6 +173,7 @@ func (m *Manager) ensureBuilt(ctx context.Context, paths Paths) (string, error) 
 	if data, err := os.ReadFile(paths.BuildOK); err == nil {
 		xctestrun := strings.TrimSpace(string(data))
 		if xctestrun != "" {
+			//nolint:gosec // G304: xctestrun path comes from Tales' own cache marker written by ensureBuilt below, not from user input
 			if _, statErr := os.Stat(xctestrun); statErr == nil {
 				return xctestrun, nil
 			}

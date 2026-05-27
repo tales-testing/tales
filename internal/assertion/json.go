@@ -20,7 +20,7 @@ func Equal(path string, expected, actual cty.Value) error {
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Want: expected, Got: actual}
+	return &Mismatch{Kind: kindAssertion, Path: path, Want: expected, Got: actual}
 }
 
 // MatchJSON performs JSON assertion with partial object semantics by default.
@@ -38,11 +38,11 @@ func MatchJSON(expected, actual cty.Value, strict bool, path string) error {
 			return nil
 		}
 
-		return &Mismatch{Kind: "assertion", Path: path, Message: "expected null"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "expected null"}
 	}
 
 	if actual.IsNull() {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "actual value is null"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "actual value is null"}
 	}
 
 	if expected.Type().IsObjectType() {
@@ -57,12 +57,12 @@ func MatchJSON(expected, actual cty.Value, strict bool, path string) error {
 		return nil
 	}
 
-	return &Mismatch{Kind: "assertion", Path: path, Want: expected, Got: actual}
+	return &Mismatch{Kind: kindAssertion, Path: path, Want: expected, Got: actual}
 }
 
 func matchJSONObject(expected, actual cty.Value, strict bool, path string) error {
 	if !actual.Type().IsObjectType() && !actual.Type().IsMapType() {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "expected object"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "expected object"}
 	}
 
 	expectedMap := expected.AsValueMap()
@@ -83,10 +83,10 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 			}
 
 			if name, _, is := isMatcher(expVal); is && name == matcherExists {
-				return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "value does not exist"}
+				return &Mismatch{Kind: kindAssertion, Path: path + "." + key, Message: msgValueDoesNotExist}
 			}
 
-			return &Mismatch{Kind: "assertion", Path: path + "." + key, Message: "missing required field"}
+			return &Mismatch{Kind: kindAssertion, Path: path + "." + key, Message: "missing required field"}
 		}
 
 		allowedKeys[key] = struct{}{}
@@ -104,7 +104,7 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 	if strict {
 		for key := range actualMap {
 			if _, ok := allowedKeys[key]; !ok {
-				return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("object has unexpected field %q", key)}
+				return &Mismatch{Kind: kindAssertion, Path: path, Message: fmt.Sprintf("object has unexpected field %q", key)}
 			}
 		}
 	}
@@ -114,14 +114,14 @@ func matchJSONObject(expected, actual cty.Value, strict bool, path string) error
 
 func matchJSONArray(expected, actual cty.Value, strict bool, path string) error {
 	if !actual.Type().IsTupleType() && !actual.Type().IsListType() {
-		return &Mismatch{Kind: "assertion", Path: path, Message: "expected array"}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: "expected array"}
 	}
 
 	expLen := expected.LengthInt()
 
 	actLen := actual.LengthInt()
 	if expLen != actLen {
-		return &Mismatch{Kind: "assertion", Path: path, Message: fmt.Sprintf("array length mismatch want=%d got=%d", expLen, actLen)}
+		return &Mismatch{Kind: kindAssertion, Path: path, Message: fmt.Sprintf("array length mismatch want=%d got=%d", expLen, actLen)}
 	}
 
 	for i := 0; i < expLen; i++ {

@@ -17,6 +17,7 @@ const supportedMobilePlatform = "ios"
 
 const mobileTimeoutAttr = "timeout"
 const mobileIntervalAttr = "interval"
+const mobileValueAttr = "value"
 const mobileDurationAttr = "duration"
 
 // decodeMobileStep builds a model.MobileStep from a parsed step block when any
@@ -367,7 +368,7 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 	idExpr, idDiags := requireActionAttr(block, "input_text", "id")
 	diags = append(diags, idDiags...)
 
-	valueExpr, valueDiags := requireActionAttr(block, "input_text", "value")
+	valueExpr, valueDiags := requireActionAttr(block, "input_text", mobileValueAttr)
 	diags = append(diags, valueDiags...)
 
 	var (
@@ -378,7 +379,7 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", "value":
+		case "id", mobileValueAttr:
 			continue
 		case "secure":
 			secureExpr = attr.Expr

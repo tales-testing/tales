@@ -24,7 +24,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 
 	if step.Mobile == nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: "mobile step is missing mobile block"}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindEval, Message: "mobile step is missing mobile block"}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -34,7 +34,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 
 	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "vars", Path: failedVar, Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindVars, Path: failedVar, Message: err.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -43,7 +43,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	exec, evalErr := evaluateMobileStep(evaluator, scope, scenarioName, step)
 	if evalErr != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "eval", Message: evalErr.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindEval, Message: evalErr.Error()}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -52,7 +52,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	providerImpl, ok := r.providers.Get(step.Provider)
 	if !ok {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: fmt.Sprintf("unknown provider %q", step.Provider)}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindProvider, Message: fmt.Sprintf("unknown provider %q", step.Provider)}
 		stepReport.Duration = time.Since(start)
 
 		return stepReport
@@ -68,7 +68,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	})
 	if err != nil {
 		stepReport.Status = report.StatusFail
-		stepReport.Failure = &report.ErrorDetail{Kind: "provider", Message: err.Error()}
+		stepReport.Failure = &report.ErrorDetail{Kind: kindProvider, Message: err.Error()}
 
 		if output != nil {
 			stepReport.Response = diagnostic.FromCTYMap(output.Response)
@@ -90,8 +90,8 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 	scope.Response = output.Response
 
 	resultValue := map[string]cty.Value{
-		"request":  cty.ObjectVal(output.Request),
-		"response": cty.ObjectVal(output.Response),
+		outputRequest:  cty.ObjectVal(output.Request),
+		outputResponse: cty.ObjectVal(output.Response),
 	}
 
 	if len(step.Capture) > 0 {
@@ -101,7 +101,7 @@ func (r *Runner) executeMobileStep(ctx context.Context, evaluator *lang.Evaluato
 			captureVal, err := evaluator.EvalWithExtras(captureExpr, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "capture." + key}, extras)
 			if err != nil {
 				stepReport.Status = report.StatusFail
-				stepReport.Failure = &report.ErrorDetail{Kind: "capture", Path: key, Message: err.Error()}
+				stepReport.Failure = &report.ErrorDetail{Kind: kindCapture, Path: key, Message: err.Error()}
 				stepReport.Duration = time.Since(start)
 
 				return stepReport
@@ -223,7 +223,7 @@ func mobileValueAttrName(kind model.MobileActionKind) string {
 		return name
 	}
 
-	return "value"
+	return keyValue
 }
 
 func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, actions []model.MobileAction) ([]provider.MobileActionExec, error) {
@@ -624,7 +624,7 @@ func mobileRequestSummary(exec *provider.MobileExecution) map[string]any {
 }
 
 func mobileActionSummary(action provider.MobileActionExec) map[string]any {
-	entry := map[string]any{"kind": string(action.Kind), "id": action.ID}
+	entry := map[string]any{attrKind: string(action.Kind), "id": action.ID}
 	if action.Timeout > 0 {
 		entry["timeout"] = action.Timeout.String()
 	}
@@ -638,9 +638,9 @@ func mobileActionSummary(action provider.MobileActionExec) map[string]any {
 	}
 
 	if action.Secure {
-		entry["value"] = "***"
+		entry[keyValue] = "***"
 	} else {
-		entry["value"] = action.Value
+		entry[keyValue] = action.Value
 	}
 
 	return entry
@@ -684,7 +684,7 @@ func expectSummary(expect provider.MobileExpectExec) map[string]any {
 			items = append(items, mobileValueExpectationSummary(v))
 		}
 
-		summary["value"] = items
+		summary[keyValue] = items
 	}
 
 	if len(expect.Enabled) > 0 {
@@ -722,7 +722,7 @@ func mobileVisibilitySummary(v provider.MobileVisibilityExec) map[string]any {
 }
 
 func mobileValueExpectationSummary(v provider.MobileValueExpectationExec) map[string]any {
-	entry := map[string]any{"id": v.ID, "value": diagnostic.FromCTY(v.Expected)}
+	entry := map[string]any{"id": v.ID, keyValue: diagnostic.FromCTY(v.Expected)}
 	if v.Timeout > 0 {
 		entry["timeout"] = v.Timeout.String()
 	}
@@ -846,8 +846,8 @@ func mobileCaptureFunctions(providerImpl provider.Provider, scenarioName, stepNa
 	hierarchy := mobile.LastHierarchy(scenarioName, stepName)
 
 	return map[string]function.Function{
-		"value": valueFunction(hierarchy),
-		"text":  textFunction(hierarchy),
+		keyValue: valueFunction(hierarchy),
+		"text":   textFunction(hierarchy),
 	}
 }
 
