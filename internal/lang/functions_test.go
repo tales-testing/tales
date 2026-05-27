@@ -311,6 +311,58 @@ func TestHMACSHA256HexErrorDoesNotLeakSecret(t *testing.T) {
 	}
 }
 
+func TestHMACSHA1HexKnownVector(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `hmac_sha1_hex("key", "The quick brown fox jumps over the lazy dog")`)
+	if value.AsString() != "de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9" {
+		t.Fatalf("unexpected HMAC: %s", value.AsString())
+	}
+}
+
+func TestHMACSHA1HexEmptyMessage(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `hmac_sha1_hex("secret", "")`)
+	if len(value.AsString()) != 40 {
+		t.Fatalf("expected 40-char hex, got %d chars: %s", len(value.AsString()), value.AsString())
+	}
+}
+
+func TestHMACSHA1HexUnicode(t *testing.T) {
+	t.Parallel()
+
+	value := evalTestExpression(t, `hmac_sha1_hex("clé", "café")`)
+	if len(value.AsString()) != 40 {
+		t.Fatalf("expected 40-char hex, got %d chars: %s", len(value.AsString()), value.AsString())
+	}
+}
+
+func TestHMACSHA1HexRejectsArity(t *testing.T) {
+	t.Parallel()
+
+	if _, err := evalTestExpressionError(`hmac_sha1_hex("only-one-arg")`); err == nil {
+		t.Fatalf("expected error for single argument")
+	}
+
+	if _, err := evalTestExpressionError(`hmac_sha1_hex("a", "b", "c")`); err == nil {
+		t.Fatalf("expected error for too many arguments")
+	}
+}
+
+func TestHMACSHA1HexErrorDoesNotLeakSecret(t *testing.T) {
+	t.Parallel()
+
+	_, err := evalTestExpressionError(`hmac_sha1_hex()`)
+	if err == nil {
+		t.Fatalf("expected error for missing arguments")
+	}
+
+	if strings.Contains(err.Error(), "supersecret") {
+		t.Fatalf("error message should never embed user secret material: %v", err)
+	}
+}
+
 func evalTestExpression(t *testing.T, src string) cty.Value {
 	t.Helper()
 

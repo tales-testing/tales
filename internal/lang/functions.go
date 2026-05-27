@@ -2,6 +2,7 @@ package lang
 
 import (
 	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -357,6 +358,28 @@ func hmacSHA256HexFunc() function.Function {
 	})
 }
 
+// hmacSHA1HexFunc computes HMAC-SHA1(secret, message) and returns the digest
+// as lowercase hex. Errors never embed the secret or message. SHA-1 is exposed
+// because it is required by RFC 6238 TOTP and some legacy signing schemes;
+// prefer hmac_sha256_hex for new code.
+func hmacSHA1HexFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{
+			{Name: "secret", Type: cty.String},
+			{Name: "message", Type: cty.String},
+		},
+		Type: function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			mac := hmac.New(sha1.New, []byte(args[0].AsString()))
+			if _, err := mac.Write([]byte(args[1].AsString())); err != nil {
+				return cty.NilVal, fmt.Errorf("hmac_sha1_hex: write failed")
+			}
+
+			return cty.StringVal(hex.EncodeToString(mac.Sum(nil))), nil
+		},
+	})
+}
+
 func ctyNumberToInt(value cty.Value) (int, error) {
 	if value.Type() != cty.Number {
 		return 0, fmt.Errorf("number value expected")
@@ -377,6 +400,7 @@ func baseFunctions() map[string]function.Function {
 		"now_unix":        nowUnixFunc(),
 		"now_rfc3339":     nowRFC3339Func(),
 		"hmac_sha256_hex": hmacSHA256HexFunc(),
+		"hmac_sha1_hex":   hmacSHA1HexFunc(),
 		"regex_find":      regexFindFunc(),
 		"url_encode":      urlEncodeFunc(),
 		"contains":        matcherSingleArg("contains"),
