@@ -1,0 +1,56 @@
+---
+import strings from '../../i18n/en';
+import { Code } from 'astro:components';
+
+const q = strings.quickstart;
+---
+
+<section class="border-t border-[var(--color-border)] bg-[var(--color-bg)]">
+	<div class="mx-auto max-w-6xl px-6 py-20 lg:py-24">
+		<div class="mx-auto max-w-2xl text-center">
+			<h2 class="text-3xl font-bold tracking-tight md:text-4xl">{q.title}</h2>
+			<p class="mt-4 text-lg text-[var(--color-text-muted)]">{q.subtitle}</p>
+		</div>
+
+		<div class="mx-auto mt-12 max-w-4xl" data-quickstart>
+			<div role="tablist" aria-label="Quick start" class="flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1">
+				<button type="button" role="tab" aria-selected="true" aria-controls="qs-scenario" data-tab="scenario" class="flex-1 rounded-md px-4 py-2 text-sm font-medium text-[var(--color-text)] data-[active=true]:bg-[var(--color-accent)] data-[active=true]:text-white" data-active="true">{q.tabs.scenario}</button>
+				<button type="button" role="tab" aria-selected="false" aria-controls="qs-cli" data-tab="cli" class="flex-1 rounded-md px-4 py-2 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] data-[active=true]:bg-[var(--color-accent)] data-[active=true]:text-white">{q.tabs.cli}</button>
+				<button type="button" role="tab" aria-selected="false" aria-controls="qs-report" data-tab="report" class="flex-1 rounded-md px-4 py-2 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] data-[active=true]:bg-[var(--color-accent)] data-[active=true]:text-white">{q.tabs.report}</button>
+			</div>
+
+			<div class="mt-4">
+				<div id="qs-scenario" role="tabpanel" data-panel="scenario">
+					<Code code={q.scenario} lang="hcl" theme="github-dark-default" />
+				</div>
+				<div id="qs-cli" role="tabpanel" data-panel="cli" hidden>
+					<Code code={q.cli} lang="bash" theme="github-dark-default" />
+				</div>
+				<div id="qs-report" role="tabpanel" data-panel="report" hidden>
+					<Code code={q.report} lang="json" theme="github-dark-default" />
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<script>
+	const root = document.querySelector<HTMLElement>('[data-quickstart]');
+	if (root) {
+		const tabs = root.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+		const panels = root.querySelectorAll<HTMLElement>('[role="tabpanel"]');
+		tabs.forEach((tab) => {
+			tab.addEventListener('click', () => {
+				const target = tab.dataset.tab;
+				tabs.forEach((t) => {
+					const isActive = t === tab;
+					t.dataset.active = String(isActive);
+					t.setAttribute('aria-selected', String(isActive));
+				});
+				panels.forEach((p) => {
+					p.hidden = p.dataset.panel !== target;
+				});
+			});
+		});
+	}
+</script>
