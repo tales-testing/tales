@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -183,6 +184,21 @@ func urlEncodeFunc() function.Function {
 		Type:   function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			return cty.StringVal(url.QueryEscape(diagnostic.ScalarString(args[0]))), nil
+		},
+	})
+}
+
+// base64urlEncodeFunc encodes the UTF-8 bytes of the input string using the
+// RFC 4648 URL-safe alphabet without padding. This deliberately encodes the
+// string itself, not a hex digest — for PKCE S256, use pkce_challenge instead
+// of composing this with sha256_hex, since PKCE encodes the raw 32 hash
+// bytes, not the 64-char hex string.
+func base64urlEncodeFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{{Name: paramValue, Type: cty.String}},
+		Type:   function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			return cty.StringVal(base64.RawURLEncoding.EncodeToString([]byte(args[0].AsString()))), nil
 		},
 	})
 }
@@ -482,7 +498,8 @@ func baseFunctions() map[string]function.Function {
 		"now_rfc3339": nowRFC3339Func(),
 		"totp":        totpFunc(),
 		"regex_find":  regexFindFunc(),
-		"url_encode":  urlEncodeFunc(),
+		"url_encode":       urlEncodeFunc(),
+		"base64url_encode": base64urlEncodeFunc(),
 		"contains":    matcherSingleArg("contains"),
 		"matches":     matchesFunc(),
 		"exists":      matcherNoArg("exists"),

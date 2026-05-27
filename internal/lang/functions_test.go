@@ -422,6 +422,63 @@ func TestHMACVariantsRejectArity(t *testing.T) {
 	}
 }
 
+func TestBase64URLEncodeKnownVectors(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		`base64url_encode("hello")`: "aGVsbG8",
+		`base64url_encode("")`:      "",
+		// ASCII ">>>" (0x3e 0x3e 0x3e) is "Pj4+" under standard base64 and
+		// "Pj4-" under url-safe — exercises the '+' → '-' substitution.
+		`base64url_encode(">>>")`: "Pj4-",
+		// "???" (0x3f 0x3f 0x3f) is "Pz8/" → "Pz8_" — exercises '/' → '_'.
+		`base64url_encode("???")`: "Pz8_",
+	}
+
+	for src, expected := range cases {
+		got := evalTestExpression(t, src).AsString()
+		if got != expected {
+			t.Fatalf("%s: got %q, want %q", src, got, expected)
+		}
+	}
+}
+
+func TestBase64URLEncodeNoPadding(t *testing.T) {
+	t.Parallel()
+
+	// Two bytes encode to 3 url-safe chars; the standard padding would add "==".
+	got := evalTestExpression(t, `base64url_encode("ab")`).AsString()
+	if got != "YWI" {
+		t.Fatalf("expected YWI (no padding), got %q", got)
+	}
+
+	if strings.Contains(got, "=") {
+		t.Fatalf("base64url_encode must not emit padding, got %q", got)
+	}
+}
+
+func TestBase64URLEncodeUnicode(t *testing.T) {
+	t.Parallel()
+
+	// UTF-8 of "café" is 63 61 66 c3 a9 — base64url(no padding) = "Y2Fmw6k".
+	got := evalTestExpression(t, `base64url_encode("café")`).AsString()
+	if got != "Y2Fmw6k" {
+		t.Fatalf("unexpected unicode encoding: %q", got)
+	}
+}
+
+func TestBase64URLEncodeRejectsArity(t *testing.T) {
+	t.Parallel()
+
+	if _, err := evalTestExpressionError(`base64url_encode()`); err == nil {
+		t.Fatalf("expected error for missing argument")
+	}
+
+	if _, err := evalTestExpressionError(`base64url_encode("a", "b")`); err == nil {
+		t.Fatalf("expected error for extra argument")
+	}
+}
+
 func TestTOTPDefaultReturnsSixDigits(t *testing.T) {
 	t.Parallel()
 
