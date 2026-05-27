@@ -237,6 +237,7 @@ Flags:
 - `--report-jsonl <path>`: write JSONL events.
 - `--report-html <path>`: write a single-file visual HTML report (mobile screenshots replay).
 - `--capture-screenshots <mode>`: mobile screenshot capture mode. One of `none`, `failures`, `steps`, `actions`. Defaults to `failures`, or `actions` when `--report-html` is set.
+- `--timeout <duration>`: global wall-clock budget for the whole run (e.g. `30s`, `5m`, `1h`). When it fires, in-flight steps see a canceled context, are reported as failed, and the CLI exits with `1`. `0` (the default) disables the budget — Tales then waits indefinitely.
 
 Examples:
 
@@ -245,6 +246,7 @@ tales test ./e2e/pass --seed 1234 --parallel 4
 tales test ./e2e/pass --tag demo
 tales test ./e2e/pass --scenario "Create a blog post"
 tales test ./e2e/pass --report-junit build/reports/e2e.junit.xml --report-jsonl build/reports/e2e.jsonl
+tales test ./e2e/pass --timeout 5m
 ```
 
 Exit codes:
