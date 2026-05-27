@@ -1,10 +1,114 @@
 ---
-title: Jsonl
-description: Documentation page for Jsonl — placeholder, content coming soon.
+title: JSONL stream
+description: The Tales JSONL event stream — one JSON object per line, suitable for piping into jq, Loki, BigQuery, or any log pipeline.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+The JSONL reporter writes one JSON object per line — a complete event stream of the run. It is the richest of the four reporters: every step, every attempt, every action carries its full request, response, and timing data.
+
+## Usage
+
+```bash
+tales test ./e2e/pass --report-jsonl ./reports/events.jsonl
+```
+
+The file is written incrementally as the run progresses (great for tailing in CI). The parent directory is created if missing.
+
+## Event types
+
+Each line carries a `type` field. The full set:
+
+| `type`              | Emitted when                                                       |
+| ------------------- | ------------------------------------------------------------------ |
+| `suite_start`       | Once, at the start of the run.                                     |
+| `scenario_start`    | Once per scenario, before its first step.                          |
+| `step`              | Once per step (after its attempts complete).                       |
+| `attempt`           | Once per attempt when `retry { ... }` runs more than once.          |
+| `action`            | Once per UI action for mobile steps (when `Actions` is populated). |
+| `teardown_step`     | Once per teardown step.                                            |
+| `scenario_end`      | Once per scenario, after teardown.                                 |
+| `suite_end`         | Once, at the end of the run.                                       |
+
+## Example
+
+```jsonl
+{"type":"suite_start","seed":1234,"parallel":4,"files":5,"scenarios":12,"timestamp":"2026-05-27T18:30:00Z"}
+{"type":"scenario_start","scenario":"Create blog post","file":"e2e/pass/blog.tales","tags":[]}
+{"type":"step","scenario":"Create blog post","step":"create_user","provider":"http","status":"pass","duration_ms":312,"request":{"method":"POST","url":"http://localhost:1337/users","body":{"json":{"email":"qa-7f3a@example.com","password":"Sup3rS3cret!"}}},"response":{"status_code":201,"json":{"id":"u_abc","email":"qa-7f3a@example.com"}}}
+{"type":"step","scenario":"Create blog post","step":"create_post","provider":"http","status":"pass","duration_ms":418,"request":{...},"response":{...}}
+{"type":"teardown_step","scenario":"Create blog post","step":"delete_user","provider":"http","status":"pass","duration_ms":112}
+{"type":"scenario_end","scenario":"Create blog post","status":"pass","duration_ms":842}
+{"type":"suite_end","status":"pass","passed":12,"failed":0,"skipped":0,"duration_ms":1240}
+```
+
+## Fields you can rely on
+
+### `step` event
+
+| Field           | Type     | Notes                                                            |
+| --------------- | -------- | ---------------------------------------------------------------- |
+| `scenario`      | string   | Scenario name.                                                   |
+| `step`          | string   | Step name.                                                       |
+| `provider`      | string   | `http`, `sql`, `mobile`, `keyword`.                              |
+| `status`        | string   | `pass`, `fail`, `skipped`.                                       |
+| `skip_reason`   | string   | Present only when `status="skipped"`. Omitted otherwise.         |
+| `duration_ms`   | number   | Step duration including retries.                                 |
+| `attempts`      | number   | Total attempts run when `retry { ... }` is set. Omitted otherwise.|
+| `request`       | object   | Provider-specific request shape.                                 |
+| `response`      | object   | Provider-specific response shape.                                |
+| `captures`      | object   | Resolved capture map.                                            |
+| `artifacts`     | object   | Mobile: paths to screenshot / hierarchy files.                   |
+| `actions`       | array    | Mobile: per-action records (kind, label, value, status, paths).  |
+| `failure`       | object   | When failed: kind, path, want, got, message.                     |
+
+### `action` event (mobile only)
+
+One per UI action, emitted after the step event when `step.actions` is populated. Empty action arrays produce byte-identical JSONL to the pre-action-stream format, so legacy consumers keep working.
+
+```json
+{
+  "type": "action",
+  "scenario": "iOS register",
+  "step": "fill_form",
+  "index": 0,
+  "kind": "input_text",
+  "label": "register.email",
+  "value": "qa@example.com",
+  "status": "pass",
+  "duration_ms": 42,
+  "screenshot": "build/artifacts/mobile/.../screenshot.png",
+  "hierarchy":  "build/artifacts/mobile/.../hierarchy.json"
+}
+```
+
+Secure values are masked to `"***"` at one boundary inside the mobile provider — see [Visual HTML report](/docs/reports/visual/#secure-values).
+
+## DSN and secret masking
+
+The SQL provider scrubs DSNs from every event before serialisation. Only the connection name, driver alias, SQL text, and arg *count* appear — never the connection string. See [SQL provider](/docs/providers/sql/#security-and-masking) for the full rules.
+
+`auth.basic.password` is masked in HTTP request shapes. Other secrets injected via `headers` are not masked — capture them from upstream responses if you need masking.
+
+## Consuming the stream
+
+### With `jq`
+
+```bash
+# Count failures
+jq -c 'select(.type=="step" and .status=="fail")' events.jsonl | wc -l
+
+# All failure messages with their step path
+jq -c 'select(.type=="step" and .status=="fail") | {scenario, step, msg:.failure.message}' events.jsonl
+
+# Total wall-clock time
+jq -s 'map(select(.type=="suite_end")) | .[0].duration_ms' events.jsonl
+```
+
+### In a log pipeline
+
+JSONL plays nicely with Loki, Elasticsearch, BigQuery, Snowflake, Datadog logs. Ingest the file once at suite end and query at will.
+
+<Aside type="tip" title="Pair JSONL with the visual report">
+	JSONL is the system-of-record. The [visual HTML report](/docs/reports/visual/) is the UX layer that makes mobile timelines clickable. They share the same underlying data, so anything you can see in the HTML can be queried with `jq` against the JSONL.
 </Aside>

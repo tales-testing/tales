@@ -1,10 +1,145 @@
 ---
-title: Determinism
-description: Documentation page for Determinism — placeholder, content coming soon.
+title: Deterministic test data
+description: How the Tales seed mixer works, what determinism guarantees you get, and where the wall clock breaks them.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Determinism is the property that makes a Tales suite **replayable**. Same binary version + same seed + same `.tales` files = identical generated values, byte for byte.
+
+This guide explains how Tales achieves that, what the contract is, and where it deliberately doesn't apply.
+
+## The contract
+
+When you run:
+
+```bash
+tales test ./e2e/pass --seed 1234
+```
+
+You get the following guarantees:
+
+- Every `generate(...)` call returns the same value on every run.
+- The order in which scenarios produce their generated values does not depend on `--parallel`.
+- Retries inside a step (`retry { ... }`) re-use the same generated values — so polling does not unexpectedly mutate inputs.
+- Multipart upload boundaries (which are random) are deterministic when seeded.
+
+You **don't** get a guarantee about:
+
+- Server timestamps, IDs assigned by the server, or any other server-side non-determinism.
+- The current time (`now_unix`, `now_rfc3339`) — these are intentionally live.
+- The order log lines appear on stderr when `--parallel > 1`.
+
+## How the seed mixer works
+
+Each call to `generate(name)` mixes the following inputs:
+
+1. The global `--seed` value.
+2. The scenario name.
+3. The step name.
+4. The generator name.
+5. The **expression path** — *where* in the step the call appears.
+
+The hash of those five inputs seeds a deterministic generator just for that call. The implementation lives in `internal/runtime/seed.go`.
+
+### Why expression path matters
+
+Two `generate("user_email")` calls in the same step appear at different expression paths, so they produce **different** values:
+
+```hcl
+step "http" "create_two_users" {
+  request {
+    body {
+      json = {
+        primary   = { email = generate("user_email") }   // value A
+        secondary = { email = generate("user_email") }   // value B (different)
+      }
+    }
+  }
+}
+```
+
+If you want the same value used twice, capture once:
+
+```hcl
+step "http" "create_two_users" {
+  vars {
+    shared_email = generate("user_email")
+  }
+
+  request {
+    body {
+      json = {
+        primary   = { email = vars.shared_email }
+        secondary = { email = vars.shared_email }
+      }
+    }
+  }
+}
+```
+
+### Why parallelism doesn't break determinism
+
+Each scenario's generated values depend only on the scenario name + the seed (plus step / generator / path). They do **not** depend on the order scenarios start, finish, or interleave. So `--parallel 1` and `--parallel 16` produce the same generated values for the same `--seed`.
+
+### Why retries don't break determinism
+
+The seed mixer does not include an "attempt number". A retry replays the same step with the same `vars`, same `generate(...)` outputs, same JSON body. Only the wall clock (and the server's response) can differ between attempts.
+
+## Where wall-clock helpers fit
+
+`now_unix()` and `now_rfc3339()` read the current time. They are non-deterministic by design — there is no useful seedable "now".
+
+The right pattern is to compute the timestamp **once per step** in a `vars` block and reference it elsewhere:
+
+```hcl
+step "http" "signed_call" {
+  vars {
+    ts = now_unix()       // captured once, stable for this step
+  }
+
+  request {
+    headers = { X-Timestamp = "${vars.ts}" }
+    body {
+      json = {
+        client_time = vars.ts   // same value
+      }
+    }
+  }
+}
+```
+
+See [Signing webhooks](/docs/guides/signing-webhooks/) for the canonical recipe.
+
+## Reproducing a CI failure locally
+
+A red CI build with `--seed 1234` reproduces exactly with:
+
+```bash
+tales test ./e2e/pass --seed 1234
+```
+
+If the failure was timing-sensitive (a 500 from a slow database, for example), the local run might not reproduce it — that's an actual flake, not a seed issue. Use `--report-jsonl` to see the wall-clock durations from the failing run and compare.
+
+## Cross-version determinism
+
+The seed contract is stable across patch versions (`v0.1.0` → `v0.1.1`). Major or minor version bumps may change the generator implementations — when they do, the changelog calls it out so you know to regenerate your golden fixtures.
+
+<Aside type="tip" title="Use deterministic seeds in CI, exploratory seeds locally">
+	A common pattern: pin the CI seed (`--seed 1234`) for reproducibility, but use `--seed $(date +%s)` locally when you want to randomise inputs. When the random seed surfaces a bug, save the seed in the bug report and add it as a regression fixture.
 </Aside>
+
+## Tracking determinism over time
+
+If you want to *guarantee* a scenario's generated data is byte-stable across releases, snapshot the JSONL output of a known-seed run and diff future runs against it. Any change to the generator algorithm shows up immediately.
+
+```bash
+# Capture a baseline
+tales test ./e2e/pass --seed 1234 --report-jsonl ./baseline.jsonl
+
+# After upgrading Tales
+tales test ./e2e/pass --seed 1234 --report-jsonl ./current.jsonl
+diff <(jq -S . baseline.jsonl) <(jq -S . current.jsonl)
+```
+
+A clean diff means full determinism preserved. A diff means a generator or assertion changed — read the release notes.

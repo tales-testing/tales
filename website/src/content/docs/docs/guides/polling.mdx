@@ -1,10 +1,157 @@
 ---
-title: Polling
-description: Documentation page for Polling — placeholder, content coming soon.
+title: Polling with retry
+description: Poll an asynchronous side-effect with the retry block — when to use it, how to set attempts and interval, what not to do with it.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Integration tests routinely have to wait for asynchronous side-effects: a webhook to be delivered, a background job to finish, a verification email to arrive, a search index to update. The `retry { ... }` block is Tales' polling primitive.
+
+## The pattern
+
+```hcl
+step "http" "find_verification_email" {
+  retry {
+    attempts = 10
+    interval = "100ms"
+  }
+
+  request {
+    method = "GET"
+    url    = "${config.base_url}/mail/messages?to=${result.register.email}"
+  }
+
+  expect {
+    status = 200
+    json = {
+      messages = is_array()
+    }
+  }
+
+  capture {
+    code = regex_find(response.body, "verification code is ([A-Z0-9]{6})", 1)
+  }
+}
+```
+
+What this does:
+
+1. Sends the HTTP request.
+2. If `expect` passes, succeed. Capture the value. Done.
+3. If `expect` fails, sleep `interval`, then retry.
+4. Bail out after `attempts` total runs and fail the step.
+
+The total wall-clock budget for the step is roughly `attempts × (request_time + interval)`.
+
+## Picking `attempts` and `interval`
+
+A useful rule of thumb:
+
+- **Fast asynchronous events** (in-process queue, local webhook): `attempts = 10, interval = "100ms"` (1s budget).
+- **Network-mediated events** (real webhook, S3 upload): `attempts = 20, interval = "500ms"` (10s budget).
+- **Background jobs**: `attempts = 30, interval = "2s"` (1min budget).
+
+Match the budget to the worst-case time you've actually observed in production, with a safety margin. Wildly oversized budgets paper over real slowdowns.
+
+## When to use retry
+
+- **Polling for a state transition** — order moves from `pending` to `processed`, user is marked `verified`, document finishes converting.
+- **Waiting for eventual consistency** — write to primary, read from replica, expect the replica to catch up.
+- **Inbox-style assertions** — verify an email landed, a webhook was received, a Slack message was posted.
+
+## When **not** to use retry
+
+- **As a band-aid for flaky tests.** If your test passes 60% of the time and a `retry { attempts = 5 }` makes it pass 100% of the time, you've hidden the bug, not fixed it.
+- **As a substitute for explicit synchronisation.** If your API gives you a "wait for completion" endpoint, call it. Don't poll an unrelated read endpoint.
+- **To compensate for race conditions in the system under test.** That's a server bug — file it, don't paper over it.
+
+## Combined with captures
+
+The capture block runs only on the **successful** attempt. So the values you capture reflect the state at the moment polling succeeded:
+
+```hcl
+step "http" "wait_for_processed" {
+  retry { attempts = 30, interval = "1s" }
+
+  request { ... }
+
+  expect {
+    status = 200
+    json = {
+      status = "processed"
+    }
+  }
+
+  capture {
+    finished_at = response.json.completed_at   // wall-clock at success
+    output_id   = response.json.output_id
+  }
+}
+```
+
+This is the right idiom: the downstream step gets a known-good capture, not a pre-completion value.
+
+## Combined with `--timeout`
+
+The global `--timeout` flag wraps the entire run. If a retry loop sits inside a step that runs near the deadline, the runner cancels the in-flight HTTP request (via `context.DeadlineExceeded`) and the step fails with a clear error. Polling does **not** silently exceed the suite-wide budget.
+
+## Worked example — full polling scenario
+
+```hcl
+scenario "Verify email then claim" {
+  step "http" "register" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users"
+      body { json = { email = generate("user_email"), password = "Sup3rS3cret!" } }
+    }
+    expect { status = 201 }
+    capture {
+      id    = response.json.id
+      email = response.json.email
+    }
+  }
+
+  step "http" "find_verification_email" {
+    retry { attempts = 20, interval = "200ms" }
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/mail/messages?to=${result.register.email}"
+    }
+    expect {
+      status = 200
+      json   = { messages = is_array() }
+    }
+    capture {
+      code = regex_find(response.body, "verification code is ([A-Z0-9]{6})", 1)
+    }
+  }
+
+  step "http" "verify_email" {
+    request {
+      method  = "POST"
+      url     = "${config.base_url}/verify-email"
+      body { json = { user_id = result.register.id, code = result.find_verification_email.code } }
+    }
+    expect { status = 200, json = { verified = true } }
+  }
+
+  teardown {
+    step "http" "delete_user" {
+      when = can(result.register.id)
+      request {
+        method = "DELETE"
+        url    = "${config.base_url}/users/${result.register.id}"
+      }
+      expect { status = one_of([200, 204, 404]) }
+    }
+  }
+}
+```
+
+Three steps, one retry block, one regex capture, one teardown — and the whole scenario reproduces deterministically with `--seed 1234`.
+
+<Aside type="tip" title="Mark polling steps as such in the name">
+	Name polling steps with a verb-first pattern (`find_verification_email`, `wait_for_processed`, `poll_until_indexed`) so the next reader knows immediately that the step might take seconds to succeed. A step called just `email` could be a fast lookup or a 30-second poll — readability wins.
 </Aside>

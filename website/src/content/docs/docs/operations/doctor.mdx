@@ -1,10 +1,89 @@
 ---
-title: Doctor
-description: Documentation page for Doctor — placeholder, content coming soon.
+title: tales doctor
+description: The one-stop diagnostic command — runtime info, embedded iOS driver state, Xcode and simctl probes.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+`tales doctor` is the diagnostic command you reach for when something stops working. It prints everything that influences Tales' runtime behaviour: build info, embedded driver source hash, iOS driver cache state, Xcode introspection, and available simulator runtimes.
+
+## Usage
+
+```bash
+tales doctor          # human-readable
+tales doctor --json   # machine-readable for CI / jq
+```
+
+No path argument. The command always targets the host environment.
+
+## What it covers
+
+- **Tales build info** — version, commit, Go runtime, platform.
+- **Embedded driver** — source hash (16-hex prefix that goes into the cache key), file count, total uncompressed bytes.
+- **iOS driver cache** — base directory and one block per cache entry with:
+  - extract / build markers
+  - cached `.xctestrun` path
+  - recorded Xcode / SDK / iOS runtime / macOS / created-at metadata
+  - on-disk size
+  - "matches embedded" flag: `✓ matches embedded` vs `⚠ source-hash mismatch — rebuilt on next run`
+- **Xcode introspection** — `xcodebuild -version`, `xcrun --show-sdk-version`, `xcode-select -p`, `sw_vers`.
+- **Available simulator runtimes and devices.**
+- **Hints** — cache wipe, env override, stale CoreSimulator recovery.
+
+Missing Xcode or unavailable `simctl` is reported as a degraded section, not as an error — `tales doctor` is the tool you reach for when things are broken.
+
+## Sample output (abridged)
+
+```text
+Tales
+  version: 0.1.0  commit: a1b2c3d4  go: go1.26.0  platform: darwin/arm64
+
+Embedded driver
+  source_hash: 7f3a4c91...  files: 14  bytes: 124316
+
+Driver cache (~/Library/Caches/tales/apple-driver)
+  - 7f3a4c91-xcode-15.4-sdk-17.5-dev-/Applications/Xcode.app-ios-17.5-mac-14
+      extract.ok: yes   build.ok: yes (/tmp/.xctestrun)
+      xcode 15.4   sdk 17.5   ios runtime 17.5   macOS 14.5
+      size: 482 MB   created: 2026-04-10
+      ✓ matches embedded
+
+Xcode
+  xcodebuild -version:  Xcode 15.4
+  xcrun --show-sdk-version: 17.5
+  xcode-select -p:      /Applications/Xcode.app/Contents/Developer
+  macOS:                14.5.1 (23F79)
+
+Simulators
+  iPhone 17 Pro (iOS 17.5) - booted
+  iPhone 17    (iOS 17.5)
+  iPad Pro 11  (iOS 17.5)
+
+Hints
+  - Wipe cache:  make clean-ios-driver-cache
+  - Override base: export TALES_DRIVER_CACHE_DIR=/path/to/cache
+```
+
+## CI use
+
+`--json` makes the diagnostic scriptable. Two recipes:
+
+```bash
+# Get the embedded driver source hash (the cache key prefix)
+tales doctor --json | jq .embedded_driver.source_hash_short
+
+# List cache entries that are NOT up to date with the embedded source
+tales doctor --json | jq '.cache.entries[] | select(.built == false)'
+```
+
+You can wire `tales doctor --json` into a CI sanity step before iOS tests to catch a stale cache or a missing simulator runtime *before* the suite spends 10 minutes failing.
+
+## Relationship with `make doctor-ios`
+
+`make doctor-ios` remains as a shell-only fallback for sysadmins who haven't built the Tales binary yet. It covers the same Xcode / simctl ground but **not** the Tales cache state. Prefer `tales doctor` when both are available.
+
+<Aside type="tip" title="Run doctor first when iOS tests behave weirdly">
+	A common workflow: an iOS test starts failing in an unexpected way. Run `tales doctor`. Compare the embedded source hash against the cache entry. If they don't match, the cache will rebuild on the next test run — that takes ~30 seconds and often fixes the issue. If they match and the test still fails, you know it's not a cache problem.
 </Aside>
+
+See also [iOS driver cache](/docs/operations/ios-driver-cache/) for cache layout, wipe, and `TALES_DRIVER_CACHE_DIR` override.

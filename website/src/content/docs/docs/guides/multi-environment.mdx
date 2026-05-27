@@ -1,10 +1,158 @@
 ---
-title: Multi Environment
-description: Documentation page for Multi Environment — placeholder, content coming soon.
+title: Multi-environment with env()
+description: Run the same Tales suite against local Docker, staging, and production by parameterising via the env() function and config.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+A well-written Tales suite runs unchanged against your local Docker stack, your CI ephemeral environment, and your shared staging environment. The trick is to push everything environment-specific behind `env(...)` calls in the top-level `config` block.
+
+This guide shows the recommended pattern.
+
+## The pattern
+
+Put one `config` block at the top of every `.tales` file (or, more often, in a shared `_config.tales`) and reference env vars with sensible defaults:
+
+```hcl
+config {
+  base_url       = env("BASE_URL",       "http://localhost:1337")
+  webhook_secret = env("WEBHOOK_SECRET", "whsec_test")
+
+  sql = {
+    connections = {
+      app = {
+        driver = "postgres"
+        dsn    = env("POSTGRES_DSN", "")
+      }
+    }
+  }
+}
+```
+
+Then in scenarios, reference only `config.*`:
+
+```hcl
+step "http" "register" {
+  request {
+    method = "POST"
+    url    = "${config.base_url}/users"
+    body { json = { email = generate("user_email") } }
+  }
+}
+```
+
+## Environment matrix
+
+| Environment        | `BASE_URL`                       | `POSTGRES_DSN`                                       | `WEBHOOK_SECRET` |
+| ------------------ | -------------------------------- | ---------------------------------------------------- | ---------------- |
+| Local Docker       | `http://localhost:1337`          | `postgres://postgres:test@localhost:5432/...`        | `whsec_test`     |
+| CI ephemeral       | `http://localhost:1337`          | from the postgres service                            | `whsec_test`     |
+| Staging            | `https://api.staging.example.com`| from a CI secret                                     | from a CI secret |
+| Production smoke   | `https://api.example.com`        | (don't touch the database)                           | from prod secret |
+
+To run against staging:
+
+```bash
+BASE_URL=https://api.staging.example.com \
+WEBHOOK_SECRET="$STAGING_WEBHOOK_SECRET" \
+tales test ./e2e/smoke --seed 1234 --tag smoke
+```
+
+## Skip scenarios that need preconditions
+
+If a scenario depends on an env var being set (a real database, a non-trivial secret), gate it:
+
+```hcl
+scenario "PostgreSQL operations" {
+  skip_unless {
+    env_set = ["POSTGRES_DSN"]
+    reason  = "POSTGRES_DSN must point at a reachable PostgreSQL"
+  }
+
+  step "sql" "create_table" {
+    connection = "app"
+    exec { sql = "..." }
+  }
+}
+```
+
+The scenario is automatically skipped (with a clear reason) when the var is missing. CI logs show `Scenario X SKIPPED reason: POSTGRES_DSN must point at a reachable PostgreSQL` so the absence is obvious, not silent. See [Conditional execution](/docs/writing-scenarios/conditional-execution/).
+
+## Production-safe tags
+
+For production smoke tests — running against a live production stack — use tags to scope strictly to read-only scenarios:
+
+```hcl
+scenario "Production smoke - read health" {
+  tags = ["smoke", "production-safe"]
+
+  skip_unless {
+    env = { TALES_ENV = "production" }
+  }
+
+  step "http" "healthz" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+    expect {
+      status = 200
+      json   = { status = "ok" }
+    }
+  }
+}
+```
+
+Run with:
+
+```bash
+TALES_ENV=production BASE_URL=https://api.example.com \
+  tales test ./e2e --tag production-safe --seed 1234
+```
+
+This pattern makes the contract explicit: only scenarios tagged `production-safe` run against production. No `DELETE`s, no `POST`s that mutate state.
+
+## Don't put secrets in `.tales`
+
+Never inline a production secret directly:
+
+```hcl
+config {
+  webhook_secret = "whsec_prod_abc123"   // DON'T DO THIS
+}
+```
+
+Always pull from env:
+
+```hcl
+config {
+  webhook_secret = env("WEBHOOK_SECRET", "whsec_test")   // safe
+}
+```
+
+The default fallback (`"whsec_test"`) is fine for local dev as long as the real receiver is also configured to accept it.
+
+## Shared config file
+
+For large suites, factor the config into a single `_config.tales` file:
+
+```hcl
+# e2e/_config.tales
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+  sql = {
+    connections = {
+      app = {
+        driver = "postgres"
+        dsn    = env("POSTGRES_DSN", "")
+      }
+    }
+  }
+}
+```
+
+Tales merges every `.tales` file in the directory into a single suite, so a top-level `config` declared once is visible to every scenario.
+
+<Aside type="tip" title="Print the effective config in CI">
+	A small "config check" scenario near the top of your suite — a single `step "http" "healthz"` against `config.base_url` with an assertion that returns the URL in the response — makes it trivial to verify in CI logs which environment a given run actually targeted.
 </Aside>

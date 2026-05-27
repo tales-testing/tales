@@ -1,10 +1,81 @@
 ---
-title: Junit
-description: Documentation page for Junit — placeholder, content coming soon.
+title: JUnit XML
+description: The Tales JUnit XML reporter — Surefire/JUnit5 compatible output for Jenkins, GitLab CI, CircleCI, and friends.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+JUnit XML is the lingua franca of CI test dashboards. Tales produces a Surefire-compatible XML file with one `<testsuite>` per `.tales` file and one `<testcase>` per scenario.
+
+## Usage
+
+```bash
+tales test ./e2e/pass --report-junit ./reports/junit.xml
+```
+
+The parent directory is created if missing. The output is fully self-contained — no external schema dependencies.
+
+## Schema
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="e2e/pass/blog.tales"
+             tests="3" failures="0" skipped="0" time="1.232"
+             timestamp="2026-05-27T18:30:00Z">
+    <testcase name="Create blog post" classname="e2e/pass/blog.tales" time="0.842">
+      <!-- empty when passed -->
+    </testcase>
+    <testcase name="Failing scenario" classname="e2e/pass/blog.tales" time="0.123">
+      <failure message="status mismatch: want 201, got 500" type="assertion">
+        expected status 201 at scenario.create_user.expect.status
+        actual: 500 Internal Server Error
+      </failure>
+    </testcase>
+    <testcase name="Skipped scenario" classname="e2e/pass/blog.tales" time="0">
+      <skipped message="iOS tests require macOS and IOS_APP_PATH"/>
+    </testcase>
+  </testsuite>
+</testsuites>
+```
+
+### Mapping to Tales concepts
+
+| Tales concept       | XML element                                                   |
+| ------------------- | ------------------------------------------------------------- |
+| `.tales` file       | `<testsuite name="<file path>">`                              |
+| Scenario            | `<testcase name="<scenario name>" classname="<file path>">`   |
+| Failed scenario     | `<failure message="..." type="assertion">...</failure>`       |
+| Skipped scenario    | `<skipped message="<skip reason>"/>`                          |
+| Step duration       | aggregated into `time="<seconds>"` on the testcase            |
+| Teardown step       | rolled into the scenario's duration (no separate testcase)    |
+
+### Skip support
+
+The `<testsuite>` element gains a `skipped="N"` attribute, and each skipped scenario emits a `<skipped message="…"/>` child on its `<testcase>`. This matches Surefire / JUnit5 conventions and shows up correctly in:
+
+- Jenkins JUnit plugin
+- GitLab CI test reports
+- CircleCI test summary
+- Bitbucket Pipelines test reports
+- Azure DevOps test runs
+
+### Action-level data is not flattened
+
+Mobile action records (`tap`, `swipe`, etc.) are intentionally **not** decomposed into `<testcase>` elements. They live in the [JSONL stream](/docs/reports/jsonl/) and the [visual HTML report](/docs/reports/visual/) instead — JUnit consumers don't typically know what to do with sub-step data.
+
+## CI integration
+
+The most common pattern is to combine console (for live log scrolling) with JUnit (for the dashboard):
+
+```bash
+tales test ./e2e/pass \
+  --seed 1234 \
+  --report-junit ./reports/junit.xml
+```
+
+Then point your CI configuration at `./reports/junit.xml`. Examples in [CI integration](/docs/reports/ci-integration/).
+
+<Aside type="note" title="JUnit and exit codes are independent">
+	Tales writes the JUnit file before exiting. A failing test produces a JUnit file *and* exits with code `1`. A parse error (exit code `2`) does **not** write JUnit — there are no testcases to enumerate yet. Wire your CI to treat both the file and the exit code as authoritative.
 </Aside>
