@@ -1,10 +1,102 @@
 ---
-title: Console
-description: Documentation page for Console — placeholder, content coming soon.
+title: Console & exit codes
+description: The default ANSI console output, the preflight line, progress events, and the four CLI exit codes.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+The console reporter is what you see in your terminal when you run `tales test`. It is human-readable, ANSI-coloured by default, and designed for both interactive debugging and CI log scanning.
+
+## What it prints
+
+### Preflight (stderr)
+
+Immediately on startup, before any scenario runs, Tales writes a single line to stderr summarising the load:
+
+```text
+tales: loaded 12 scenarios from 5 files; timeout=disabled
+```
+
+This is the line to grep for "did Tales actually find my tests" and "did I forget --timeout".
+
+### Progress events (stderr)
+
+While the runner is in flight, scenario start / end events stream on stderr:
+
+```text
+▶ Create blog post
+▶ Use keyword
+✔ Use keyword (231ms)
+✔ Create blog post (842ms)
+```
+
+Silence this with `--no-progress` if your CI swallows stderr.
+
+With `--verbose`, Tales adds a heartbeat every 30 seconds listing scenarios still running:
+
+```text
+heartbeat (30s): 2 scenarios still in flight
+  - Create blog post (running for 32.1s)
+  - SQL preconditions  (running for 28.7s)
+```
+
+### Final report (stdout)
+
+After the suite finishes, the full report goes to stdout:
+
+```text
+Scenario Create blog post (e2e/pass/blog.tales) PASS in 842ms
+  ✔ create_user        POST   /users        201   312ms
+  ✔ create_post        POST   /blog/posts   201   418ms
+  ✔ delete_user        DELETE /users/abc    204   112ms  (teardown)
+
+Summary: scenarios 12 passed / 0 failed / 0 skipped, steps 47 passed / 0 failed
+Duration: 1.24s
+```
+
+Failed steps include a diagnostic block pointing at the JSON path that mismatched, with want vs got side by side.
+
+## Flags
+
+| Flag             | Effect                                                            |
+| ---------------- | ----------------------------------------------------------------- |
+| `--no-color`     | Strip ANSI colour codes. Use this when piping to a file or CI log that does not strip them itself. |
+| `--no-progress`  | Disable scenario start / end progress events on stderr.            |
+| `--verbose`      | Add a 30s heartbeat listing in-flight scenarios.                   |
+
+## Timeout reporting
+
+If `--timeout` fires before the suite completes, Tales prints the list of in-flight scenarios so you know exactly what stalled:
+
+```text
+tales: global --timeout (5m) exceeded
+in-flight at deadline:
+  - Create blog post (running for 5m0s)
+```
+
+The exit code is `1` in this case (treated as a failure).
+
+## Exit codes
+
+CLI exit codes are part of the public contract. CI pipelines can rely on them.
+
+| Code | Meaning                                       |
+| ---- | --------------------------------------------- |
+| `0`  | All scenarios passed (skipped also counts as ok). |
+| `1`  | At least one scenario failed.                 |
+| `2`  | Parse or validation error.                    |
+| `3`  | Runtime or reporting fatal error.             |
+
+<Aside type="note">
+	Skipped scenarios never fail the suite. There is currently no `--fail-on-all-skipped` flag — if every scenario ends in `skipped`, the exit code is still `0`.
 </Aside>
+
+## Pairing with machine-readable reports
+
+The console reporter is always on. To also emit structured outputs for CI dashboards, add one or more of:
+
+- [`--report-junit <path>`](/docs/reports/junit/) — JUnit XML for Jenkins, GitLab CI, etc.
+- [`--report-jsonl <path>`](/docs/reports/jsonl/) — newline-delimited JSON event stream.
+- [`--report-html <path>`](/docs/reports/visual/) — single-file visual HTML report.
+
+See [CI integration](/docs/reports/ci-integration/) for end-to-end recipes.

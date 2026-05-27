@@ -1,10 +1,111 @@
 ---
-title: Ios Driver Cache
-description: Documentation page for Ios Driver Cache — placeholder, content coming soon.
+title: iOS driver cache
+description: The embedded XCUITest driver cache — layout, location, override, and when to wipe it.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Tales embeds its Swift XCUITest driver source into the `tales` binary via `go:embed`. On the first iOS test run, that source is extracted to a per-user cache, built once with `xcodebuild build-for-testing`, and reused on every subsequent run via `xcodebuild test-without-building`.
+
+This page documents the cache layout, how to inspect it, and when to wipe it.
+
+## Location
+
+| Source                          | Path                                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| Default                         | `~/Library/Caches/tales/apple-driver/<cache-key>/` (macOS)                               |
+| Override via env                | `${TALES_DRIVER_CACHE_DIR}` — used as the final base, no extra suffix appended.          |
+
+Use `TALES_DRIVER_CACHE_DIR` in CI to share or pin a cache across jobs (mount a persistent volume at that path).
+
+## Cache key
+
+The directory name under the base is a deterministic key:
+
+```text
+<source-hash>-xcode-<version>-sdk-<version>-dev-<DEVELOPER_DIR>-ios-<runtime>-mac-<major>
+```
+
+Any change in:
+
+- the embedded Swift source (a `tales` upgrade typically changes this)
+- the Xcode version
+- the iOS SDK version
+- `DEVELOPER_DIR`
+- the iOS simulator runtime
+- the macOS major version
+
+… produces a new cache key, so the entry rebuilds from scratch on the next run. Old entries remain on disk — wipe them manually when you're sure they are unused.
+
+## Layout
+
+```text
+~/Library/Caches/tales/apple-driver/<cache-key>/
+  source/                     extracted Swift driver source
+    TalesAppleDriver.xcodeproj/
+    ...
+  derived-data/               xcodebuild -derivedDataPath output
+  logs/
+    build.log                 build-for-testing stdout + stderr
+  extract.ok                  marker, written after a successful extract
+  build.ok                    marker, contains the cached .xctestrun path
+  metadata.json               source_hash, xcode_version, ios_runtime, ...
+  .lock                       cross-process flock (parallel tales serialise here)
+```
+
+## Inspect
+
+Use [`tales doctor`](/docs/operations/doctor/) — it enumerates every cache entry with build markers, recorded Xcode / SDK / iOS / macOS metadata, and a "matches embedded" flag that tells you whether the entry would rebuild on the next run.
+
+```bash
+tales doctor          # human-readable
+tales doctor --json   # scriptable
+```
+
+## Wipe
+
+```bash
+# Default location
+make clean-ios-driver-cache
+
+# Custom location via env
+rm -rf "$TALES_DRIVER_CACHE_DIR"
+```
+
+When to wipe:
+
+- After a major Xcode upgrade (the cache key normally invalidates itself, but old entries linger on disk).
+- When you suspect a corrupted build — symptom: driver fails to start, `build.log` contains errors you've never seen before.
+- Before a single-binary smoke test, to verify the embedded extraction pipeline actually works end-to-end on a clean host.
+
+## Self-heal on health failure
+
+Tales already tries to self-recover once: if the driver fails its `/health` check, it invalidates the `build.ok` marker and rebuilds from scratch. That covers stale-cache cases automatically. If the rebuild *also* fails, the test fails — at that point inspect `logs/build.log` and `build/artifacts/mobile/driver/<target>/driver.log`.
+
+## CI cache strategies
+
+### Throwaway runner
+
+If the runner is freshly provisioned per job, the cache is cold every run. Expect ~30s of `xcodebuild build-for-testing` time on the first iOS step. Subsequent steps in the same job reuse the cache.
+
+### Persistent runner with a volume
+
+Mount a volume at `${TALES_DRIVER_CACHE_DIR}` (or `~/Library/Caches/tales/apple-driver/`). The cache survives across jobs and you pay the build cost only when:
+
+- the Tales binary upgrades (source hash changes)
+- Xcode upgrades on the runner
+- macOS major version bumps
+
+```yaml
+# example: persist cache between GitHub Actions runs
+- uses: actions/cache@v4
+  with:
+    path: ~/Library/Caches/tales/apple-driver
+    key: tales-driver-${{ runner.os }}-${{ hashFiles('go.sum') }}-xcode-15.4
+```
+
+The cache key should include whichever inputs your runner controls — Tales binary version and Xcode version are the two big ones.
+
+<Aside type="tip" title="The cache is safe to share between concurrent runs">
+	Tales uses a cross-process flock at `<cache-key>/.lock` to serialise the build step. Two parallel CI jobs can target the same cache directory; the second one will wait for the first to finish the build, then both will share the resulting `.xctestrun`.
 </Aside>

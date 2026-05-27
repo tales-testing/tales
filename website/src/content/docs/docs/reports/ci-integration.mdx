@@ -1,10 +1,205 @@
 ---
-title: Ci Integration
-description: Documentation page for Ci Integration — placeholder, content coming soon.
+title: CI integration
+description: Drop-in recipes for running Tales on GitHub Actions, GitLab CI, and CircleCI — with JUnit, JSONL, and visual HTML artifacts.
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Tales is designed to be CI-friendly out of the box: a single static binary, deterministic seeded runs, JUnit XML for dashboards, JSONL for log pipelines, and a visual HTML report you can upload as an artifact.
+
+This page shows minimal but production-ready recipes for the three most common CI systems.
+
+## What to wire
+
+A complete Tales job has three concerns:
+
+1. **Install the binary** (one of: release archive, `go install`, source build).
+2. **Run the suite** with a deterministic seed, a sensible parallelism, and outputs for all three reporters.
+3. **Publish artifacts** — JUnit for the dashboard, the HTML report and JSONL for forensic debugging.
+
+## Recipes
+
+<Tabs syncKey="ci-system">
+	<TabItem label="GitHub Actions">
+		```yaml
+		# .github/workflows/integration-tests.yml
+		name: Integration tests
+
+		on:
+		  pull_request:
+		  push:
+		    branches: [main]
+
+		jobs:
+		  tales:
+		    runs-on: ubuntu-latest
+		    services:
+		      postgres:
+		        image: postgres:16
+		        env:
+		          POSTGRES_PASSWORD: test
+		        ports: ["5432:5432"]
+		        options: >-
+		          --health-cmd "pg_isready -U postgres"
+		          --health-interval 5s
+		    steps:
+		      - uses: actions/checkout@v4
+
+		      - name: Install Tales
+		        run: |
+		          curl -fsSL -o tales.tar.gz \
+		            https://github.com/hyperxlab/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
+		          tar -xzf tales.tar.gz
+		          install -m 0755 tales /usr/local/bin/tales
+
+		      - name: Run tests
+		        env:
+		          POSTGRES_DSN: postgres://postgres:test@localhost:5432/postgres?sslmode=disable
+		          BASE_URL:     http://localhost:1337
+		        run: |
+		          tales test ./e2e/pass \
+		            --seed     1234 \
+		            --parallel 8 \
+		            --timeout  10m \
+		            --report-junit ./reports/junit.xml \
+		            --report-jsonl ./reports/events.jsonl \
+		            --report-html  ./reports/visual.html
+
+		      - name: Publish test report
+		        if: always()
+		        uses: dorny/test-reporter@v1
+		        with:
+		          name: Tales
+		          path: reports/junit.xml
+		          reporter: java-junit
+
+		      - name: Upload reports artifact
+		        if: always()
+		        uses: actions/upload-artifact@v4
+		        with:
+		          name: tales-reports
+		          path: reports/
+		```
+	</TabItem>
+	<TabItem label="GitLab CI">
+		```yaml
+		# .gitlab-ci.yml
+		integration:
+		  image: ubuntu:24.04
+		  services:
+		    - name: postgres:16
+		      alias: postgres
+		      variables:
+		        POSTGRES_PASSWORD: test
+		  variables:
+		    POSTGRES_DSN: postgres://postgres:test@postgres:5432/postgres?sslmode=disable
+		    BASE_URL:     http://localhost:1337
+		  before_script:
+		    - apt-get update && apt-get install -y curl ca-certificates
+		    - curl -fsSL -o tales.tar.gz https://github.com/hyperxlab/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
+		    - tar -xzf tales.tar.gz
+		    - install -m 0755 tales /usr/local/bin/tales
+		  script:
+		    - tales test ./e2e/pass --seed 1234 --parallel 8 --timeout 10m \
+		        --report-junit reports/junit.xml \
+		        --report-jsonl reports/events.jsonl \
+		        --report-html  reports/visual.html
+		  artifacts:
+		    when: always
+		    expire_in: 1 week
+		    paths:
+		      - reports/
+		    reports:
+		      junit: reports/junit.xml
+		```
+	</TabItem>
+	<TabItem label="CircleCI">
+		```yaml
+		# .circleci/config.yml
+		version: 2.1
+
+		jobs:
+		  tales:
+		    docker:
+		      - image: cimg/base:stable
+		      - image: cimg/postgres:16.2
+		        environment:
+		          POSTGRES_PASSWORD: test
+		    environment:
+		      POSTGRES_DSN: postgres://postgres:test@localhost:5432/postgres?sslmode=disable
+		      BASE_URL:     http://localhost:1337
+		    steps:
+		      - checkout
+		      - run:
+		          name: Install Tales
+		          command: |
+		            curl -fsSL -o tales.tar.gz \
+		              https://github.com/hyperxlab/tales/releases/latest/download/tales_0.1.0_linux_x86_64.tar.gz
+		            tar -xzf tales.tar.gz
+		            sudo install -m 0755 tales /usr/local/bin/tales
+		      - run:
+		          name: Run tales
+		          command: |
+		            mkdir -p reports
+		            tales test ./e2e/pass --seed 1234 --parallel 8 --timeout 10m \
+		              --report-junit reports/junit.xml \
+		              --report-jsonl reports/events.jsonl \
+		              --report-html  reports/visual.html
+		      - store_test_results:
+		          path: reports
+		      - store_artifacts:
+		          path: reports
+		          destination: tales-reports
+
+		workflows:
+		  build-test:
+		    jobs:
+		      - tales
+		```
+	</TabItem>
+</Tabs>
+
+## Seed strategy
+
+Use a **fixed seed** in CI:
+
+```bash
+tales test ./e2e/pass --seed 1234
+```
+
+A fixed seed means:
+
+- Every run produces the same generated data (emails, passwords, IDs).
+- A red CI build is replayable locally — copy the seed, copy the command, get the same failure.
+- Flake hunting becomes a deterministic exercise instead of a guessing game.
+
+If you want to *guarantee* coverage across different generated values, run the suite twice with two different seeds in a matrix — but keep the seeds explicit, not random.
+
+## Parallelism
+
+`--parallel <n>` controls scenario-level concurrency. A good default is `--parallel 4` to `--parallel 8` on a typical CI runner. Steps inside a scenario remain sequential, so chained captures are unaffected.
+
+## Timeout
+
+Always set `--timeout` in CI. A hung simulator or unreachable database will otherwise sit on a worker until the CI system kills the entire job — with no clue which scenario stalled.
+
+```bash
+--timeout 10m
+```
+
+When the timeout fires, Tales prints the list of in-flight scenarios and exits with code `1`.
+
+## Exit codes recap
+
+| Code | Meaning                                       |
+| ---- | --------------------------------------------- |
+| `0`  | All scenarios passed (or skipped).            |
+| `1`  | At least one scenario failed.                 |
+| `2`  | Parse or validation error.                    |
+| `3`  | Runtime or reporting fatal error.             |
+
+Wire your CI to treat any non-zero exit code as failure.
+
+<Aside type="tip" title="One JUnit reporter, multiple log surfaces">
+	The JUnit XML lives in the dashboard for quick triage. The JSONL is what you grep with `jq` for "show me every step that took more than 1s last week". The HTML report is what you share with a teammate when you need to explain a mobile failure. Generate all three — they cost nothing extra and you'll thank yourself the next time a test goes red.
 </Aside>

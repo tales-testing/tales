@@ -1,10 +1,131 @@
 ---
-title: Debugging Failures
-description: Documentation page for Debugging Failures — placeholder, content coming soon.
+title: Debugging failures
+description: How to read a Tales failure message, where to look for diagnostics, and how to reproduce a CI failure locally.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+When a Tales scenario fails, the goal is to go from "test went red" to "I know exactly which assertion mismatched and why" in under a minute. This guide walks through the diagnostics Tales surfaces and the order to consult them.
+
+## The failure stack
+
+In order of decreasing speed:
+
+1. **Console output** — the colourful summary in your terminal. Always available.
+2. **Visual HTML report** (mobile scenarios) — open `build/reports/visual.html` in a browser, scrub to the failing action.
+3. **JSONL stream** — `jq` queries over `build/reports/events.jsonl` give surgical access to one failing step's request and response.
+4. **Mobile artifacts** — screenshot + accessibility hierarchy at the moment of failure.
+5. **Provider logs** — for the SQL provider, the error includes the SQL text (with the DSN masked). For mobile, `build/artifacts/mobile/driver/<target>/driver.log` carries the embedded driver's stdout/stderr.
+
+## Reading a console failure
+
+```text
+Scenario Send signed webhook (e2e/pass/signed_webhook.tales) FAIL in 47ms
+  ✔ create_marker  POST   /markers          201   12ms
+  ✘ send_signed_webhook  POST /webhook/signed  401  35ms
+      assertion failed: status mismatch
+      at scenario.send_signed_webhook.expect.status
+      want: 200
+      got:  401 Unauthorized
+
+Summary: scenarios 0 passed / 1 failed / 0 skipped, steps 1 passed / 1 failed
+```
+
+The three things to look at:
+
+| Field           | What it tells you                                                |
+| --------------- | ---------------------------------------------------------------- |
+| `at scenario...`| The path inside the `.tales` file. `expect.status` here.         |
+| `want`          | The literal you wrote.                                           |
+| `got`           | What the server actually returned.                               |
+
+For JSON assertions, the path drills further: `at scenario.create_user.expect.json.email` tells you the `email` field of the JSON body failed, not the top-level status.
+
+## Reproducing a CI failure locally
+
+The most useful single line you'll write:
+
+```bash
+tales test ./e2e/pass --seed <THE_CI_SEED>
+```
+
+A CI build's seed is printed in the preflight line (`tales: loaded N scenarios from M files; seed=1234`) and saved in the JSONL `suite_start` event. Copy it, run locally, get the exact same generated data. The HTTP response from the actual service may still differ (server time, server-side IDs), but every value Tales itself produced will match.
+
+If the failure was timing-sensitive, the local run may not reproduce it. Use `--report-jsonl` on a few local runs to find the timing window.
+
+## Querying the JSONL
+
+```bash
+# All failing steps with their failure reason
+jq -c 'select(.type=="step" and .status=="fail") | {
+  scenario,
+  step,
+  message: .failure.message,
+  path:    .failure.path,
+  want:    .failure.want,
+  got:     .failure.got
+}' events.jsonl
+
+# Full request/response of one failing step
+jq 'select(.type=="step" and .scenario=="Send signed webhook" and .step=="send_signed_webhook")' events.jsonl
+
+# Slowest 5 steps in the suite
+jq -c 'select(.type=="step")' events.jsonl | jq -s 'sort_by(-.duration_ms) | .[:5]'
+```
+
+## Mobile failures
+
+When a mobile step fails:
+
+1. **The visual HTML report** opens at the failing scenario. Scrub the timeline to the failing action.
+2. **The screenshot at the failure point** is in `build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-N/screenshot.png`.
+3. **The accessibility hierarchy** (a JSON dump of every visible element) is alongside as `hierarchy.json`. Grep it for the missing accessibility identifier you expected.
+4. **If the driver itself failed to start**, the log at `build/artifacts/mobile/driver/<target>/driver.log` has the Xcode/simctl output.
+
+See the [Mobile iOS](/docs/providers/mobile-ios/#troubleshooting) troubleshooting section for system-level diagnostics.
+
+## The `e2e/fail/` reference suite
+
+The Tales repo ships a suite of intentionally-failing scenarios in `e2e/fail/`. Each one demonstrates how a specific failure mode looks in the output:
+
+- `basic_auth_failure.tales` — wrong Basic Auth password → 401.
+- `optional_matcher_mismatch.tales` — `optional("ROLE_ADMIN")` but server returned `"ROLE_USER"`.
+- `signed_webhook_bad_signature.tales` — HMAC mismatch → 401.
+- `sql_unreachable.tales` — DSN points at nothing → fail-fast ping.
+- `teardown_failure.tales` — main step fails, teardown still runs.
+
+Run them locally to see the failure rendering:
+
+```bash
+tales test ./e2e/fail   # always exits with code 1
+```
+
+## When the parser rejects your file
+
+If `tales validate` or `tales test` returns exit code `2`, the failure is at the parser level. The error includes the file path, line, and column:
+
+```text
+Error: validation failed at e2e/pass/blog.tales:34,5-30
+  forward reference to step "later_step" in result.later_step.id
+  hint: steps may only reference earlier steps in the same file
+```
+
+These are always fixable in the `.tales` file itself — no need to look at logs or reports.
+
+## Common confusing situations
+
+### "My HTTP step shows status 200 but the assertion fails"
+
+Look at `at scenario....expect.json.<field>`. The body matched but a JSON field didn't. Use `optional(<value>)` if the field is sometimes absent (typical ConnectRPC pattern — see [Matchers](/docs/reference/matchers/#optional)).
+
+### "My retry block ran the full attempts and then failed"
+
+Either the system genuinely never reached the expected state, or your assertion is too strict. Look at the last attempt's response in JSONL — what *did* the response look like? Is it close to passing, or wildly off?
+
+### "Tales says my step was 'skipped' but I didn't declare a skip rule"
+
+The skip cascade is firing. An upstream step failed or was skipped, and this step references its capture (`result.foo.id` or `depends_on = ["foo"]`). The dependent is skipped to prevent it from crashing on a missing value. Fix the upstream issue and the cascade resolves itself.
+
+<Aside type="tip" title="Save red runs as fixtures">
+	When you finally reproduce a transient failure with a specific seed, save that seed and the relevant `.tales` file as a regression fixture. The next time someone touches the affected code path, the failure will catch them too.
 </Aside>

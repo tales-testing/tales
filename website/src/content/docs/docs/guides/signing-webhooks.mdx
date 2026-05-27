@@ -1,10 +1,140 @@
 ---
-title: Signing Webhooks
-description: Documentation page for Signing Webhooks — placeholder, content coming soon.
+title: Signing webhooks (HMAC)
+description: A complete recipe for signing a webhook payload with HMAC-SHA256 using step-local vars and the built-in helpers.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Webhook signing is the canonical use case for combining `vars`, `jsonencode`, `hmac_sha256_hex`, and `now_unix`. This guide shows the full recipe and explains why each piece is necessary.
+
+## The problem
+
+A receiver expects you to:
+
+1. Build a JSON payload.
+2. Pick a current timestamp.
+3. Compute `HMAC-SHA256(secret, "<timestamp>.<payload>")`.
+4. Send the payload as the body, the timestamp and signature in a header.
+
+The receiver re-computes the HMAC on its side and rejects requests whose signatures don't match. Two things can go wrong in a test:
+
+- The timestamp you put in the header doesn't match the one you used to compute the signature.
+- The payload you sign is not byte-identical to the payload you send.
+
+Both produce 401 responses that look like a server bug but are really test infrastructure issues.
+
+## The recipe
+
+```hcl
+config {
+  webhook_secret = env("WEBHOOK_SECRET", "whsec_test")
+  base_url       = env("BASE_URL",       "http://localhost:1337")
+}
+
+scenario "Send signed webhook" {
+  step "http" "create_marker" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/markers"
+      body { json = { name = "evt-source" } }
+    }
+
+    expect {
+      status = 201
+      json   = { id = is_string() }
+    }
+
+    capture {
+      marker_id = response.json.id
+    }
+  }
+
+  step "http" "send_signed_webhook" {
+    vars {
+      ts = now_unix()
+
+      body = jsonencode({
+        id          = "evt-${result.create_marker.marker_id}"
+        type        = "notarization.completed"
+        api_version = "v1"
+        created_at  = now_rfc3339()
+        data = {
+          notarization = {
+            external_id = result.create_marker.marker_id
+            status      = "completed"
+          }
+        }
+      })
+
+      sig = hmac_sha256_hex(config.webhook_secret, "${vars.ts}.${vars.body}")
+    }
+
+    request {
+      method = "POST"
+      url    = "${config.base_url}/webhook/signed"
+      headers = {
+        X-Signature = "t=${vars.ts},v1=${vars.sig}"
+      }
+      body { raw = vars.body }
+    }
+
+    expect {
+      status = 200
+      json = {
+        ok = true
+      }
+    }
+  }
+}
+```
+
+## Why each piece matters
+
+### `vars { ts = now_unix() }`
+
+`now_unix()` reads the wall clock every time it appears in an expression. If you inlined it directly into both `request.headers.X-Signature` *and* the HMAC input string, you'd get two different timestamps separated by microseconds.
+
+Stashing it in `vars` once locks the value for the rest of the step.
+
+### `vars { body = jsonencode(...) }`
+
+`jsonencode` produces a *canonical* JSON string: object keys sorted alphabetically, no spurious whitespace, numbers preserved via `json.Number`. That canonicalisation is what lets the receiver re-serialise the parsed body and get the same byte sequence back.
+
+Computing the JSON twice (once for the body, once nested inside the HMAC call) would risk subtle drift if any field contained non-deterministic data. Storing once in `vars` is the right move.
+
+### `body { raw = vars.body }`
+
+The request body must be **exactly** the bytes we signed. Using `body { json = ... }` would let Tales re-encode the value, with potentially different key ordering than the canonical form we hashed. Always send the raw form when signing.
+
+### `hmac_sha256_hex(secret, "<ts>.<body>")`
+
+The order of components in the signed string is part of the protocol contract — match it byte-for-byte with the receiver. Common patterns:
+
+- Stripe-style: `<ts>.<body>`
+- GitHub-style: just the body (no timestamp)
+- Shopify-style: the body with no separator
+
+`hmac_sha256_hex` returns lowercase hex. If the receiver expects uppercase or base64, wrap or change accordingly.
+
+## Failure modes (and the fail/ fixtures)
+
+The intentional-failure fixture in `e2e/fail/signed_webhook_bad_signature.tales` flips one character in the signed message before computing the HMAC. The receiver rejects with 401. The Tales output highlights:
+
+```text
+Scenario Send signed webhook  FAIL
+  ✘ send_signed_webhook  POST /webhook/signed  401  35ms
+      expected status 200 at scenario.send_signed_webhook.expect.status
+      actual: 401 Unauthorized
+```
+
+Use that fixture as the template when verifying a new signing scheme — write the failing case first to confirm your receiver actually rejects bad signatures, then write the success case.
+
+## Variants
+
+- **Multiple receivers** — capture the body once in `vars`, send the same `body` to several endpoints with their own signatures.
+- **Timestamp tolerance** — receivers often allow a `±5 minute` window. To exercise the rejection edge, set `vars { ts = now_unix() - 600 }` (10 minutes in the past) and assert `status = 401`.
+- **Different secrets per environment** — make `webhook_secret = env("WEBHOOK_SECRET")` non-optional and ensure CI sets it.
+
+<Aside type="caution" title="Never inline a real production secret">
+	Pull secrets from `env(...)` and inject them via CI variables. Tales does not encrypt `.tales` files, and the secret would end up in your git history. The signature in the request will be masked in reports, but the secret read from `config.webhook_secret` would not.
 </Aside>
