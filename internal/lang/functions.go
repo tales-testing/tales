@@ -500,6 +500,7 @@ func baseFunctions() map[string]function.Function {
 		"regex_find":  regexFindFunc(),
 		"url_encode":       urlEncodeFunc(),
 		"base64url_encode": base64urlEncodeFunc(),
+		"pkce_challenge":   pkceChallengeFunc(),
 		"contains":    matcherSingleArg("contains"),
 		"matches":     matchesFunc(),
 		"exists":      matcherNoArg("exists"),
