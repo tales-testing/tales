@@ -1,10 +1,194 @@
 ---
 title: Matchers
-description: Documentation page for Matchers — placeholder, content coming soon.
+description: Assertion matchers — contains, matches, optional, required, any, is_*, one_of, can, exists, not_exists.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
-</Aside>
+Matchers are functions that, when placed inside an `expect` block, describe a *shape* the response must satisfy rather than a literal value. They are the difference between fragile equality assertions and resilient structural ones.
+
+Tales matchers fall into three groups: **value matchers** (does this value satisfy the predicate?), **field matchers** (is this JSON key present, optional, etc.?), and **soft helpers** (`can`).
+
+## Value matchers
+
+### `contains(value)`
+
+The actual value must contain the expected one. Works on strings (substring) and arrays (membership).
+
+```hcl
+headers = {
+  Content-Type = contains("application/json")
+}
+
+json = {
+  tags = contains("smoke")
+}
+```
+
+### `matches(pattern)`
+
+Regex match (Go RE2 syntax). Compiled once when the assertion is built.
+
+```hcl
+json = {
+  request_id = matches("^req-[a-f0-9]{16}$")
+}
+```
+
+### `one_of([v1, v2, ...])`
+
+The actual value must equal one of the listed values. Use it for cleanup steps that should tolerate "already deleted" / "never created" status codes:
+
+```hcl
+expect {
+  status = one_of([200, 204, 404])
+}
+```
+
+### `is_string()`, `is_number()`, `is_bool()`, `is_array()`, `is_object()`
+
+Type predicates. The actual value must be of the expected JSON type.
+
+```hcl
+json = {
+  id        = is_string()
+  count     = is_number()
+  active    = is_bool()
+  tags      = is_array()
+  metadata  = is_object()
+}
+```
+
+### `any()`
+
+Accepts any value, including `null`. Useful inside `optional()` when you only want to assert presence-or-absence, not type:
+
+```hcl
+json = {
+  metadata = optional(any())   // either absent or any value
+}
+```
+
+## Field matchers
+
+These describe the *presence* of a JSON key, not its value.
+
+### `required(<inner>)`
+
+Explicit "this key must be present". The default behaviour for keys you write in `expect.json` — `required()` just makes the intent visible.
+
+```hcl
+json = {
+  id = required(is_string())
+}
+```
+
+### `optional(<inner>)`
+
+The key may be absent. If it is present, the inner matcher must satisfy.
+
+This is the right matcher for ConnectRPC / protobuf JSON responses where fields equal to their zero value are typically omitted:
+
+```hcl
+json = {
+  role         = optional("ROLE_UNSPECIFIED")
+  display_name = optional("")
+  permissions  = optional([])
+  metadata     = optional(any())
+}
+```
+
+| Pattern                  | Meaning                                                              |
+| ------------------------ | -------------------------------------------------------------------- |
+| `optional("default")`    | Key absent, **or** equal to the explicit default literal.            |
+| `optional(any())`        | Key absent, **or** any value present.                                |
+| `optional(is_string())`  | Key absent, **or** present with a string value.                      |
+| `optional(contains(...))`| Key absent, **or** present and satisfying the inner matcher.         |
+
+### `exists()`
+
+Asserts the key is present (any value). Equivalent to `required(any())` but reads better when you only care about presence.
+
+```hcl
+json = {
+  trace_id = exists()
+}
+```
+
+### `not_exists()`
+
+Asserts the key is absent. Useful when an API change should *remove* a deprecated field.
+
+```hcl
+json = {
+  legacy_token = not_exists()
+}
+```
+
+## `strict = true`
+
+By default, JSON assertions ignore keys that are present in the response but not listed in `expect.json`. Setting `strict = true` flips that: any extra key fails the step.
+
+```hcl
+expect {
+  json = {
+    id    = is_string()
+    email = "qa@example.com"
+  }
+  strict = true   // fails if the response carries any other key
+}
+```
+
+Use `strict` for API contracts where unexpected fields signal a regression.
+
+## Soft probe — `can(expr)`
+
+`can(expr)` evaluates `expr` and returns `true` if it succeeded without error, `false` if it threw. Use it in `when` clauses to gate on the *presence* of an upstream capture without writing fragile null checks.
+
+```hcl
+teardown {
+  step "http" "delete_user" {
+    when = can(result.create_user.id)
+    request {
+      method = "DELETE"
+      url    = "${config.base_url}/users/${result.create_user.id}"
+    }
+  }
+}
+```
+
+If `result.create_user.id` was not captured (the step failed or was skipped), the teardown step is reported as `skipped` with reason `when condition was false`.
+
+## Composing matchers
+
+Matchers compose. The most common composition is `optional(contains(...))`:
+
+```hcl
+json = {
+  status       = "completed"
+  error        = optional("")                  // absent or empty string
+  message      = optional(contains("retry"))   // absent or substring match
+  recipients   = optional(is_array())          // absent or any array
+  trace_id     = required(matches("^trc_"))   // present and regex match
+}
+```
+
+Inside `headers`, only value matchers make sense (HTTP headers are flat key/value pairs, all present or absent at the protocol level):
+
+```hcl
+headers = {
+  Content-Type    = contains("json")
+  X-Request-Id    = matches("^req-")
+  X-Rate-Limit    = is_string()
+}
+```
+
+## What's not a matcher
+
+A few things that *look* like matchers but aren't:
+
+- `generate("name")` — produces a value, not a predicate.
+- `env("NAME")` — reads env, produces a value.
+- `jsonencode(v)`, `hmac_sha256_hex(k, m)`, `regex_find(s, p)` — value-producing helpers, not predicates.
+
+If you find yourself writing `json = { field = generate("x") }`, you're asserting the field equals a generated value — that works because generators are deterministic, but the test will break if the generator config changes. Capture the value once and reference the capture instead.
