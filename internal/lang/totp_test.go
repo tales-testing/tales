@@ -9,6 +9,10 @@ import (
 // the SHA-1 test secret from RFC 6238, Appendix B.
 const rfc6238Secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
+// totpTS is a tiny helper that promotes an int64 literal to *int64 inline,
+// keeping TOTPOptions test literals readable now that Timestamp is a pointer.
+func totpTS(v int64) *int64 { return &v }
+
 func TestGenerateTOTPRFC6238Vectors(t *testing.T) {
 	t.Parallel()
 
@@ -29,7 +33,7 @@ func TestGenerateTOTPRFC6238Vectors(t *testing.T) {
 			Period:    30,
 			Digits:    8,
 			Algorithm: "SHA1",
-			Timestamp: tc.timestamp,
+			Timestamp: totpTS(tc.timestamp),
 		})
 		if err != nil {
 			t.Fatalf("ts=%d: unexpected error: %v", tc.timestamp, err)
@@ -44,7 +48,7 @@ func TestGenerateTOTPRFC6238Vectors(t *testing.T) {
 func TestGenerateTOTPDefaultsToSixDigits(t *testing.T) {
 	t.Parallel()
 
-	got, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Timestamp: 59})
+	got, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Timestamp: totpTS(59)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,12 +63,12 @@ func TestGenerateTOTPCustomPeriod(t *testing.T) {
 
 	// Two timestamps inside the same 60s window ([60, 120)) should yield the
 	// same code; bumping past the window must change the code.
-	a, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 60, Timestamp: 60})
+	a, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 60, Timestamp: totpTS(60)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	b, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 60, Timestamp: 119})
+	b, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 60, Timestamp: totpTS(119)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -73,7 +77,7 @@ func TestGenerateTOTPCustomPeriod(t *testing.T) {
 		t.Fatalf("expected same code inside one 60s window, got %s vs %s", a, b)
 	}
 
-	c, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 60, Timestamp: 120})
+	c, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 60, Timestamp: totpTS(120)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +90,7 @@ func TestGenerateTOTPCustomPeriod(t *testing.T) {
 func TestGenerateTOTPSecretNormalization(t *testing.T) {
 	t.Parallel()
 
-	canonical, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 30, Digits: 8, Timestamp: 59})
+	canonical, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 30, Digits: 8, Timestamp: totpTS(59)})
 	if err != nil {
 		t.Fatalf("canonical secret failed: %v", err)
 	}
@@ -100,7 +104,7 @@ func TestGenerateTOTPSecretNormalization(t *testing.T) {
 	}
 
 	for _, variant := range variants {
-		got, err := GenerateTOTP(variant, TOTPOptions{Period: 30, Digits: 8, Timestamp: 59})
+		got, err := GenerateTOTP(variant, TOTPOptions{Period: 30, Digits: 8, Timestamp: totpTS(59)})
 		if err != nil {
 			t.Fatalf("variant %q: unexpected error: %v", variant, err)
 		}
@@ -123,7 +127,7 @@ func TestGenerateTOTPRejectsInvalidOptions(t *testing.T) {
 		{"negative period", TOTPOptions{Period: -1}, "period must be > 0"},
 		{"negative digits", TOTPOptions{Digits: -1}, "digits must be > 0"},
 		{"too many digits", TOTPOptions{Digits: 11}, "digits must be <="},
-		{"negative timestamp", TOTPOptions{Timestamp: -1}, "timestamp must be >= 0"},
+		{"negative timestamp", TOTPOptions{Timestamp: totpTS(-1)}, "timestamp must be >= 0"},
 	}
 
 	for _, tc := range cases {
@@ -143,7 +147,7 @@ func TestGenerateTOTPInvalidSecretIsOpaque(t *testing.T) {
 
 	const badSecret = "BADBADBAD!!!totally-not-base32"
 
-	_, err := GenerateTOTP(badSecret, TOTPOptions{Timestamp: 59})
+	_, err := GenerateTOTP(badSecret, TOTPOptions{Timestamp: totpTS(59)})
 	if err == nil {
 		t.Fatalf("expected invalid-secret error")
 	}
@@ -160,16 +164,54 @@ func TestGenerateTOTPInvalidSecretIsOpaque(t *testing.T) {
 func TestGenerateTOTPEmptySecret(t *testing.T) {
 	t.Parallel()
 
-	_, err := GenerateTOTP("    ", TOTPOptions{Timestamp: 59})
+	_, err := GenerateTOTP("    ", TOTPOptions{Timestamp: totpTS(59)})
 	if err == nil || err.Error() != "invalid TOTP base32 secret" {
 		t.Fatalf("expected opaque invalid-secret error, got %v", err)
+	}
+}
+
+func TestGenerateTOTPExplicitZeroTimestampHonored(t *testing.T) {
+	t.Parallel()
+
+	// Regression test for the *int64 timestamp pointer fix: an explicit
+	// timestamp = 0 must reach the algorithm unchanged, not be silently
+	// replaced with the wall clock. With period=30 the counter is 0, and
+	// RFC 4226 Appendix D pins the 6-digit HOTP for the same SHA-1 secret
+	// at counter=0 to "755224".
+	got, err := GenerateTOTP(rfc6238Secret, TOTPOptions{
+		Period:    30,
+		Digits:    6,
+		Algorithm: "SHA1",
+		Timestamp: totpTS(0),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got != "755224" {
+		t.Fatalf("explicit Timestamp=0 must yield HOTP counter=0 code 755224, got %s", got)
+	}
+
+	// And it must be stable, i.e. not accidentally re-reading the wall clock.
+	again, err := GenerateTOTP(rfc6238Secret, TOTPOptions{
+		Period:    30,
+		Digits:    6,
+		Algorithm: "SHA1",
+		Timestamp: totpTS(0),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if again != got {
+		t.Fatalf("explicit Timestamp=0 produced different codes across calls: %s vs %s", got, again)
 	}
 }
 
 func TestGenerateTOTPDigitsTenIsAllowed(t *testing.T) {
 	t.Parallel()
 
-	got, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 30, Digits: 10, Timestamp: 59})
+	got, err := GenerateTOTP(rfc6238Secret, TOTPOptions{Period: 30, Digits: 10, Timestamp: totpTS(59)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

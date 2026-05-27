@@ -484,7 +484,10 @@ func assignTOTPOption(opts *TOTPOptions, name string, attr cty.Value) error {
 			return fmt.Errorf("totp: option %q must be an integer", name)
 		}
 
-		opts.Timestamp = timestamp
+		// Use a pointer so an explicit timestamp=0 (a legal Unix epoch
+		// value, documented as allowed) is not silently replaced with the
+		// wall clock inside GenerateTOTP.
+		opts.Timestamp = &timestamp
 	}
 
 	return nil
