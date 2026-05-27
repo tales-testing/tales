@@ -109,6 +109,10 @@ func SanitizeMap(values map[string]interface{}) map[string]interface{} {
 		switch strings.ToLower(key) {
 		case "headers":
 			sanitized[key] = MaskHeaders(value)
+		case "headers_all":
+			sanitized[key] = MaskHeadersAll(value)
+		case "cookies":
+			sanitized[key] = MaskCookies(value)
 		case jsonKey:
 			sanitized[key] = MaskJSON(value)
 		case "body":
@@ -203,6 +207,107 @@ func MaskHeaders(value interface{}) map[string]string {
 	}
 
 	return headers
+}
+
+// MaskHeadersAll masks sensitive headers in the multi-value response shape
+// (map[string][]string). Every value of a sensitive header is replaced with
+// the placeholder; non-sensitive headers pass through unchanged.
+func MaskHeadersAll(value interface{}) map[string][]string {
+	result := map[string][]string{}
+
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		for key, nested := range typed {
+			result[key] = headerValuesToStrings(nested)
+		}
+	case map[string][]string:
+		for key, values := range typed {
+			cloned := make([]string, len(values))
+			copy(cloned, values)
+			result[key] = cloned
+		}
+	default:
+		return result
+	}
+
+	for key, values := range result {
+		if !isSensitiveHeader(key) {
+			continue
+		}
+
+		masked := make([]string, len(values))
+		for i := range values {
+			masked[i] = maskedValue
+		}
+
+		result[key] = masked
+	}
+
+	return result
+}
+
+// MaskCookies redacts the value and raw fields of every cookie in the
+// response.cookies object. The other fields (name, path, domain, expires,
+// max_age, secure, http_only, same_site) pass through unchanged so debugging
+// information stays useful.
+func MaskCookies(value interface{}) map[string]map[string]interface{} {
+	result := map[string]map[string]interface{}{}
+
+	source, ok := value.(map[string]interface{})
+	if !ok {
+		return result
+	}
+
+	for name, raw := range source {
+		fields, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		masked := make(map[string]interface{}, len(fields))
+
+		for key, val := range fields {
+			lowered := strings.ToLower(key)
+			if lowered == "value" || lowered == "raw" {
+				if str, isStr := val.(string); isStr && str == "" {
+					masked[key] = ""
+
+					continue
+				}
+
+				masked[key] = maskedValue
+
+				continue
+			}
+
+			masked[key] = val
+		}
+
+		result[name] = masked
+	}
+
+	return result
+}
+
+func headerValuesToStrings(value interface{}) []string {
+	switch typed := value.(type) {
+	case []string:
+		cloned := make([]string, len(typed))
+		copy(cloned, typed)
+
+		return cloned
+	case []interface{}:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, stringify(item))
+		}
+
+		return values
+	case string:
+		return []string{typed}
+	default:
+		return []string{stringify(typed)}
+	}
 }
 
 // MaskJSON masks sensitive fields recursively in maps/arrays.
@@ -431,15 +536,40 @@ func stringify(value interface{}) string {
 }
 
 func isSensitiveHeader(name string) bool {
-	_, ok := sensitiveHeaders[strings.ToLower(strings.TrimSpace(name))]
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if _, ok := sensitiveHeaders[normalized]; ok {
+		return true
+	}
 
-	return ok
+	// Any header whose name contains "signature" carries signing material.
+	// This covers X-Anchorify-Signature, X-Hub-Signature, X-My-Signature-Token,
+	// etc. without having to enumerate every vendor-specific name.
+	return strings.Contains(normalized, "signature")
 }
 
 func isSensitiveJSONField(name string) bool {
-	_, ok := sensitiveJSONFields[strings.ToLower(strings.TrimSpace(name))]
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if _, ok := sensitiveJSONFields[normalized]; ok {
+		return true
+	}
 
-	return ok
+	// Catch *_secret-style names (mfa_secret, totp_secret, hmac_secret, ...)
+	// without falsely matching unrelated words. We require either a boundary
+	// hit ("secret") or a contains-with-underscore-or-dash neighbor so plain
+	// "secretary" does not get masked.
+	if normalized == "secret" {
+		return true
+	}
+
+	if strings.HasSuffix(normalized, "_secret") || strings.HasSuffix(normalized, "-secret") {
+		return true
+	}
+
+	if strings.HasPrefix(normalized, "secret_") || strings.HasPrefix(normalized, "secret-") {
+		return true
+	}
+
+	return false
 }
 
 func looksLikeJSON(value string) bool {
