@@ -23,6 +23,12 @@ import (
 
 const pathArgsUsage = "<path>"
 
+// heartbeatTickEvery is the cadence at which the --verbose ticker lists
+// scenarios still in flight. 30s strikes a balance: long enough that fast
+// suites never trigger it, short enough that a hang surfaces within one or
+// two ticks in CI.
+const heartbeatTickEvery = 30 * time.Second
+
 // NewTestCommand returns test command.
 func NewTestCommand() *cli.Command {
 	return &cli.Command{
@@ -41,6 +47,7 @@ func NewTestCommand() *cli.Command {
 			&cli.StringFlag{Name: "report-html", Usage: "Write single-file visual HTML report"},
 			&cli.StringFlag{Name: "capture-screenshots", Usage: "Mobile screenshot capture mode (none|failures|steps|actions)"},
 			&cli.DurationFlag{Name: "timeout", Usage: "Global wall-clock budget for the whole run (e.g. 30s, 5m). 0 disables (default)."},
+			&cli.BoolFlag{Name: "verbose", Usage: "Emit a heartbeat every 30s listing scenarios still running"},
 		},
 		Action: runTest,
 	}
@@ -174,12 +181,18 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 
 	sink := buildEventSink(cmd.Bool("no-progress"), cmd.Bool("no-color"))
 
+	heartbeatInterval := time.Duration(0)
+	if cmd.Bool("verbose") {
+		heartbeatInterval = heartbeatTickEvery
+	}
+
 	result, err := runner.Run(ctx, suite, talesruntime.Options{
-		Seed:     seed,
-		Parallel: cmd.Int("parallel"),
-		Tags:     cmd.StringSlice("tag"),
-		Scenario: cmd.String("scenario"),
-		Events:   sink,
+		Seed:              seed,
+		Parallel:          cmd.Int("parallel"),
+		Tags:              cmd.StringSlice("tag"),
+		Scenario:          cmd.String("scenario"),
+		Events:            sink,
+		HeartbeatInterval: heartbeatInterval,
 	})
 	if err != nil && result == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "runtime failed: %v\n", err)

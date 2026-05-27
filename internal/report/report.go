@@ -2,6 +2,15 @@ package report
 
 import "time"
 
+// ActiveScenario describes one in-flight scenario at the moment a heartbeat
+// snapshot is taken. The runtime computes these and hands them to the sink;
+// the type lives here because runtime imports report (not the other way),
+// so it is the natural shared home.
+type ActiveScenario struct {
+	Name    string
+	Elapsed time.Duration
+}
+
 // Status describes suite/scenario/step state.
 type Status string
 

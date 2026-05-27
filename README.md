@@ -237,7 +237,9 @@ Flags:
 - `--report-jsonl <path>`: write JSONL events.
 - `--report-html <path>`: write a single-file visual HTML report (mobile screenshots replay).
 - `--capture-screenshots <mode>`: mobile screenshot capture mode. One of `none`, `failures`, `steps`, `actions`. Defaults to `failures`, or `actions` when `--report-html` is set.
-- `--timeout <duration>`: global wall-clock budget for the whole run (e.g. `30s`, `5m`, `1h`). When it fires, in-flight steps see a canceled context, are reported as failed, and the CLI exits with `1`. `0` (the default) disables the budget — Tales then waits indefinitely.
+- `--timeout <duration>`: global wall-clock budget for the whole run (e.g. `30s`, `5m`, `1h`). When it fires, in-flight steps see a canceled context, are reported as failed, the CLI lists the scenarios that were still running, and the run exits with `1`. `0` (the default) disables the budget — Tales then waits indefinitely.
+- `--verbose`: emit a heartbeat on stderr every 30s listing every scenario still in flight along with its elapsed time. Off by default.
+- `--no-progress`: silence the streaming `scenario X starting / PASS / FAIL` lines that are otherwise emitted on stderr while the suite is running. The final report on stdout is unaffected.
 
 Examples:
 

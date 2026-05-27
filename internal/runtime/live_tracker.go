@@ -5,27 +5,36 @@ import (
 	"errors"
 	"sort"
 	"sync"
+	"time"
+
+	"github.com/hyperxlab/tales/internal/report"
 )
 
-// liveScenarioTracker holds the names of scenarios currently executing.
-// It exists to power the cancel-by-timeout diagnostic: when --timeout fires
-// before runner.Run finishes, the CLI needs to know which scenarios were
-// in-flight at that exact moment to point users at the culprits.
+// ActiveScenario is re-exported from report so the EventSink contract reads
+// as a single type. The data lives in the report package because runtime
+// already imports report and not the other way around.
+type ActiveScenario = report.ActiveScenario
+
+// liveScenarioTracker holds the names of scenarios currently executing,
+// along with the wall-clock instant each one became active. It powers two
+// observability surfaces: the cancel-by-timeout diagnostic (which only
+// needs names) and the optional --verbose heartbeat (which needs durations).
 //
-// The tracker is updated from each scenario goroutine and read from a
-// single watcher goroutine, so all accesses go through the mutex.
+// The tracker is updated from each scenario goroutine and read from at
+// least two watcher goroutines (deadline watcher, heartbeat ticker), so all
+// accesses go through the mutex.
 type liveScenarioTracker struct {
 	mu     sync.Mutex
-	active map[string]struct{}
+	active map[string]time.Time
 }
 
 func newLiveScenarioTracker() *liveScenarioTracker {
-	return &liveScenarioTracker{active: map[string]struct{}{}}
+	return &liveScenarioTracker{active: map[string]time.Time{}}
 }
 
 func (t *liveScenarioTracker) start(name string) {
 	t.mu.Lock()
-	t.active[name] = struct{}{}
+	t.active[name] = time.Now()
 	t.mu.Unlock()
 }
 
@@ -49,6 +58,58 @@ func (t *liveScenarioTracker) snapshot() []string {
 	sort.Strings(out)
 
 	return out
+}
+
+// snapshotWithElapsed is the richer form used by the heartbeat: each entry
+// carries the wall-clock duration since the scenario started. The result is
+// sorted by name for stable output.
+func (t *liveScenarioTracker) snapshotWithElapsed(now time.Time) []ActiveScenario {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	out := make([]ActiveScenario, 0, len(t.active))
+	for name, startedAt := range t.active {
+		out = append(out, ActiveScenario{Name: name, Elapsed: now.Sub(startedAt)})
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+
+	return out
+}
+
+// startHeartbeat optionally spawns a ticker goroutine that calls
+// sink.Heartbeat with the currently in-flight scenarios at every interval.
+// It returns a stop function that must be called by the runner so the
+// ticker does not outlive the suite. When sink is nil or interval is 0 the
+// returned stop is a no-op and no goroutine is spawned.
+//
+// The ticker exits on three conditions: ctx done, an explicit stop call, or
+// any panic propagating from the sink (sinks are expected to be safe but a
+// defer-recover would only mask bugs — we let it bubble).
+func startHeartbeat(ctx context.Context, sink EventSink, tracker *liveScenarioTracker, interval time.Duration) func() {
+	if sink == nil || interval <= 0 {
+		return func() {}
+	}
+
+	stop := make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				emitHeartbeat(sink, tracker.snapshotWithElapsed(now))
+			}
+		}
+	}()
+
+	return func() { close(stop) }
 }
 
 // watchDeadlineFor returns a buffered channel that will receive the list of

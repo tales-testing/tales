@@ -92,6 +92,29 @@ func (s *StreamSink) ScenarioEnded(name string, status Status, duration time.Dur
 	}
 }
 
+// Heartbeat prints the list of scenarios still in flight along with each
+// one's elapsed time. The runtime only invokes this when verbose mode is
+// enabled, so a print on every tick is the desired behavior.
+func (s *StreamSink) Heartbeat(active []ActiveScenario) {
+	if len(active) == 0 {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	timestamp := s.painter.paint(ansiGray, time.Now().Format("15:04:05"))
+	label := s.painter.paint(ansiCyan, "…")
+
+	_, _ = fmt.Fprintf(s.out, "%s %s heartbeat: %d scenario(s) still running\n",
+		timestamp, label, len(active))
+
+	for _, scenario := range active {
+		_, _ = fmt.Fprintf(s.out, "    - %q for %s\n",
+			scenario.Name, scenario.Elapsed.Round(time.Second))
+	}
+}
+
 // SuiteEnded prints a terminal line once every scenario has finished. The
 // final, detailed report is still rendered separately by PrintConsole.
 func (s *StreamSink) SuiteEnded(duration time.Duration) {
