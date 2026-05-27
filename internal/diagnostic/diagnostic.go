@@ -17,6 +17,8 @@ const (
 	boolStringTrue  = "true"
 	boolStringFalse = "false"
 	jsonKey         = "json"
+	rawKey          = "raw"
+	secretKey       = "secret"
 )
 
 var sensitiveHeaders = map[string]struct{}{
@@ -34,7 +36,7 @@ var sensitiveJSONFields = map[string]struct{}{
 	"token":         {},
 	"access_token":  {},
 	"refresh_token": {},
-	"secret":        {},
+	secretKey:       {},
 	"api_key":       {},
 	"client_secret": {},
 }
@@ -268,7 +270,7 @@ func MaskCookies(value interface{}) map[string]map[string]interface{} {
 
 		for key, val := range fields {
 			lowered := strings.ToLower(key)
-			if lowered == "value" || lowered == "raw" {
+			if lowered == "value" || lowered == rawKey {
 				if str, isStr := val.(string); isStr && str == "" {
 					masked[key] = ""
 
@@ -360,7 +362,7 @@ func MaskBody(value interface{}) interface{} {
 			switch strings.ToLower(key) {
 			case jsonKey, "form":
 				masked[key] = MaskJSON(nested)
-			case "raw":
+			case rawKey:
 				masked[key] = MaskBody(nested)
 			default:
 				masked[key] = SanitizeUnknown(nested)
@@ -557,7 +559,7 @@ func isSensitiveJSONField(name string) bool {
 	// without falsely matching unrelated words. We require either a boundary
 	// hit ("secret") or a contains-with-underscore-or-dash neighbor so plain
 	// "secretary" does not get masked.
-	if normalized == "secret" {
+	if normalized == secretKey {
 		return true
 	}
 
