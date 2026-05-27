@@ -1,0 +1,50 @@
+version = 1
+
+config {
+  base_url   = env("BASE_URL", "http://localhost:1337")
+  mfa_secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+}
+
+# This scenario proves that totp(secret, options) computes an RFC 6238 code
+# the server can verify in real time. ts is captured in a step-local var so
+# the code is computed once and reused — the server allows ±1 period of drift
+# to keep the test stable across window rollovers.
+scenario "Verify TOTP MFA" {
+  tags = ["mfa", "totp"]
+
+  step "http" "verify_totp" {
+    vars {
+      ts = now_unix()
+
+      code = totp(config.mfa_secret, {
+        period    = 30
+        digits    = 6
+        algorithm = "SHA1"
+        timestamp = vars.ts
+      })
+    }
+
+    request {
+      method = "POST"
+      url    = "${config.base_url}/mfa/totp/verify"
+
+      headers = {
+        Content-Type = "application/json"
+      }
+
+      body {
+        json = {
+          code = vars.code
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        verified = true
+      }
+    }
+  }
+}
