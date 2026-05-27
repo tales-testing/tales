@@ -62,7 +62,13 @@ Once a second locale is registered, Starlight's language switcher appears automa
 
 ## Deployment
 
-The website is deployed by Cloudflare Pages from this repository. The build command is `bun run build` and the output directory is `website/dist`. Override `SITE_URL` and `BASE_PATH` in the Cloudflare Pages project settings to retarget the build (for a root-domain deploy, set `BASE_PATH=/`).
+The website is deployed by Cloudflare Pages from this repository. In the Cloudflare Pages project settings:
+
+- **Root directory**: `website` (there is no root-level `package.json`).
+- **Build command**: `bun install && bun run build`.
+- **Build output directory**: `dist` (relative to the root directory, i.e. `website/dist`).
+
+`SITE_URL` and `BASE_PATH` default to `https://taleslabs.org` and `/`, which matches the current deploy. Override them as environment variables in the Cloudflare project to retarget the build (for example a preview deploy under a subpath).
 
 ## Search
 

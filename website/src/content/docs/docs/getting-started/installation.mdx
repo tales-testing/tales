@@ -46,13 +46,14 @@ The action caches the binary across runs and exposes `tales --version` to subseq
 
 ## Pre-built binary
 
-Download the release archive for your platform from [GitHub Releases](https://github.com/tales-testing/tales/releases) and drop it into `PATH`.
+Download the release archive for your platform from [GitHub Releases](https://github.com/tales-testing/tales/releases) and drop it into `PATH`. The GoReleaser archive name is `tales_<version>_<os>_<arch>.tar.gz`, so set `VERSION` to a published tag from the releases page (without the leading `v`) before running the snippet.
 
 <Tabs syncKey="os">
   <TabItem label="Linux (x86_64)">
     ```bash
+    VERSION=0.1.0   # check the releases page for the latest tag
     curl -fsSL -o tales.tar.gz \
-      https://github.com/tales-testing/tales/releases/latest/download/tales_linux_x86_64.tar.gz
+      "https://github.com/tales-testing/tales/releases/download/v${VERSION}/tales_${VERSION}_linux_x86_64.tar.gz"
     tar -xzf tales.tar.gz
     sudo install -m 0755 tales /usr/local/bin/tales
     tales --version
@@ -60,8 +61,9 @@ Download the release archive for your platform from [GitHub Releases](https://gi
   </TabItem>
   <TabItem label="Linux (arm64)">
     ```bash
+    VERSION=0.1.0   # check the releases page for the latest tag
     curl -fsSL -o tales.tar.gz \
-      https://github.com/tales-testing/tales/releases/latest/download/tales_linux_arm64.tar.gz
+      "https://github.com/tales-testing/tales/releases/download/v${VERSION}/tales_${VERSION}_linux_arm64.tar.gz"
     tar -xzf tales.tar.gz
     sudo install -m 0755 tales /usr/local/bin/tales
     tales --version
@@ -69,8 +71,9 @@ Download the release archive for your platform from [GitHub Releases](https://gi
   </TabItem>
   <TabItem label="macOS">
     ```bash
+    VERSION=0.1.0   # check the releases page for the latest tag
     curl -fsSL -o tales.tar.gz \
-      https://github.com/tales-testing/tales/releases/latest/download/tales_darwin_arm64.tar.gz
+      "https://github.com/tales-testing/tales/releases/download/v${VERSION}/tales_${VERSION}_darwin_arm64.tar.gz"
     tar -xzf tales.tar.gz
     sudo install -m 0755 tales /usr/local/bin/tales
     # Optional, only needed if Gatekeeper quarantines the archive:
@@ -109,22 +112,22 @@ class Tales < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_darwin_arm64.tar.gz"
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_darwin_arm64.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256"
     end
     on_intel do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_darwin_x86_64.tar.gz"
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_darwin_x86_64.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_linux_arm64.tar.gz"
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_linux_arm64.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256"
     end
     on_intel do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_linux_x86_64.tar.gz"
+      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_linux_x86_64.tar.gz"
       sha256 "REPLACE_WITH_ACTUAL_SHA256"
     end
   end
@@ -139,7 +142,7 @@ class Tales < Formula
 end
 ```
 
-The `version`, `url` and `sha256` fields are bumped automatically by the release workflow whenever a new tag is pushed to `tales-testing/tales`.
+Bump the `version` field and refresh each `sha256` (from the `checksums.txt` artifact published next to the release) whenever a new tag lands on `tales-testing/tales`. There is no automation pushing this update for now; the official tap is maintained by hand on each release.
 
 ## Next steps
 
