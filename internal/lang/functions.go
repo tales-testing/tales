@@ -521,7 +521,7 @@ func assignTOTPOption(opts *TOTPOptions, name string, attr cty.Value) error {
 }
 
 func baseFunctions() map[string]function.Function {
-	return map[string]function.Function{
+	out := map[string]function.Function{
 		"env":             envFunc(),
 		"jsonencode":      jsonEncodeFunc(),
 		"now_unix":        nowUnixFunc(),
@@ -546,4 +546,10 @@ func baseFunctions() map[string]function.Function {
 		"required":        requiredFunc(),
 		"any":             matcherNoArg("any"),
 	}
+
+	for name, fn := range hashFunctions() {
+		out[name] = fn
+	}
+
+	return out
 }
