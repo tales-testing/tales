@@ -393,6 +393,105 @@ func ctyNumberToInt(value cty.Value) (int, error) {
 	return int(parsed), nil
 }
 
+func ctyNumberToInt64(value cty.Value) (int64, error) {
+	if value.Type() != cty.Number {
+		return 0, fmt.Errorf("number value expected")
+	}
+
+	parsed, accuracy := value.AsBigFloat().Int64()
+	if accuracy != 0 {
+		return 0, fmt.Errorf("integer value expected")
+	}
+
+	return parsed, nil
+}
+
+// totpFunc registers the totp(secret, options?) expression. The options object
+// is decoded into a TOTPOptions struct; all validation lives inside
+// GenerateTOTP so the rules stay in one place. Errors never echo the secret.
+func totpFunc() function.Function {
+	allowedOptions := map[string]struct{}{
+		"period":    {},
+		"digits":    {},
+		"algorithm": {},
+		"timestamp": {},
+	}
+
+	return function.New(&function.Spec{
+		Params: []function.Parameter{
+			{Name: "secret", Type: cty.String},
+		},
+		VarParam: &function.Parameter{
+			Name:             "options",
+			Type:             cty.DynamicPseudoType,
+			AllowDynamicType: true,
+			AllowNull:        true,
+		},
+		Type: function.StaticReturnType(cty.String),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			opts := TOTPOptions{}
+
+			if len(args) > 2 {
+				return cty.NilVal, fmt.Errorf("totp: too many arguments")
+			}
+
+			if len(args) == 2 && !args[1].IsNull() {
+				optsVal := args[1]
+				if !optsVal.Type().IsObjectType() {
+					return cty.NilVal, fmt.Errorf("totp: options must be an object")
+				}
+
+				for name, attr := range optsVal.AsValueMap() {
+					if _, ok := allowedOptions[name]; !ok {
+						return cty.NilVal, fmt.Errorf("totp: unknown option %q", name)
+					}
+
+					if attr.IsNull() {
+						continue
+					}
+
+					switch name {
+					case "period":
+						period, err := ctyNumberToInt64(attr)
+						if err != nil {
+							return cty.NilVal, fmt.Errorf("totp: option %q must be an integer", name)
+						}
+
+						opts.Period = period
+					case "digits":
+						digits, err := ctyNumberToInt(attr)
+						if err != nil {
+							return cty.NilVal, fmt.Errorf("totp: option %q must be an integer", name)
+						}
+
+						opts.Digits = digits
+					case "algorithm":
+						if attr.Type() != cty.String {
+							return cty.NilVal, fmt.Errorf("totp: option %q must be a string", name)
+						}
+
+						opts.Algorithm = attr.AsString()
+					case "timestamp":
+						timestamp, err := ctyNumberToInt64(attr)
+						if err != nil {
+							return cty.NilVal, fmt.Errorf("totp: option %q must be an integer", name)
+						}
+
+						opts.Timestamp = timestamp
+					}
+				}
+			}
+
+			code, err := GenerateTOTP(args[0].AsString(), opts)
+			if err != nil {
+				return cty.NilVal, err
+			}
+
+			return cty.StringVal(code), nil
+		},
+	})
+}
+
 func baseFunctions() map[string]function.Function {
 	return map[string]function.Function{
 		"env":             envFunc(),
@@ -401,6 +500,7 @@ func baseFunctions() map[string]function.Function {
 		"now_rfc3339":     nowRFC3339Func(),
 		"hmac_sha256_hex": hmacSHA256HexFunc(),
 		"hmac_sha1_hex":   hmacSHA1HexFunc(),
+		"totp":            totpFunc(),
 		"regex_find":      regexFindFunc(),
 		"url_encode":      urlEncodeFunc(),
 		"contains":        matcherSingleArg("contains"),
