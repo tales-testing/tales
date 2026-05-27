@@ -19,7 +19,7 @@ const (
 	pkceOptionsParamName = "options"
 )
 
-// PKCEOptions controls pkce_challenge behaviour. Zero value means S256.
+// PKCEOptions controls pkce_challenge behavior. Zero value means S256.
 type PKCEOptions struct {
 	Method string
 }

@@ -33,7 +33,7 @@ func hashHexFunc(name string, newHash func() hash.Hash) function.Function {
 }
 
 // hashFunctions returns the full hash-function registration map. Each entry
-// reuses hashHexFunc so behaviour stays identical across variants — only the
+// reuses hashHexFunc so behavior stays identical across variants — only the
 // hash constructor differs.
 func hashFunctions() map[string]function.Function {
 	return map[string]function.Function{
