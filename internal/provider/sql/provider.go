@@ -137,7 +137,11 @@ func (p *Provider) acquire(conn ConnectionConfig) (*dbsql.DB, error) {
 		return nil, err
 	}
 
-	opened, err := dbsql.Open(driverName, conn.DSN)
+	// Bound the initial dial so a missing database fails fast instead of
+	// stalling the runner silently (see dsn.go for the failure mode).
+	effectiveDSN := injectDefaultDialTimeout(conn.Driver, conn.DSN)
+
+	opened, err := dbsql.Open(driverName, effectiveDSN)
 	if err != nil {
 		return nil, fmt.Errorf("open: %w", err)
 	}
