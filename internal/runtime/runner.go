@@ -25,6 +25,10 @@ type Options struct {
 	Parallel int
 	Tags     []string
 	Scenario string
+	// Events optionally receives progress events as scenarios start and
+	// end. Nil disables streaming (the historical behavior). The sink must
+	// be safe for concurrent calls.
+	Events EventSink
 }
 
 // Runner executes a suite.
@@ -51,6 +55,8 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 	scenarios := filterScenarios(suite.Scenarios, opts.Tags, opts.Scenario)
 	result := &report.SuiteResult{Seed: opts.Seed, StartedAt: time.Now(), Scenarios: make([]*report.ScenarioResult, len(scenarios))}
 
+	emitSuiteStarted(opts.Events, len(scenarios), opts.Parallel, opts.Seed)
+
 	sem := make(chan struct{}, opts.Parallel)
 
 	var (
@@ -72,8 +78,12 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 
 			defer func() { <-sem }()
 
+			emitScenarioStarted(opts.Events, sc.Name)
+
 			scenarioResult, runErr := r.runScenario(ctx, suite, sc, configValues, opts.Seed)
 			result.Scenarios[index] = scenarioResult
+
+			emitScenarioEnded(opts.Events, scenarioResult)
 
 			if runErr != nil {
 				firstErrMu.Lock()
@@ -91,6 +101,8 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 
 	result.EndedAt = time.Now()
 	result.Duration = result.EndedAt.Sub(result.StartedAt)
+
+	emitSuiteEnded(opts.Events, result.Duration)
 
 	if firstErr != nil {
 		return result, firstErr

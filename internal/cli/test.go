@@ -44,6 +44,24 @@ func NewTestCommand() *cli.Command {
 	}
 }
 
+// buildEventSink wires the streaming console reporter unless --no-progress
+// is set. The sink writes to stderr so the final, machine-readable report on
+// stdout is never interleaved. Color follows the same TTY heuristic used by
+// PrintConsole; the stream itself runs even on CI because it is the only
+// output produced while runner.Run is in flight.
+func buildEventSink(noProgress, noColor bool) talesruntime.EventSink {
+	if noProgress {
+		return nil
+	}
+
+	streamOptions := report.DefaultConsoleOptions(os.Stderr)
+	if noColor {
+		streamOptions.Color = false
+	}
+
+	return report.NewStreamSink(os.Stderr, streamOptions.Color)
+}
+
 // resolveCaptureMode picks the effective mobile capture mode from the CLI
 // flags. With no explicit flag it defaults to actions when --report-html is
 // set (so the visual replay has frames to show) and failures otherwise (the
@@ -104,11 +122,14 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		sqlprovider.New(),
 	))
 
+	sink := buildEventSink(cmd.Bool("no-progress"), cmd.Bool("no-color"))
+
 	result, err := runner.Run(ctx, suite, talesruntime.Options{
 		Seed:     seed,
 		Parallel: cmd.Int("parallel"),
 		Tags:     cmd.StringSlice("tag"),
 		Scenario: cmd.String("scenario"),
+		Events:   sink,
 	})
 	if err != nil && result == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "runtime failed: %v\n", err)
