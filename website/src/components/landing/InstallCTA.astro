@@ -1,0 +1,36 @@
+---
+import strings from '../../i18n/en';
+import { Code } from 'astro:components';
+
+const i = strings.install;
+---
+
+<section class="border-t border-[var(--color-border)] bg-[var(--color-surface-2)]">
+	<div class="mx-auto max-w-6xl px-6 py-20 lg:py-24">
+		<div class="mx-auto max-w-2xl text-center">
+			<h2 class="text-3xl font-bold tracking-tight md:text-4xl">{i.title}</h2>
+			<p class="mt-4 text-lg text-[var(--color-text-muted)]">{i.subtitle}</p>
+		</div>
+
+		<div class="mx-auto mt-12 grid max-w-4xl gap-6 md:grid-cols-2">
+			<div class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-7">
+				<h3 class="text-lg font-semibold text-[var(--color-text)]">{i.fromRelease.title}</h3>
+				<p class="mt-2 text-[var(--color-text-muted)] leading-relaxed">{i.fromRelease.body}</p>
+				<a
+					href={i.fromRelease.href}
+					class="mt-5 inline-block rounded-lg bg-[var(--color-accent)] px-5 py-2.5 font-semibold text-white transition hover:bg-[var(--color-accent-hover)]"
+				>
+					{i.fromRelease.cta} →
+				</a>
+			</div>
+
+			<div class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-7">
+				<h3 class="text-lg font-semibold text-[var(--color-text)]">{i.fromSource.title}</h3>
+				<p class="mt-2 text-[var(--color-text-muted)] leading-relaxed">{i.fromSource.body}</p>
+				<div class="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] text-[12px]">
+					<Code code={i.fromSource.code} lang="bash" theme="github-dark-default" />
+				</div>
+			</div>
+		</div>
+	</div>
+</section>

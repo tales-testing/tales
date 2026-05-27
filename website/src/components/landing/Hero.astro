@@ -1,0 +1,48 @@
+---
+import strings from '../../i18n/en';
+import Terminal from './Terminal.astro';
+
+const base = import.meta.env.BASE_URL;
+---
+
+<section class="relative overflow-hidden">
+	<div
+		class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(139,92,246,0.18),transparent_60%)]"
+	>
+	</div>
+
+	<div class="mx-auto max-w-6xl px-6 pt-20 pb-20 lg:pt-28 lg:pb-28">
+		<div class="mx-auto max-w-3xl text-center">
+			<p class="mb-5 inline-block rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase">
+				{strings.hero.eyebrow}
+			</p>
+
+			<h1 class="text-balance text-4xl font-bold tracking-tight md:text-6xl lg:text-[64px] lg:leading-[1.05]">
+				{strings.hero.headline}
+			</h1>
+
+			<p class="mx-auto mt-6 max-w-2xl text-pretty text-lg text-[var(--color-text-muted)] md:text-xl">
+				{strings.hero.subhead}
+			</p>
+
+			<div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+				<a
+					href={`${base}docs/getting-started/introduction/`}
+					class="rounded-lg bg-[var(--color-accent)] px-6 py-3 font-semibold text-white shadow-lg shadow-[var(--color-accent)]/25 transition hover:bg-[var(--color-accent-hover)]"
+				>
+					{strings.hero.ctaPrimary} →
+				</a>
+				<a
+					href="https://github.com/hyperxlab/tales"
+					class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-3 font-semibold text-[var(--color-text)] transition hover:border-[var(--color-border-strong)]"
+				>
+					{strings.hero.ctaSecondary}
+				</a>
+			</div>
+		</div>
+
+		<div class="mx-auto mt-16 max-w-4xl">
+			<Terminal />
+		</div>
+	</div>
+</section>

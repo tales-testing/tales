@@ -1,0 +1,25 @@
+---
+import strings from '../../i18n/en';
+
+const t = strings.terminal;
+---
+
+<div
+	class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-code-bg)] shadow-2xl shadow-[var(--color-accent)]/10"
+>
+	<div class="flex items-center gap-2 border-b border-[var(--color-border)] px-4 py-3">
+		<span class="h-3 w-3 rounded-full bg-[#FB7185]/70"></span>
+		<span class="h-3 w-3 rounded-full bg-[#FBBF24]/70"></span>
+		<span class="h-3 w-3 rounded-full bg-[#34D399]/70"></span>
+		<span class="ml-3 select-none font-mono text-xs text-[var(--color-text-faint)]">
+			~/projects/api — bash
+		</span>
+	</div>
+	<pre class="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-relaxed text-[var(--color-text)]"><code><span class="text-[var(--color-accent-hover)]">$</span> {t.command}
+<span class="text-[var(--color-text-faint)]">{t.preflight}</span>
+{t.lines.map((line) => (
+	<><span class="text-[var(--color-success)]">●</span> <span>{line.text}</span>
+</>))}
+<span class="text-[var(--color-text-muted)]">Summary:</span> <span class="text-[var(--color-success)]">{t.summary}</span>
+</code></pre>
+</div>

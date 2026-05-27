@@ -1,0 +1,41 @@
+---
+import strings from '../../i18n/en';
+
+const d = strings.determinism;
+const bullets = [d.bullet1, d.bullet2, d.bullet3];
+---
+
+<section class="border-t border-[var(--color-border)] bg-[var(--color-bg)]">
+	<div class="mx-auto max-w-6xl px-6 py-20 lg:py-24">
+		<div class="grid items-center gap-12 lg:grid-cols-2">
+			<div>
+				<h2 class="text-3xl font-bold tracking-tight md:text-4xl">{d.title}</h2>
+				<p class="mt-5 text-lg text-[var(--color-text-muted)] leading-relaxed">{d.body}</p>
+				<ul class="mt-6 space-y-3">
+					{bullets.map((b) => (
+						<li class="flex items-start gap-3">
+							<svg viewBox="0 0 24 24" class="mt-1 h-5 w-5 flex-none text-[var(--color-accent-hover)]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<polyline points="20 6 9 17 4 12" />
+							</svg>
+							<span class="text-[var(--color-text)]">{b}</span>
+						</li>
+					))}
+				</ul>
+			</div>
+
+			<div class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-code-bg)] p-6 shadow-xl shadow-[var(--color-accent)]/10">
+				<div class="font-mono text-sm text-[var(--color-text-muted)]">
+					<div class="text-[var(--color-text-faint)]"># first run, today, on your laptop</div>
+					<div class="text-[var(--color-accent-hover)]">$ <span class="text-[var(--color-text)]">tales test ./e2e/pass --seed 1234</span></div>
+					<div class="mt-1 text-[var(--color-success)]">→ qa-7f3a@example.com  ·  Sup3rS3c!  ·  Alice Martin</div>
+
+					<div class="mt-5 text-[var(--color-text-faint)]"># second run, six months later, in CI</div>
+					<div class="text-[var(--color-accent-hover)]">$ <span class="text-[var(--color-text)]">tales test ./e2e/pass --seed 1234</span></div>
+					<div class="mt-1 text-[var(--color-success)]">→ qa-7f3a@example.com  ·  Sup3rS3c!  ·  Alice Martin</div>
+
+					<div class="mt-5 text-[var(--color-accent-hover)] font-semibold">Identical. Byte for byte.</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>

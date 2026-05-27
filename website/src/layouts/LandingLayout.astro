@@ -1,0 +1,39 @@
+---
+import '../styles/global.css';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+
+interface Props {
+	title: string;
+	description: string;
+}
+
+const { title, description } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://example.com').toString();
+---
+
+<!doctype html>
+<html lang="en" class="scheme-only-dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<meta name="theme-color" content="#0B0F19" />
+		<link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+		<link rel="canonical" href={canonical} />
+
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+	</head>
+	<body class="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] antialiased selection:bg-[var(--color-accent)] selection:text-white">
+		<slot />
+	</body>
+</html>
