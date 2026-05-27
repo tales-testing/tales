@@ -96,11 +96,11 @@ func TestGenerateTOTPSecretNormalization(t *testing.T) {
 	}
 
 	variants := []string{
-		"  " + rfc6238Secret + "  ",         // surrounding whitespace
-		strings.ToLower(rfc6238Secret),       // lowercase
+		"  " + rfc6238Secret + "  ",    // surrounding whitespace
+		strings.ToLower(rfc6238Secret), // lowercase
 		"GEZD GNBV GY3T QOJQ GEZD GNBV GY3T QOJQ",
 		"GEZD-GNBV-GY3T-QOJQ-GEZD-GNBV-GY3T-QOJQ",
-		rfc6238Secret + "===",                // trailing padding
+		rfc6238Secret + "===", // trailing padding
 	}
 
 	for _, variant := range variants {

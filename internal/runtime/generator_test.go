@@ -10,9 +10,9 @@ import (
 	"time"
 
 	faker "github.com/euskadi31/go-faker"
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/report"
 	"github.com/zclconf/go-cty/cty"
 )
 

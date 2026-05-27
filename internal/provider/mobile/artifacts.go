@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
 // Artifact lists a single file produced by the provider for the current step.

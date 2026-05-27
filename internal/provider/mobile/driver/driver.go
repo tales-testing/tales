@@ -8,7 +8,7 @@ package driver
 import (
 	"context"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
 // Driver abstracts the low-level mobile UI commands.

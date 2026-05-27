@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
 )
 
 func baseSnapshot() Snapshot {
@@ -286,8 +286,8 @@ func TestShortRuntime(t *testing.T) {
 
 	cases := map[string]string{
 		"com.apple.CoreSimulator.SimRuntime.iOS-18-0": "iOS-18-0",
-		"iOS-17-0":               "iOS-17-0",
-		"":                       "",
+		"iOS-17-0": "iOS-17-0",
+		"":         "",
 	}
 
 	for in, want := range cases {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/model"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 )

@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/mattn/go-isatty"
+	"github.com/tales-testing/tales/internal/diagnostic"
 )
 
 const (

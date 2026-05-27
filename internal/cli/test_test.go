@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/model"
-	mobileprovider "github.com/hyperxlab/tales/internal/provider/mobile"
+	"github.com/tales-testing/tales/internal/model"
+	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
 )
 
 func TestResolveCaptureMode_DefaultsWithoutFlags(t *testing.T) {

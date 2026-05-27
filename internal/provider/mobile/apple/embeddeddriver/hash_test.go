@@ -9,8 +9,8 @@ func TestHashDeterministic(t *testing.T) {
 	t.Parallel()
 
 	fsys := fstest.MapFS{
-		"src/a.txt": {Data: []byte("alpha")},
-		"src/b.txt": {Data: []byte("beta")},
+		"src/a.txt":     {Data: []byte("alpha")},
+		"src/b.txt":     {Data: []byte("beta")},
 		"src/sub/c.txt": {Data: []byte("gamma")},
 	}
 

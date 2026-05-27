@@ -1,4 +1,4 @@
-module github.com/hyperxlab/tales
+module github.com/tales-testing/tales
 
 go 1.26
 

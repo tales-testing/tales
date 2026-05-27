@@ -284,15 +284,15 @@ func TestIsSensitiveJSONFieldSecretContains(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]bool{
-		"secret":       true,
-		"mfa_secret":   true,
-		"MFA_Secret":   true,
-		"hmac_secret":  true,
+		"secret":        true,
+		"mfa_secret":    true,
+		"MFA_Secret":    true,
+		"hmac_secret":   true,
 		"client-secret": true,
-		"secret_value": true,
-		"secretary":    false,
-		"discreet":     false,
-		"name":         false,
+		"secret_value":  true,
+		"secretary":     false,
+		"discreet":      false,
+		"name":          false,
 	}
 
 	for name, want := range cases {

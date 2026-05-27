@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/model"
 )
 
 func writeTalesFile(t *testing.T, content string) string {

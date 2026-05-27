@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hyperxlab/tales/internal/cli"
-	"github.com/hyperxlab/tales/internal/version"
+	"github.com/tales-testing/tales/internal/cli"
+	"github.com/tales-testing/tales/internal/version"
 	urfavecli "github.com/urfave/cli/v3"
 )
 

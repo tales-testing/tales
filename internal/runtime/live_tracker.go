@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/report"
 )
 
 // ActiveScenario is re-exported from report so the EventSink contract reads

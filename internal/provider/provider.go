@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/model"
 	"github.com/zclconf/go-cty/cty"
 )
 

@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/parser"
-	"github.com/hyperxlab/tales/internal/provider"
-	"github.com/hyperxlab/tales/internal/provider/mobile"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
-	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/parser"
+	"github.com/tales-testing/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/provider/mobile"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/driver"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/report"
 	"github.com/zclconf/go-cty/cty"
 )
 

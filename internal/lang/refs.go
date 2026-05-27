@@ -5,7 +5,7 @@ import (
 	"slices"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/model"
 )
 
 // FindStepRefs returns referenced result.<step> names from expression.

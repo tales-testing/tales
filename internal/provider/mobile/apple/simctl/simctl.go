@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 )
 
 // Tool is the simctl facade. Construct one with apple.ExecRunner{} in

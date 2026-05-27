@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 )
 
 type fakeDriverHandle struct {

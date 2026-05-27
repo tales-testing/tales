@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/lang"
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/lang"
+	"github.com/tales-testing/tales/internal/model"
 	"github.com/zclconf/go-cty/cty"
 )
 

@@ -56,7 +56,7 @@ func newTestManager(t *testing.T, builder Builder) (*Manager, fstest.MapFS, stri
 	t.Helper()
 
 	fsys := fstest.MapFS{
-		"TalesAppleDriver/TalesAppleDriver.xcodeproj/project.pbxproj":   {Data: []byte("project")},
+		"TalesAppleDriver/TalesAppleDriver.xcodeproj/project.pbxproj":     {Data: []byte("project")},
 		"TalesAppleDriver/TalesAppleDriverUITests/TalesAppleDriver.swift": {Data: []byte("swift")},
 	}
 

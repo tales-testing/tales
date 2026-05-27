@@ -3,7 +3,7 @@ package driver
 import (
 	"context"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
 // NoopDriver is a Driver whose every method is a harmless no-op. It exists

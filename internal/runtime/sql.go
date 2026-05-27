@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/diagnostic"
-	"github.com/hyperxlab/tales/internal/lang"
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
-	sqlprovider "github.com/hyperxlab/tales/internal/provider/sql"
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/diagnostic"
+	"github.com/tales-testing/tales/internal/lang"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
+	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
+	"github.com/tales-testing/tales/internal/report"
 	"github.com/zclconf/go-cty/cty"
 )
 

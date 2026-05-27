@@ -15,7 +15,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/report"
 )
 
 const visualReportTitle = "Tales Visual Report"

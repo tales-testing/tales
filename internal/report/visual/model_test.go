@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/report"
 )
 
 func sampleSuite() *report.SuiteResult {

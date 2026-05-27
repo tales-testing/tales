@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
-	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
+	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 )
 
 // SimctlTool is the subset of simctl operations the lifecycle uses. The real
@@ -81,7 +81,7 @@ func RunnerBundleIDForHost(hostBundleID string) string {
 // DriverHostBundleID is the bundle identifier of the host app embedded
 // in the driver project. xcodebuild installs the matching .xctrunner
 // alongside it on the simulator at test time.
-const DriverHostBundleID = "com.hyperxlab.TalesAppleDriverHost"
+const DriverHostBundleID = "org.taleslabs.TalesAppleDriverHost"
 
 const driverLogsBase = "build/artifacts/mobile/driver"
 

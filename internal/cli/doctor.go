@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	appledriver "github.com/hyperxlab/tales/drivers/apple"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
-	"github.com/hyperxlab/tales/internal/version"
+	appledriver "github.com/tales-testing/tales/drivers/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
+	"github.com/tales-testing/tales/internal/version"
 	"github.com/urfave/cli/v3"
 )
 

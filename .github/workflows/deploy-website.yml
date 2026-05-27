@@ -40,7 +40,7 @@ jobs:
           # GitHub Pages publishes the project page at <user>.github.io/<repo>.
           # SITE_URL is the host root; BASE_PATH is the repo sub-path.
           # Override both in workflow_dispatch inputs for custom domains.
-          SITE_URL: https://hyperxlab.github.io
+          SITE_URL: https://tales-testing.github.io
           BASE_PATH: /tales
         run: bun run build
 

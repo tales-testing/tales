@@ -250,8 +250,8 @@ func TestEmbeddedShortHash(t *testing.T) {
 	cases := map[string]string{
 		"":                                 "",
 		"abc":                              "abc",
-		"0123456789abcdef":                 "0123456789abcdef",         // exactly 16
-		"0123456789abcdefXXXXXXXXXXXXXXXX": "0123456789abcdef",         // truncated
+		"0123456789abcdef":                 "0123456789abcdef", // exactly 16
+		"0123456789abcdefXXXXXXXXXXXXXXXX": "0123456789abcdef", // truncated
 	}
 
 	for in, want := range cases {

@@ -3,7 +3,7 @@ package runtime
 import (
 	"time"
 
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/report"
 )
 
 // EventSink receives runtime progress events as they happen. Implementations

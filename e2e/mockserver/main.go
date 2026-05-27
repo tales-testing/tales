@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/hyperxlab/tales/internal/lang"
+	"github.com/tales-testing/tales/internal/lang"
 )
 
 // mfaTOTPSecret is the shared TOTP secret expected by /mfa/totp/verify, kept

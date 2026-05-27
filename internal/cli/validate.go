@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hyperxlab/tales/internal/parser"
+	"github.com/tales-testing/tales/internal/parser"
 	"github.com/urfave/cli/v3"
 )
 
