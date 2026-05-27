@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hyperxlab/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/provider"
 )
 
 // Provider is reserved for future keyword execution.

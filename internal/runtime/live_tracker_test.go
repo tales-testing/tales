@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
 )
 
 // TestRunnerSurfacesStalledScenariosOnDeadline proves that when --timeout

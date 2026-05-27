@@ -21,10 +21,10 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/hyperxlab/tales/internal/version.version={{.Version}}
-      - -X github.com/hyperxlab/tales/internal/version.gitCommit={{.FullCommit}}
-      - -X github.com/hyperxlab/tales/internal/version.gitTreeState=clean
-      - -X github.com/hyperxlab/tales/internal/version.buildDate={{.Date}}
+      - -X github.com/tales-testing/tales/internal/version.version={{.Version}}
+      - -X github.com/tales-testing/tales/internal/version.gitCommit={{.FullCommit}}
+      - -X github.com/tales-testing/tales/internal/version.gitTreeState=clean
+      - -X github.com/tales-testing/tales/internal/version.buildDate={{.Date}}
 
 archives:
   - id: default
@@ -62,8 +62,8 @@ changelog:
 release:
   # owner / name are intentionally omitted so GoReleaser auto-detects
   # them from the workflow git remote. Hardcoding them broke v0.1.0-rc.2
-  # after the repo moved from hyperxlab/tales to tales-testing/tales:
-  # GitHub redirects API GETs across the rename but POSTs (asset upload)
-  # drop the body on 307, so binary upload silently failed.
+  # after the repo was renamed: GitHub redirects API GETs across a rename
+  # but POSTs (asset upload) drop the body on 307, so binary upload
+  # silently failed.
   draft: false
   prerelease: auto

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
-	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
+	"github.com/tales-testing/tales/internal/provider/mobile/driver"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
 type fakeSimctl struct {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
 func TestArtifactDirIncludesFileHashToAvoidCollisions(t *testing.T) {

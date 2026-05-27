@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/diagnostic"
-	"github.com/hyperxlab/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/diagnostic"
+	"github.com/tales-testing/tales/internal/provider"
 	"github.com/zclconf/go-cty/cty"
 )
 

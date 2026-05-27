@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/diagnostic"
+	"github.com/tales-testing/tales/internal/diagnostic"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 )

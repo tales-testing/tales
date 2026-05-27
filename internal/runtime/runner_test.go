@@ -5,8 +5,8 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/hyperxlab/tales/internal/lang"
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/lang"
+	"github.com/tales-testing/tales/internal/model"
 )
 
 func parseExprForTest(t *testing.T, src string) model.Expression {

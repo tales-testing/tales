@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/version"
+	"github.com/tales-testing/tales/internal/version"
 	urfavecli "github.com/urfave/cli/v3"
 )
 

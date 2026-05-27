@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/hyperxlab/tales/internal/assertion"
-	"github.com/hyperxlab/tales/internal/diagnostic"
-	"github.com/hyperxlab/tales/internal/lang"
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/assertion"
+	"github.com/tales-testing/tales/internal/diagnostic"
+	"github.com/tales-testing/tales/internal/lang"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/report"
 	"github.com/zclconf/go-cty/cty"
 )
 

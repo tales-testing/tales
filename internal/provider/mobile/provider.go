@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/assertion"
-	"github.com/hyperxlab/tales/internal/diagnostic"
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/assertion"
+	"github.com/tales-testing/tales/internal/diagnostic"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 	"github.com/zclconf/go-cty/cty"
 )
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/tree"
+	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
 const (

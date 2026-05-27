@@ -2,7 +2,7 @@ package parser
 
 import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/model"
 )
 
 // stepKey identifies a step block by its two labels (provider and name).

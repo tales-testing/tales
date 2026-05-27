@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/provider"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )

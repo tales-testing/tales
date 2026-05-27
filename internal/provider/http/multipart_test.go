@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
 	"github.com/zclconf/go-cty/cty"
 )
 

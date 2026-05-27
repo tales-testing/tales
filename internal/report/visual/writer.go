@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/report"
 )
 
 // templates carries the embedded HTML/CSS/JS shipped inside the tales

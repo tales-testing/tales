@@ -18,7 +18,7 @@ VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo d
 GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo none)
 GIT_STATE  ?= $(shell test -z "$$(git status --porcelain 2>/dev/null)" && echo clean || echo dirty)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-VERSION_PKG := github.com/hyperxlab/tales/internal/version
+VERSION_PKG := github.com/tales-testing/tales/internal/version
 LDFLAGS := -s -w \
 	-X $(VERSION_PKG).version=$(VERSION) \
 	-X $(VERSION_PKG).gitCommit=$(GIT_COMMIT) \
@@ -26,7 +26,7 @@ LDFLAGS := -s -w \
 	-X $(VERSION_PKG).buildDate=$(BUILD_DATE)
 
 IOS_DEVICE_NAME ?= iPhone 17
-IOS_BUNDLE_ID ?= com.hyperxlab.tales.demo
+IOS_BUNDLE_ID ?= org.taleslabs.tales.demo
 IOS_DRIVER_HOST ?= 127.0.0.1
 IOS_DRIVER_PORT ?= 9080
 IOS_DEMO_PROJECT := e2e/ios/demoapp/TalesDemoApp.xcodeproj

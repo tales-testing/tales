@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/report"
 )
 
 func TestScenarioSkippedDoesNotRunSteps(t *testing.T) {

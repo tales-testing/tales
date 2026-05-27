@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
-	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 )
 
 // Session is the per-target state cached by the provider between mobile

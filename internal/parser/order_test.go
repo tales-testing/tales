@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hyperxlab/tales/internal/model"
+	"github.com/tales-testing/tales/internal/model"
 )
 
 func loadString(t *testing.T, content string) (*model.Suite, hcl.Diagnostics) {

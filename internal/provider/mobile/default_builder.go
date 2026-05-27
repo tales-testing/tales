@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	appledriver "github.com/hyperxlab/tales/drivers/apple"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/embeddeddriver"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/simctl"
-	"github.com/hyperxlab/tales/internal/provider/mobile/apple/xcodebuild"
-	"github.com/hyperxlab/tales/internal/provider/mobile/driver"
+	appledriver "github.com/tales-testing/tales/drivers/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/simctl"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
+	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 )
 
 // NewApple returns a Provider wired with real Apple tooling: ExecRunner for

@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/hyperxlab/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/provider"
 	"github.com/zclconf/go-cty/cty"
 )
 

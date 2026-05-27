@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperxlab/tales/internal/diagnostic"
+	"github.com/tales-testing/tales/internal/diagnostic"
 )
 
 type testsuiteXML struct {

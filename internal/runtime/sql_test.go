@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/hyperxlab/tales/internal/model"
-	"github.com/hyperxlab/tales/internal/provider"
-	sqlprovider "github.com/hyperxlab/tales/internal/provider/sql"
-	"github.com/hyperxlab/tales/internal/report"
+	"github.com/tales-testing/tales/internal/model"
+	"github.com/tales-testing/tales/internal/provider"
+	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
+	"github.com/tales-testing/tales/internal/report"
 )
 
 func sqlConfigSuite() *model.Suite {
