@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strconv"
@@ -370,51 +372,61 @@ func (s *serverState) createMarker(w http.ResponseWriter, req *http.Request) {
 // echoed under "fields". The scenario asserts on the hashes / lengths so the
 // test pins the exact wire payload Tales produced without depending on a
 // boundary the user can't predict.
+//
+// Parts are parsed with mime/multipart.Reader (not http.Request.ParseMultipartForm)
+// so the response preserves the on-the-wire declaration order. The Tales
+// multipart provider guarantees that order, and the standard library's
+// MultipartForm.File / Value maps would otherwise expose Go's nondeterministic
+// map iteration to the scenario's assertions — flaky across OS / runs.
 func (s *serverState) upload(w http.ResponseWriter, req *http.Request) {
-	if err := req.ParseMultipartForm(8 << 20); err != nil { //nolint:gosec // G120: in-process test mock; size capped to 8 MiB on the line above
-		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot parse multipart"})
+	_, params, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+	if err != nil || params["boundary"] == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "missing or invalid multipart boundary"})
 
 		return
 	}
 
+	reader := multipart.NewReader(req.Body, params["boundary"])
+
 	files := make([]map[string]interface{}, 0)
+	fields := map[string]string{}
 
-	for fieldName, headers := range req.MultipartForm.File {
-		for _, hdr := range headers {
-			f, openErr := hdr.Open()
-			if openErr != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot open file part"})
+	for {
+		part, partErr := reader.NextPart()
+		if partErr == io.EOF {
+			break
+		}
 
-				return
-			}
+		if partErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot read multipart part"})
 
-			body, readErr := io.ReadAll(f)
-			_ = f.Close()
+			return
+		}
 
-			if readErr != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot read file part"})
+		body, readErr := io.ReadAll(io.LimitReader(part, 8<<20))
+		_ = part.Close()
 
-				return
-			}
+		if readErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot read part body"})
 
+			return
+		}
+
+		if part.FileName() != "" {
 			sum := sha256.Sum256(body)
 
 			files = append(files, map[string]interface{}{
-				"field":        fieldName,
-				"filename":     hdr.Filename,
-				"content_type": hdr.Header.Get("Content-Type"),
+				"field":        part.FormName(),
+				"filename":     part.FileName(),
+				"content_type": part.Header.Get("Content-Type"),
 				"size":         len(body),
 				"sha256":       hex.EncodeToString(sum[:]),
 			})
-		}
-	}
 
-	fields := map[string]string{}
-
-	for name, values := range req.MultipartForm.Value {
-		if len(values) > 0 {
-			fields[name] = values[0]
+			continue
 		}
+
+		fields[part.FormName()] = string(body)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
