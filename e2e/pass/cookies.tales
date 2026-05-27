@@ -1,0 +1,37 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# Proves that the HTTP provider exposes structured Set-Cookie data:
+#   - response.cookies parses each Set-Cookie into name/value/path/...
+#   - response.headers_all preserves both Set-Cookie values in wire order
+#   - response.headers returns the first value only (deterministic), never a
+#     comma-joined string
+scenario "Capture response cookies" {
+  tags = ["http", "cookies"]
+
+  step "http" "get_session_cookie" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/cookies/session"
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        ok = true
+      }
+    }
+
+    capture {
+      session      = response.cookies.ia_session.value
+      theme        = response.cookies.theme.value
+      session_path = response.cookies.ia_session.path
+      set_cookies  = response.headers_all["Set-Cookie"]
+      content_type = response.headers["Content-Type"]
+    }
+  }
+}

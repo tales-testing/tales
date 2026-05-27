@@ -19,7 +19,12 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/hyperxlab/tales/internal/lang"
 )
+
+// mfaTOTPSecret is the shared TOTP secret expected by /mfa/totp/verify, kept
+// in sync with the matching .tales scenario via config.mfa_secret.
+const mfaTOTPSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
 // webhookSignedSecret is the HMAC key shared with the matching .tales scenarios
 // via config.webhook_secret. Hardcoded in tests; never log it.
@@ -93,6 +98,8 @@ func main() {
 	r.HandleFunc("/blog/posts/{id}", state.deletePost).Methods(http.MethodDelete)
 	r.HandleFunc("/users.v1.UserService/CreateUser", state.connectCreateUser).Methods(http.MethodPost)
 	r.HandleFunc("/users.v1.UserService/GetUser", state.connectGetUser).Methods(http.MethodPost)
+	r.HandleFunc("/mfa/totp/verify", state.verifyTOTP).Methods(http.MethodPost)
+	r.HandleFunc("/cookies/session", state.sessionCookies).Methods(http.MethodGet)
 
 	addr := ":" + port
 	server := &http.Server{
@@ -676,6 +683,60 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+// verifyTOTP accepts {"code":"..."} and checks it against codes computed with
+// the same shared secret. ±1 period tolerance prevents flakes when the client
+// computes the code right before a window rollover.
+func (s *serverState) verifyTOTP(w http.ResponseWriter, req *http.Request) {
+	var payload struct {
+		Code string `json:"code"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	if payload.Code == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "missing code"})
+
+		return
+	}
+
+	now := time.Now().Unix()
+	period := int64(30)
+
+	for _, drift := range []int64{0, -period, period} {
+		expected, err := lang.GenerateTOTP(mfaTOTPSecret, lang.TOTPOptions{
+			Period:    period,
+			Digits:    6,
+			Algorithm: "SHA1",
+			Timestamp: now + drift,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "totp internal"})
+
+			return
+		}
+
+		if hmac.Equal([]byte(expected), []byte(payload.Code)) {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"verified": true})
+
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"verified": false})
+}
+
+// sessionCookies emits two Set-Cookie headers and a small JSON body so e2e
+// scenarios can exercise response.headers_all and response.cookies.
+func (s *serverState) sessionCookies(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Add("Set-Cookie", "ia_session=abc123; Path=/; HttpOnly; Secure")
+	w.Header().Add("Set-Cookie", "theme=dark; Path=/")
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 func verificationCode(id string) string {
