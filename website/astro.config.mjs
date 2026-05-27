@@ -12,9 +12,18 @@ const BASE = process.env.BASE_PATH ?? '/tales';
 // Prepend BASE to absolute Markdown links so /docs/foo/ deploys correctly
 // under a sub-path like /tales/. External, mailto, hash, and protocol-relative
 // links are left alone.
+//
+// When BASE is "/" (custom-domain deploy), the function is a no-op: there is
+// nothing to prefix and every absolute link already resolves correctly. We
+// still return a valid `() => (tree) => {}` plugin so remark accepts it.
+//
+// Note: when trailingSlash ever changes from 'always', revisit the
+// `url !== base` skip — today a bare `/tales` cannot appear in our content.
 function remarkAbsolutePathBasePrefix() {
 	const base = BASE.replace(/\/$/, '');
-	if (!base) return () => () => {};
+	if (!base) {
+		return () => (_tree) => undefined;
+	}
 
 	return () => (tree) => {
 		visit(tree, 'link', (node) => {
