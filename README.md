@@ -460,6 +460,14 @@ General:
 - `hmac_sha256_hex(secret, message)` — HMAC-SHA256 returned as a lowercase
   hex string. Pair with `jsonencode` and step-local `vars` to sign a
   request body that the server can re-verify byte for byte.
+- `hmac_sha1_hex(secret, message)` — HMAC-SHA1 returned as a lowercase hex
+  string. Exposed for RFC 6238 TOTP and a handful of legacy signing
+  schemes; prefer `hmac_sha256_hex` for new code.
+- `totp(secret_base32, options?)` — RFC 6238 TOTP code from a Base32
+  secret. `totp(secret)` uses the documented defaults (`period=30`,
+  `digits=6`, `algorithm="SHA1"`, `timestamp=now_unix()`); pass an
+  options object to override any of them. Capture `now_unix()` into a
+  `vars` block and pass it as `timestamp` when stability matters.
 
 Top-level expression variables:
 

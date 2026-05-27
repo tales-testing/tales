@@ -109,6 +109,45 @@ request {
 
 Pair with `jsonencode` for stable canonical inputs — see the [Signing webhooks](/docs/guides/signing-webhooks/) guide for a full recipe.
 
+## `hmac_sha1_hex(secret, message)`
+
+Computes HMAC-SHA1 and returns the lowercase hex digest. Exposed because RFC 6238 TOTP and a handful of legacy signing schemes still require it; prefer `hmac_sha256_hex` for new signing code. The secret is never embedded in error messages.
+
+```hcl
+vars {
+  sig = hmac_sha1_hex(config.legacy_secret, vars.message)
+}
+```
+
+## `totp(secret_base32, options?)`
+
+Computes an RFC 6238 TOTP code from a Base32-encoded secret.
+
+```hcl
+vars {
+  ts   = now_unix()
+  code = totp(config.mfa_secret, {
+    period    = 30
+    digits    = 6
+    algorithm = "SHA1"
+    timestamp = vars.ts
+  })
+}
+```
+
+`totp(secret)` without options is equivalent to passing every option at its default value:
+
+| Option      | Type   | Default              | Notes                                                                  |
+| ----------- | ------ | -------------------- | ---------------------------------------------------------------------- |
+| `period`    | number | `30`                 | Window size in seconds; must be `> 0`.                                 |
+| `digits`    | number | `6`                  | Code length; must be `> 0` and `<= 10`.                                |
+| `algorithm` | string | `"SHA1"`             | Only `SHA1` is supported in V1; other values raise an explicit error.  |
+| `timestamp` | number | `now_unix()`         | Unix seconds; must be `>= 0`.                                          |
+
+The default timestamp reads the wall clock, so two calls inside the same expression may straddle a window boundary. Capture `now_unix()` into a step-local `vars.ts` and pass it as `timestamp` whenever stability matters — exactly as in the example above.
+
+The secret is Base32; the function normalizes user-friendly variants (lower/upper case, spaces, hyphens, missing padding). Invalid secrets fail with an opaque `invalid TOTP base32 secret` message — the raw input is never echoed.
+
 ## `regex_find(value, pattern, group?)`
 
 Extracts the first regex match from a string. With `group = 0` (default) returns the full match; with `group = N` returns the N-th capture group.
