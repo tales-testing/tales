@@ -69,7 +69,7 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, err
 	}
 
-	db, err := p.acquire(conn)
+	db, err := p.acquire(ctx, conn)
 	if err != nil {
 		return nil, fmt.Errorf("open sql connection %q: %w", conn.Name, withMaskedDSN(err, conn.DSN))
 	}
@@ -116,11 +116,22 @@ func (p *Provider) executeQuery(ctx context.Context, db *dbsql.DB, exec *provide
 	}, nil
 }
 
+// pingTimeout bounds the initial PingContext that validates connectivity at
+// the first acquire. It is intentionally aligned with the dial-timeout
+// default from dsn.go: a connectivity check that takes longer than the dial
+// budget would be inconsistent with the user-facing promise.
+const pingTimeout = 10 * time.Second
+
 // acquire returns the cached *sql.DB for a connection, opening it on first
 // use. sql.Open is intentionally called outside the lock — it is cheap and
 // non-blocking, but doing the actual handshake here would serialize every
 // scenario start.
-func (p *Provider) acquire(conn ConnectionConfig) (*dbsql.DB, error) {
+//
+// Before caching, the new handle is validated with a bounded PingContext.
+// A failed ping closes the handle and surfaces a clear error instead of
+// caching a broken pool — the next call will dial again with the same
+// bounded budget rather than reusing a poisoned connection.
+func (p *Provider) acquire(ctx context.Context, conn ConnectionConfig) (*dbsql.DB, error) {
 	p.mu.Lock()
 
 	db, ok := p.conns[conn.Name]
@@ -150,6 +161,12 @@ func (p *Provider) acquire(conn ConnectionConfig) (*dbsql.DB, error) {
 	opened.SetMaxIdleConns(5)
 	opened.SetConnMaxLifetime(5 * time.Minute)
 
+	if err := pingWithBoundedTimeout(ctx, opened); err != nil {
+		_ = opened.Close()
+
+		return nil, fmt.Errorf("ping: %w", err)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -163,6 +180,21 @@ func (p *Provider) acquire(conn ConnectionConfig) (*dbsql.DB, error) {
 	p.conns[conn.Name] = opened
 
 	return opened, nil
+}
+
+// pingWithBoundedTimeout validates a freshly opened *sql.DB with a deadline
+// that is at most pingTimeout, but never longer than the parent ctx's own
+// deadline if one is set. This way --timeout and per-step timeouts always
+// win over the default — they can only make the check stricter.
+func pingWithBoundedTimeout(parent context.Context, db *dbsql.DB) error {
+	pingCtx, cancel := context.WithTimeout(parent, pingTimeout)
+	defer cancel()
+
+	if err := db.PingContext(pingCtx); err != nil {
+		return fmt.Errorf("database did not respond within %s: %w", pingTimeout, err)
+	}
+
+	return nil
 }
 
 // withTimeout wraps the parent ctx in a deadline when timeout > 0. Returning

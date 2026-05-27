@@ -1,0 +1,35 @@
+// Verifies that a SQL step against an unreachable database fails fast with a
+// clear "ping" error instead of stalling on the OS TCP retry stack. The port
+// 1 is intentionally chosen for a deterministic connect-refused on every
+// platform; the regression we are guarding against here is not the
+// duration itself (covered by unit tests) but that the failure path remains
+// observable and uses the bounded-ping wording.
+
+version = 1
+
+config {
+  sql = {
+    connections = {
+      down = {
+        driver = "mysql"
+        dsn    = "user:pass@tcp(127.0.0.1:1)/db"
+      }
+    }
+  }
+}
+
+scenario "SQL connection refused" {
+  tags = ["sql", "failure"]
+
+  step "sql" "ping_unreachable" {
+    connection = "down"
+
+    query {
+      sql = "SELECT 1"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}
