@@ -1,6 +1,6 @@
 ---
 title: Expression variables
-description: The variables and helper functions Tales injects into expression scope — config, result, request, response, input, vars, host, value(), text().
+description: The variables and helper functions Tales injects into expression scope, config, result, request, response, input, vars, host, value(), text().
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -43,7 +43,7 @@ step "http" "fetch_user" {
 
 - Visible only in steps **after** the captured step's source position.
 - Forward references and unknown step names are rejected at load time (exit code `2`).
-- Captures don't cross scenario boundaries — each scenario starts with an empty `result`.
+- Captures don't cross scenario boundaries, each scenario starts with an empty `result`.
 
 For keywords, `result.<call_name>.<output_name>` exposes the keyword's `outputs`, not its internal captures.
 
@@ -125,7 +125,7 @@ keyword "authenticate" {
 }
 ```
 
-Equivalent access pattern: `input.inputs.<name>` — both forms work.
+Equivalent access pattern: `input.inputs.<name>`, both forms work.
 
 ## `vars`
 

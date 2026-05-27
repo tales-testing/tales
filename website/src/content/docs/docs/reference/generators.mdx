@@ -1,11 +1,11 @@
 ---
 title: Generators
-description: The seven built-in generator types — declaration syntax, options, and determinism rules.
+description: The seven built-in generator types, declaration syntax, options, and determinism rules.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-A `generator` block declares a named source of faker data. Calling `generate("<name>")` from any expression returns a value produced by that generator. Output is **deterministic for a given seed** — see [Determinism](#determinism) below.
+A `generator` block declares a named source of faker data. Calling `generate("<name>")` from any expression returns a value produced by that generator. Output is **deterministic for a given seed**, see [Determinism](#determinism) below.
 
 ```hcl
 generator "<type>" "<name>" {
@@ -135,7 +135,7 @@ generator "mac_address" "mac" {
 
 ```hcl
 generator "bytes" "trace_id" {
-  length   = 8        // optional, default 16 — count of bytes (not hex chars)
+  length   = 8        // optional, default 16, count of bytes (not hex chars)
   encoding = "hex"    // optional, "hex" (default) | "base64"
 }
 ```
@@ -159,7 +159,7 @@ Every `generate(...)` call mixes:
 - the generator name
 - the *expression path* (where in the step body the call lives)
 
-So **two calls to the same generator in the same step produce different values** — the expression path differs. To reuse a generated value (for example, a password and its confirmation field), generate it once into a `vars` or `capture` block and reference that:
+So **two calls to the same generator in the same step produce different values**, the expression path differs. To reuse a generated value (for example, a password and its confirmation field), generate it once into a `vars` or `capture` block and reference that:
 
 ```hcl
 step "http" "register" {
@@ -181,5 +181,5 @@ step "http" "register" {
 Identical runs produce identical values regardless of `--parallel`, regardless of retry attempts. This is the core property that makes Tales suites replayable. See the [Deterministic test data](/docs/guides/determinism/) guide for more.
 
 <Aside type="caution" title="Wall-clock time is intentionally non-deterministic">
-	`now_unix()` and `now_rfc3339()` are *not* generators — they read the wall clock and return a different value every call. When you need a stable timestamp inside a step, capture it once in a `vars` block: `vars { ts = now_unix() }`.
+	`now_unix()` and `now_rfc3339()` are *not* generators, they read the wall clock and return a different value every call. When you need a stable timestamp inside a step, capture it once in a `vars` block: `vars { ts = now_unix() }`.
 </Aside>

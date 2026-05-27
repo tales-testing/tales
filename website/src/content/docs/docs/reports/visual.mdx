@@ -1,6 +1,6 @@
 ---
 title: Visual HTML report
-description: The Tales visual HTML report — single-file, offline, action-by-action playback with screenshots.
+description: The Tales visual HTML report, single-file, offline, action-by-action playback with screenshots.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -16,7 +16,7 @@ tales test ./e2e/ios/pass \
   --capture-screenshots actions
 ```
 
-Open `build/reports/visual.html` in any modern browser. The file is fully offline — no CDN, no network requests, no npm.
+Open `build/reports/visual.html` in any modern browser. The file is fully offline, no CDN, no network requests, no npm.
 
 ## CLI flags
 
@@ -82,7 +82,7 @@ build/artifacts/mobile/
 ```
 
 <Aside>
-	Don't commit `build/artifacts/` — the directory is already gitignored.
+	Don't commit `build/artifacts/`, the directory is already gitignored.
 </Aside>
 
 ## Modes
@@ -106,7 +106,7 @@ One screenshot and one hierarchy captured after each UI action succeeds, plus a 
 ## Secure values
 
 <Aside type="caution" title="Secure inputs are masked at one boundary">
-	`input_text` actions marked `secure = true` are masked to `"***"` inside the mobile provider, before the value enters the `ActionResult`. All downstream consumers (HTML data island, JSONL `action` events, console summary) read the already-masked value. The driver still receives the plaintext (otherwise typing wouldn't work), but `hierarchy.json` does not echo password fields by default — verify for any new field you add.
+	`input_text` actions marked `secure = true` are masked to `"***"` inside the mobile provider, before the value enters the `ActionResult`. All downstream consumers (HTML data island, JSONL `action` events, console summary) read the already-masked value. The driver still receives the plaintext (otherwise typing wouldn't work), but `hierarchy.json` does not echo password fields by default, verify for any new field you add.
 </Aside>
 
 `scripts/verify-ios-visual.sh` greps the rendered HTML for a list of known-demo secrets (`hunter2`, `Secret123`) and fails the build if any leaks. Add new canaries to that list when introducing new demo secrets.
@@ -115,8 +115,8 @@ One screenshot and one hierarchy captured after each UI action succeeds, plus a 
 
 Per-action capture in `actions` mode adds a `Screenshot()` and a `Hierarchy()` call to every UI action. On a slow simulator this can add several seconds per scenario. Recommendations:
 
-- **CI** — stick to `failures` unless you specifically want the visual replay.
-- **Local debugging** — run `--capture-screenshots actions` only when needed.
+- **CI**, stick to `failures` unless you specifically want the visual replay.
+- **Local debugging**, run `--capture-screenshots actions` only when needed.
 - Capture errors never mask the underlying action error. They are silently dropped: the action's status, duration, and error reflect the real operation, while the missing screenshot / hierarchy fields on that action signal that the capture itself failed.
 
 ## Known limitations (V1)
@@ -124,11 +124,11 @@ Per-action capture in `actions` mode adds a `Screenshot()` and a `Hierarchy()` c
 - Screenshot-based, not real video. No MP4 generation.
 - No visual diff between runs.
 - Mobile provider only. HTTP and keyword steps appear as plain entries with no screenshots. A web/browser provider is planned.
-- Assets are external files by default (no base64 embedding). Moving the HTML file without moving `build/artifacts/` breaks image references — copy the artifacts tree alongside.
+- Assets are external files by default (no base64 embedding). Moving the HTML file without moving `build/artifacts/` breaks image references, copy the artifacts tree alongside.
 - Relative-path conversion falls back to the absolute path if `filepath.Rel` fails (cross-volume on Windows). The report still works locally but loses portability.
 
 ## Integration with other reporters
 
-- **Console** — prints `HTML report: <path>` after writing.
-- **JSONL** ([`--report-jsonl`](/docs/reports/jsonl/)) — emits one `"type":"action"` event per action after the step event when `step.Actions` is populated. Empty action slices produce byte-identical JSONL to the pre-visual-report format.
-- **JUnit** ([`--report-junit`](/docs/reports/junit/)) — unchanged. Action-level data is intentionally not flattened into JUnit XML.
+- **Console**, prints `HTML report: <path>` after writing.
+- **JSONL** ([`--report-jsonl`](/docs/reports/jsonl/)), emits one `"type":"action"` event per action after the step event when `step.Actions` is populated. Empty action slices produce byte-identical JSONL to the pre-visual-report format.
+- **JUnit** ([`--report-junit`](/docs/reports/junit/)), unchanged. Action-level data is intentionally not flattened into JUnit XML.

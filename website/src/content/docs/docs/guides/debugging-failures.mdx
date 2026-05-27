@@ -11,11 +11,11 @@ When a Tales scenario fails, the goal is to go from "test went red" to "I know e
 
 In order of decreasing speed:
 
-1. **Console output** — the colourful summary in your terminal. Always available.
-2. **Visual HTML report** (mobile scenarios) — open `build/reports/visual.html` in a browser, scrub to the failing action.
-3. **JSONL stream** — `jq` queries over `build/reports/events.jsonl` give surgical access to one failing step's request and response.
-4. **Mobile artifacts** — screenshot + accessibility hierarchy at the moment of failure.
-5. **Provider logs** — for the SQL provider, the error includes the SQL text (with the DSN masked). For mobile, `build/artifacts/mobile/driver/<target>/driver.log` carries the embedded driver's stdout/stderr.
+1. **Console output**, the colourful summary in your terminal. Always available.
+2. **Visual HTML report** (mobile scenarios), open `build/reports/visual.html` in a browser, scrub to the failing action.
+3. **JSONL stream**, `jq` queries over `build/reports/events.jsonl` give surgical access to one failing step's request and response.
+4. **Mobile artifacts**, screenshot + accessibility hierarchy at the moment of failure.
+5. **Provider logs**, for the SQL provider, the error includes the SQL text (with the DSN masked). For mobile, `build/artifacts/mobile/driver/<target>/driver.log` carries the embedded driver's stdout/stderr.
 
 ## Reading a console failure
 
@@ -88,11 +88,11 @@ See the [Mobile iOS](/docs/providers/mobile-ios/#troubleshooting) troubleshootin
 
 The Tales repo ships a suite of intentionally-failing scenarios in `e2e/fail/`. Each one demonstrates how a specific failure mode looks in the output:
 
-- `basic_auth_failure.tales` — wrong Basic Auth password → 401.
-- `optional_matcher_mismatch.tales` — `optional("ROLE_ADMIN")` but server returned `"ROLE_USER"`.
-- `signed_webhook_bad_signature.tales` — HMAC mismatch → 401.
-- `sql_unreachable.tales` — DSN points at nothing → fail-fast ping.
-- `teardown_failure.tales` — main step fails, teardown still runs.
+- `basic_auth_failure.tales`, wrong Basic Auth password → 401.
+- `optional_matcher_mismatch.tales`, `optional("ROLE_ADMIN")` but server returned `"ROLE_USER"`.
+- `signed_webhook_bad_signature.tales`, HMAC mismatch → 401.
+- `sql_unreachable.tales`, DSN points at nothing → fail-fast ping.
+- `teardown_failure.tales`, main step fails, teardown still runs.
 
 Run them locally to see the failure rendering:
 
@@ -110,17 +110,17 @@ Error: validation failed at e2e/pass/blog.tales:34,5-30
   hint: steps may only reference earlier steps in the same file
 ```
 
-These are always fixable in the `.tales` file itself — no need to look at logs or reports.
+These are always fixable in the `.tales` file itself, no need to look at logs or reports.
 
 ## Common confusing situations
 
 ### "My HTTP step shows status 200 but the assertion fails"
 
-Look at `at scenario....expect.json.<field>`. The body matched but a JSON field didn't. Use `optional(<value>)` if the field is sometimes absent (typical ConnectRPC pattern — see [Matchers](/docs/reference/matchers/#optional)).
+Look at `at scenario....expect.json.<field>`. The body matched but a JSON field didn't. Use `optional(<value>)` if the field is sometimes absent (typical ConnectRPC pattern, see [Matchers](/docs/reference/matchers/#optional)).
 
 ### "My retry block ran the full attempts and then failed"
 
-Either the system genuinely never reached the expected state, or your assertion is too strict. Look at the last attempt's response in JSONL — what *did* the response look like? Is it close to passing, or wildly off?
+Either the system genuinely never reached the expected state, or your assertion is too strict. Look at the last attempt's response in JSONL, what *did* the response look like? Is it close to passing, or wildly off?
 
 ### "Tales says my step was 'skipped' but I didn't declare a skip rule"
 

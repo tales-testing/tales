@@ -9,16 +9,19 @@ export const base = import.meta.env.BASE_URL;
 
 **Tales** is a declarative integration and end-to-end testing tool packaged as a single Go binary. You write tests as `.tales` files using the readable HCL2 syntax, and a single `tales test` command runs them with deterministic, seedable data generation.
 
+Tales is an open-source alternative to **Robot Framework**, **Karate**, and **Venom**, with one runner for HTTP, SQL and mobile, no Python toolchain, no JavaScript creep, and no YAML soup.
+
 ## Who is this for?
 
 You'll feel at home in Tales if you have ever:
 
 - inherited a Robot Framework suite and spent more time keeping Python deps alive than writing tests;
 - watched a Karate scenario quietly grow into a JavaScript codebase;
+- pushed a Venom YAML scenario past the point where YAML still feels declarative;
 - maintained three separate test stacks (HTTP, database, mobile) that each demand a different runner;
 - chased a flaky CI failure that you could never reproduce locally.
 
-Tales is designed to remove all four of those daily frictions.
+Tales is designed to remove all those daily frictions.
 
 ## What you can build today
 
@@ -26,16 +29,20 @@ Tales is designed to remove all four of those daily frictions.
 	<Card title="API workflows" icon="rocket">
 		Chain HTTP requests with captured IDs, assert JSON with rich matchers, sign webhooks with HMAC, upload multipart files. The HTTP provider is the heart of Tales.
 	</Card>
-	<Card title="Database fixtures" icon="puzzle">
-		Set up and tear down PostgreSQL or MySQL state alongside HTTP scenarios. Scalar args with `int64` precision, DSNs masked in reports.
+	<Card title="Database hooks" icon="puzzle">
+		Run plain SQL statements (Postgres or MySQL) inside a scenario to flip an internal flag, seed a row, or read state your public API does not expose. Not a fixture loader, not a migration tool, just a thin escape hatch alongside HTTP.
 	</Card>
 	<Card title="iOS smoke tests" icon="phone">
-		Drive a real iOS simulator with an embedded XCUITest driver — zero Swift code to write. The visual HTML report shows every tap, swipe, and screenshot.
+		Drive a real iOS simulator with an embedded XCUITest driver. Zero Swift code to write. The visual HTML report shows every tap, swipe, and screenshot.
 	</Card>
 	<Card title="Reusable flows" icon="list-format">
 		Extract login, signup, or any common sequence into a `keyword` with typed inputs and named outputs. Call it from any scenario.
 	</Card>
 </CardGrid>
+
+<Aside type="note" title="Coming soon">
+  Android (UiAutomator-based) and web browser providers are on the roadmap. The HCL2 surface and reporting pipeline already accommodate them.
+</Aside>
 
 ## The shape of a scenario
 
@@ -76,7 +83,7 @@ scenario "Create user" {
 Three things to notice:
 
 1. **Generators are declared once and reused.** `generate("user_email")` produces a stable value for the same seed.
-2. **The DSL is fully declarative.** No glue language, no callbacks — `expect`, `capture`, and assertions are all expressions.
+2. **The DSL is fully declarative.** No glue language, no callbacks: `expect`, `capture`, and assertions are all expressions.
 3. **Captures feed downstream steps.** Later steps read `result.register.id` to chain workflows without writing imperative code.
 
 ## Determinism is a feature, not a side effect
@@ -91,7 +98,7 @@ The seed is mixed with the scenario name, the step name, the generator name, and
 
 ## Where to go next
 
-<LinkCard title="Install Tales" href={`${base}docs/getting-started/installation/`} description="Pick up a pre-built binary or build from source." />
+<LinkCard title="Install Tales" href={`${base}docs/getting-started/installation/`} description="Pick Homebrew, a pre-built binary, the GitHub Action, or build from source." />
 <LinkCard title="Your first scenario" href={`${base}docs/getting-started/first-scenario/`} description="Write, validate and run a complete scenario in five minutes." />
 <LinkCard title="CLI essentials" href={`${base}docs/getting-started/cli-essentials/`} description="Every command, every flag, every exit code." />
 <LinkCard title="DSL overview" href={`${base}docs/writing-scenarios/dsl-overview/`} description="Top-level blocks, steps, source order, and the execution model." />

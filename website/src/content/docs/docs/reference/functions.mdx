@@ -1,6 +1,6 @@
 ---
 title: Built-in functions
-description: The HCL functions Tales adds on top of the standard library — env, generate, jsonencode, url_encode, hmac_sha256_hex, regex_find, and the wall-clock helpers.
+description: The HCL functions Tales adds on top of the standard library, env, generate, jsonencode, url_encode, hmac_sha256_hex, regex_find, and the wall-clock helpers.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -16,7 +16,7 @@ Reads an environment variable.
 ```hcl
 config {
   base_url = env("BASE_URL", "http://localhost:1337")
-  api_key  = env("API_KEY")           // no default — empty string if unset
+  api_key  = env("API_KEY")           // no default, empty string if unset
 }
 ```
 
@@ -41,7 +41,7 @@ generate("user_email")             // string
 generate("demo_person").first_name // string
 ```
 
-Output is deterministic given `(seed, scenario, step, generator name, expression path)`. Two calls in the same step return *different* values — the expression path differs. Capture or store in `vars` to reuse.
+Output is deterministic given `(seed, scenario, step, generator name, expression path)`. Two calls in the same step return *different* values, the expression path differs. Capture or store in `vars` to reuse.
 
 ## `jsonencode(value)`
 
@@ -57,7 +57,7 @@ vars {
 }
 ```
 
-The deterministic key ordering matters for any signing scheme — the same payload always produces the same byte sequence, so HMAC and SHA-256 signatures stay stable across runs.
+The deterministic key ordering matters for any signing scheme, the same payload always produces the same byte sequence, so HMAC and SHA-256 signatures stay stable across runs.
 
 ## `url_encode(s)`
 
@@ -138,7 +138,7 @@ request {
 }
 ```
 
-`hmac_sha256_hex` is the recommended default for new signing code. `hmac_sha1_hex` is kept available because RFC 6238 TOTP and a few legacy signing schemes still mandate it. Pair any HMAC with `jsonencode` for a stable canonical signed payload — see the [Signing webhooks](/docs/guides/signing-webhooks/) guide for a full recipe.
+`hmac_sha256_hex` is the recommended default for new signing code. `hmac_sha1_hex` is kept available because RFC 6238 TOTP and a few legacy signing schemes still mandate it. Pair any HMAC with `jsonencode` for a stable canonical signed payload, see the [Signing webhooks](/docs/guides/signing-webhooks/) guide for a full recipe.
 
 ## `base64url_encode(value)`
 
@@ -152,7 +152,7 @@ vars {
 ```
 
 :::caution[Do not roll your own PKCE]
-`base64url_encode` deliberately encodes the input **string** — composing `base64url_encode(sha256_hex(verifier))` would encode the 64-char *hex* string and produce an invalid PKCE S256 challenge. Use [`pkce_challenge`](#pkce_challengeverifier-options) below, which encodes the raw 32 SHA-256 bytes as the spec requires.
+`base64url_encode` deliberately encodes the input **string**, composing `base64url_encode(sha256_hex(verifier))` would encode the 64-char *hex* string and produce an invalid PKCE S256 challenge. Use [`pkce_challenge`](#pkce_challengeverifier-options) below, which encodes the raw 32 SHA-256 bytes as the spec requires.
 :::
 
 ## `pkce_challenge(verifier, options?)`
@@ -173,7 +173,7 @@ vars {
 | -------- | ------ | -------- | ---------------------------------------------------- |
 | `method` | string | `"S256"` | Either `"S256"` or `"plain"`. Unknown methods error. |
 
-For S256, the function computes `base64url(sha256(ASCII(verifier)))` — encoding the raw 32 hash bytes, **not** the hex string. `plain` returns the verifier unchanged. Unknown option keys and unsupported methods fail explicitly without embedding the verifier.
+For S256, the function computes `base64url(sha256(ASCII(verifier)))`, encoding the raw 32 hash bytes, **not** the hex string. `plain` returns the verifier unchanged. Unknown option keys and unsupported methods fail explicitly without embedding the verifier.
 
 The `code_verifier` JSON field name is treated as sensitive by Tales' report masking; bodies that send it under that key will not leak the value into JSONL / HTML / console reports.
 
@@ -202,9 +202,9 @@ vars {
 | `algorithm` | string | `"SHA1"`             | Only `SHA1` is supported in V1; other values raise an explicit error.  |
 | `timestamp` | number | `now_unix()`         | Unix seconds; must be `>= 0`.                                          |
 
-The default timestamp reads the wall clock, so two calls inside the same expression may straddle a window boundary. Capture `now_unix()` into a step-local `vars.ts` and pass it as `timestamp` whenever stability matters — exactly as in the example above.
+The default timestamp reads the wall clock, so two calls inside the same expression may straddle a window boundary. Capture `now_unix()` into a step-local `vars.ts` and pass it as `timestamp` whenever stability matters, exactly as in the example above.
 
-The secret is Base32; the function normalizes user-friendly variants (lower/upper case, spaces, hyphens, missing padding). Invalid secrets fail with an opaque `invalid TOTP base32 secret` message — the raw input is never echoed.
+The secret is Base32; the function normalizes user-friendly variants (lower/upper case, spaces, hyphens, missing padding). Invalid secrets fail with an opaque `invalid TOTP base32 secret` message, the raw input is never echoed.
 
 ## `regex_find(value, pattern, group?)`
 
@@ -221,10 +221,10 @@ capture {
 | --------- | ------ | ------------------------------------------------------------------ |
 | `value`   | string | Subject string to search.                                          |
 | `pattern` | string | Go regexp syntax (RE2). Compiled at evaluation time.               |
-| `group`   | number | Optional capture group index (default 0 — the full match).         |
+| `group`   | number | Optional capture group index (default 0, the full match).         |
 
 Returns an error if the pattern doesn't match the value. Wrap in `can(...)` (see [Matchers](/docs/reference/matchers/#can)) if you want a soft probe.
 
 ## Standard HCL functions
 
-In addition to the helpers above, Tales exposes the standard HCL2 function set: `format`, `formatlist`, `join`, `split`, `lower`, `upper`, `trim`, `length`, `concat`, `merge`, `keys`, `values`, `range`, `tonumber`, `tostring`, `jsondecode`, `coalesce`, `try`, and more. See the [Terraform language docs](https://developer.hashicorp.com/terraform/language/functions) for a comprehensive reference — they share the same `go-cty` function library.
+In addition to the helpers above, Tales exposes the standard HCL2 function set: `format`, `formatlist`, `join`, `split`, `lower`, `upper`, `trim`, `length`, `concat`, `merge`, `keys`, `values`, `range`, `tonumber`, `tostring`, `jsondecode`, `coalesce`, `try`, and more. See the [Terraform language docs](https://developer.hashicorp.com/terraform/language/functions) for a comprehensive reference, they share the same `go-cty` function library.

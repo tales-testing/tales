@@ -1,6 +1,6 @@
 ---
 title: Mobile iOS
-description: The Tales iOS provider — embedded XCUITest driver, actions, expectations, simulator lifecycle, and troubleshooting.
+description: The Tales iOS provider, embedded XCUITest driver, actions, expectations, simulator lifecycle, and troubleshooting.
 ---
 
 import { Aside, Card, CardGrid, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
@@ -8,7 +8,7 @@ import { Aside, Card, CardGrid, Tabs, TabItem, Steps } from '@astrojs/starlight/
 Tales V1 supports iOS automation through Apple's official tooling and a repository-owned Swift/XCUITest HTTP driver. There is **no** Appium server, **no** Maestro runtime, **no** IDB requirement, and **no** external WebDriverAgent dependency.
 
 <Aside type="tip" title="Single-binary distribution">
-	The Swift driver source is embedded into the `tales` binary at build time via `go:embed`. On the first iOS test run, Tales extracts the driver to a per-user cache, builds it once with Xcode, and reuses the cached build on subsequent runs. A released `tales` binary therefore runs iOS tests on any macOS host with Xcode and a Simulator runtime installed — the Tales repository does not need to be checked out next to it.
+	The Swift driver source is embedded into the `tales` binary at build time via `go:embed`. On the first iOS test run, Tales extracts the driver to a per-user cache, builds it once with Xcode, and reuses the cached build on subsequent runs. A released `tales` binary therefore runs iOS tests on any macOS host with Xcode and a Simulator runtime installed, the Tales repository does not need to be checked out next to it.
 </Aside>
 
 ## Architecture
@@ -49,14 +49,14 @@ Maestro-style architecture can be useful inspiration, but Tales does not vendor 
 
 ## Demo app
 
-The demo app lives under `e2e/ios/demoapp/`. It is a minimal SwiftUI app with bundle id `com.hyperxlab.tales.demo`.
+The demo app lives under `e2e/ios/demoapp/`. It is a minimal SwiftUI app with bundle id `org.taleslabs.tales.demo`.
 
 Screens:
 
-- **Welcome** — `welcome.title`, `welcome.register`
-- **Register** — `register.screen`, `register.email`, `register.password`, `register.submit`, `register.error`
-- **Verification** — `verify.screen`, `verify.code`, `verify.submit`, `verify.error`
-- **Home** — `home.screen`, `home.title`, `home.email`
+- **Welcome**, `welcome.title`, `welcome.register`
+- **Register**, `register.screen`, `register.email`, `register.password`, `register.submit`, `register.error`
+- **Verification**, `verify.screen`, `verify.code`, `verify.submit`, `verify.error`
+- **Home**, `home.screen`, `home.title`, `home.email`
 
 The verification code is intentionally hardcoded to `A1B2C3` so the mobile e2e flow is deterministic.
 
@@ -80,7 +80,7 @@ make e2e-ios
 make e2e-ios-failure
 ```
 
-`make doctor-ios` prints system, Xcode, `simctl`, and iOS-related environment state without requiring optional variables to be set. Run it first when a local simulator behaves strangely after an Xcode upgrade. Prefer [`tales doctor`](/docs/operations/doctor/) when the Tales binary is available — it covers the same ground and adds embedded-driver cache introspection.
+`make doctor-ios` prints system, Xcode, `simctl`, and iOS-related environment state without requiring optional variables to be set. Run it first when a local simulator behaves strangely after an Xcode upgrade. Prefer [`tales doctor`](/docs/operations/doctor/) when the Tales binary is available, it covers the same ground and adds embedded-driver cache introspection.
 
 `make build-ios-demo`:
 
@@ -129,7 +129,7 @@ config {
         platform    = "ios"
         device_name = env("IOS_DEVICE_NAME", "iPhone 17")
         app         = env("IOS_APP_PATH")
-        bundle_id   = env("IOS_BUNDLE_ID", "com.hyperxlab.tales.demo")
+        bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
         driver = {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
@@ -174,7 +174,7 @@ scenario "iOS register demo app" {
 ```
 
 <Aside type="note" title="`clear_state = true`">
-	The provider terminates the app, uninstalls it, **resets the simulator Keychain**, then reinstalls and launches a fresh copy. The Keychain reset matters because the Keychain is device-global — it survives an app uninstall — so credentials such as OAuth tokens written by one scenario would otherwise leak into the next. (`simctl keychain reset` requires the iOS 16.4+ simulator runtime.)
+	The provider terminates the app, uninstalls it, **resets the simulator Keychain**, then reinstalls and launches a fresh copy. The Keychain reset matters because the Keychain is device-global, it survives an app uninstall, so credentials such as OAuth tokens written by one scenario would otherwise leak into the next. (`simctl keychain reset` requires the iOS 16.4+ simulator runtime.)
 </Aside>
 
 ## Actions
@@ -183,17 +183,17 @@ Element-targeted actions:
 
 - `tap { id = "..." }`
 - `double_tap { id = "..." }`
-- `long_press { id = "..." duration = "1s" }` — `duration` optional (default `1s`).
+- `long_press { id = "..." duration = "1s" }`, `duration` optional (default `1s`).
 - `input_text { id = "..." value = "..." secure = true }`
 - `clear_text { id = "..." }`
-- `swipe { id = "..." direction = "up" distance = 0.6 duration = "300ms" }` — drags one finger across the element. `direction` is the finger travel (`up` / `down` / `left` / `right`); `distance` (optional, a fraction in `(0, 1]`, default `0.6`) is the travel as a share of the element's relevant dimension; `duration` optional (default `300ms`).
-- `scroll { id = "..." direction = "down" }` — scrolls the element's content. `direction` is the content direction to reveal (the finger travels the opposite way). Accepts the same optional `distance` / `duration` as `swipe`.
+- `swipe { id = "..." direction = "up" distance = 0.6 duration = "300ms" }`, drags one finger across the element. `direction` is the finger travel (`up` / `down` / `left` / `right`); `distance` (optional, a fraction in `(0, 1]`, default `0.6`) is the travel as a share of the element's relevant dimension; `duration` optional (default `300ms`).
+- `scroll { id = "..." direction = "down" }`, scrolls the element's content. `direction` is the content direction to reveal (the finger travels the opposite way). Accepts the same optional `distance` / `duration` as `swipe`.
 
 Device-level actions take no `id`:
 
-- `press_key { key = "return" }` — presses a hardware keyboard key. `key` is one of `return`, `enter`, `tab`, `space`, `escape`, `delete`.
-- `press_button { button = "home" }` — presses a device button (`home` or `lock`).
-- `set_orientation { orientation = "landscape_left" }` — rotates the device. `orientation` is one of `portrait`, `landscape_left`, `landscape_right`, `upside_down`.
+- `press_key { key = "return" }`, presses a hardware keyboard key. `key` is one of `return`, `enter`, `tab`, `space`, `escape`, `delete`.
+- `press_button { button = "home" }`, presses a device button (`home` or `lock`).
+- `set_orientation { orientation = "landscape_left" }`, rotates the device. `orientation` is one of `portrait`, `landscape_left`, `landscape_right`, `upside_down`.
 
 Actions have an implicit wait of `10s` with `250ms` polling. Each action may set a per-call `timeout`.
 
@@ -214,7 +214,7 @@ Expectations default to `10s` with `250ms` polling.
 
 ## Permissions
 
-A step-level `permissions { <service> = "allow" | "deny" }` block sets privacy permissions via `simctl privacy` after install and before the app launches. Service names are simctl privacy services — `camera`, `photos`, `location`, `contacts`, `microphone`, `calendar`, `reminders`, `motion`, `media-library`, etc.
+A step-level `permissions { <service> = "allow" | "deny" }` block sets privacy permissions via `simctl privacy` after install and before the app launches. Service names are simctl privacy services, `camera`, `photos`, `location`, `contacts`, `microphone`, `calendar`, `reminders`, `motion`, `media-library`, etc.
 
 ```hcl
 step "mobile" "launch" {
@@ -228,12 +228,12 @@ step "mobile" "launch" {
 
 ## Captures
 
-- `value("id")` — element attribute value at capture time
-- `text("id")` — element text content at capture time
-- `request.actions[N].value` — the evaluated action value at index `N`
+- `value("id")`, element attribute value at capture time
+- `text("id")`, element text content at capture time
+- `request.actions[N].value`, the evaluated action value at index `N`
 
 <Aside type="caution" title="Secure inputs are masked">
-	Secure input values are masked to `"***"` everywhere in `request` — reports **and** expression scope. **Do not** capture a secure action's value with `request.actions[N].value`: a `secure = true` input yields the mask `"***"`, not the typed text. To reuse a generated secret across steps (for example a password and its confirmation), generate it **once** in a `capture` block and reference the captured `result.<step>.<key>` from every `input_text`.
+	Secure input values are masked to `"***"` everywhere in `request`, reports **and** expression scope. **Do not** capture a secure action's value with `request.actions[N].value`: a `secure = true` input yields the mask `"***"`, not the typed text. To reuse a generated secret across steps (for example a password and its confirmation), generate it **once** in a `capture` block and reference the captured `result.<step>.<key>` from every `input_text`.
 </Aside>
 
 ```hcl
@@ -313,8 +313,8 @@ Tales only health-checks the URL; it never spawns or kills an external driver.
 
 ### Location
 
-- **Default** — `~/Library/Caches/tales/apple-driver/<cache-key>/` on macOS.
-- **Override** — set `TALES_DRIVER_CACHE_DIR` to a directory of your choice (used as the final base, no extra suffix). Useful in CI to share or pin a cache.
+- **Default**, `~/Library/Caches/tales/apple-driver/<cache-key>/` on macOS.
+- **Override**, set `TALES_DRIVER_CACHE_DIR` to a directory of your choice (used as the final base, no extra suffix). Useful in CI to share or pin a cache.
 
 ### Layout
 
@@ -405,16 +405,16 @@ When Tales starts the managed Apple driver, stdout and stderr are written to `bu
 ## Troubleshooting
 
 - Run `tales doctor` (or `make doctor-ios`) to collect system, Xcode, runtime, device, and environment diagnostics.
-- **Simulator not found** — verify `IOS_DEVICE_NAME` with `xcrun simctl list devices`.
-- **App path missing** — run `make build-ios-demo` or set `IOS_APP_PATH` to a simulator `.app` bundle.
-- **Device build installed into simulator** — rebuild the app with `-sdk iphonesimulator`.
-- **Bundle ID mismatch** — check `IOS_BUNDLE_ID` matches the app's `PRODUCT_BUNDLE_IDENTIFIER`.
-- **Driver build failure** — read `<cache>/logs/build.log` (path printed in the error). Common causes: SDK no longer installed, signing config drift, stale derived data. `make clean-ios-driver-cache` then retry.
-- **Driver health timeout** — Tales auto-retries once with a rebuilt cache. If it still fails, inspect the runtime log at `build/artifacts/mobile/driver/<target>/driver.log`.
-- **Stale CoreSimulator after Xcode upgrade** — run `sudo xcodebuild -runFirstLaunch`, then `xcrun simctl shutdown all`, then `killall -9 com.apple.CoreSimulator.CoreSimulatorService || true`, then `xcrun simctl list devices`. Optionally `make clean-ios-driver-cache` to force a fresh driver build.
-- **Element not found** — verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
-- **No screenshot** — check simulator permissions and fallback `xcrun simctl io screenshot` availability.
-- **Port conflict** — set `IOS_DRIVER_HOST` or update the target driver port in the `.tales` file.
+- **Simulator not found**, verify `IOS_DEVICE_NAME` with `xcrun simctl list devices`.
+- **App path missing**, run `make build-ios-demo` or set `IOS_APP_PATH` to a simulator `.app` bundle.
+- **Device build installed into simulator**, rebuild the app with `-sdk iphonesimulator`.
+- **Bundle ID mismatch**, check `IOS_BUNDLE_ID` matches the app's `PRODUCT_BUNDLE_IDENTIFIER`.
+- **Driver build failure**, read `<cache>/logs/build.log` (path printed in the error). Common causes: SDK no longer installed, signing config drift, stale derived data. `make clean-ios-driver-cache` then retry.
+- **Driver health timeout**, Tales auto-retries once with a rebuilt cache. If it still fails, inspect the runtime log at `build/artifacts/mobile/driver/<target>/driver.log`.
+- **Stale CoreSimulator after Xcode upgrade**, run `sudo xcodebuild -runFirstLaunch`, then `xcrun simctl shutdown all`, then `killall -9 com.apple.CoreSimulator.CoreSimulatorService || true`, then `xcrun simctl list devices`. Optionally `make clean-ios-driver-cache` to force a fresh driver build.
+- **Element not found**, verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
+- **No screenshot**, check simulator permissions and fallback `xcrun simctl io screenshot` availability.
+- **Port conflict**, set `IOS_DRIVER_HOST` or update the target driver port in the `.tales` file.
 
 ## Known limitations
 

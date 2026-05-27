@@ -1,6 +1,6 @@
 ---
 title: iOS driver cache
-description: The embedded XCUITest driver cache — layout, location, override, and when to wipe it.
+description: The embedded XCUITest driver cache, layout, location, override, and when to wipe it.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -14,7 +14,7 @@ This page documents the cache layout, how to inspect it, and when to wipe it.
 | Source                          | Path                                                                                     |
 | ------------------------------- | ---------------------------------------------------------------------------------------- |
 | Default                         | `~/Library/Caches/tales/apple-driver/<cache-key>/` (macOS)                               |
-| Override via env                | `${TALES_DRIVER_CACHE_DIR}` — used as the final base, no extra suffix appended.          |
+| Override via env                | `${TALES_DRIVER_CACHE_DIR}`, used as the final base, no extra suffix appended.          |
 
 Use `TALES_DRIVER_CACHE_DIR` in CI to share or pin a cache across jobs (mount a persistent volume at that path).
 
@@ -35,7 +35,7 @@ Any change in:
 - the iOS simulator runtime
 - the macOS major version
 
-… produces a new cache key, so the entry rebuilds from scratch on the next run. Old entries remain on disk — wipe them manually when you're sure they are unused.
+… produces a new cache key, so the entry rebuilds from scratch on the next run. Old entries remain on disk, wipe them manually when you're sure they are unused.
 
 ## Layout
 
@@ -55,7 +55,7 @@ Any change in:
 
 ## Inspect
 
-Use [`tales doctor`](/docs/operations/doctor/) — it enumerates every cache entry with build markers, recorded Xcode / SDK / iOS / macOS metadata, and a "matches embedded" flag that tells you whether the entry would rebuild on the next run.
+Use [`tales doctor`](/docs/operations/doctor/), it enumerates every cache entry with build markers, recorded Xcode / SDK / iOS / macOS metadata, and a "matches embedded" flag that tells you whether the entry would rebuild on the next run.
 
 ```bash
 tales doctor          # human-readable
@@ -75,12 +75,12 @@ rm -rf "$TALES_DRIVER_CACHE_DIR"
 When to wipe:
 
 - After a major Xcode upgrade (the cache key normally invalidates itself, but old entries linger on disk).
-- When you suspect a corrupted build — symptom: driver fails to start, `build.log` contains errors you've never seen before.
+- When you suspect a corrupted build, symptom: driver fails to start, `build.log` contains errors you've never seen before.
 - Before a single-binary smoke test, to verify the embedded extraction pipeline actually works end-to-end on a clean host.
 
 ## Self-heal on health failure
 
-Tales already tries to self-recover once: if the driver fails its `/health` check, it invalidates the `build.ok` marker and rebuilds from scratch. That covers stale-cache cases automatically. If the rebuild *also* fails, the test fails — at that point inspect `logs/build.log` and `build/artifacts/mobile/driver/<target>/driver.log`.
+Tales already tries to self-recover once: if the driver fails its `/health` check, it invalidates the `build.ok` marker and rebuilds from scratch. That covers stale-cache cases automatically. If the rebuild *also* fails, the test fails, at that point inspect `logs/build.log` and `build/artifacts/mobile/driver/<target>/driver.log`.
 
 ## CI cache strategies
 
@@ -104,7 +104,7 @@ Mount a volume at `${TALES_DRIVER_CACHE_DIR}` (or `~/Library/Caches/tales/apple-
     key: tales-driver-${{ runner.os }}-${{ hashFiles('go.sum') }}-xcode-15.4
 ```
 
-The cache key should include whichever inputs your runner controls — Tales binary version and Xcode version are the two big ones.
+The cache key should include whichever inputs your runner controls, Tales binary version and Xcode version are the two big ones.
 
 <Aside type="tip" title="The cache is safe to share between concurrent runs">
 	Tales uses a cross-process flock at `<cache-key>/.lock` to serialise the build step. Two parallel CI jobs can target the same cache directory; the second one will wait for the first to finish the build, then both will share the resulting `.xctestrun`.

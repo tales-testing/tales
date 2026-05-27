@@ -1,20 +1,20 @@
 ---
 title: Conditional execution
-description: Skip rules (skip_if / skip_unless) — gate scenarios and steps on OS, architecture, env vars, or any HCL expression.
+description: Skip rules (skip_if / skip_unless), gate scenarios and steps on OS, architecture, env vars, or any HCL expression.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 Tales scenarios and steps can declare `skip_if` / `skip_unless` blocks that gate execution on the host OS, architecture, environment variables, or any HCL expression. A triggered rule marks the scenario or step `skipped` and never reaches the provider; the suite still exits with code 0 unless something else fails.
 
-The system is generic — its first user is the mobile/iOS suite, which can only run on macOS — but it applies to any conditional fixture.
+The system is generic, its first user is the mobile/iOS suite, which can only run on macOS, but it applies to any conditional fixture.
 
 ## Where rules live
 
 Skip blocks are accepted at two levels:
 
-- `scenario { skip_if { ... } }` — gates the entire scenario. Steps and `teardown` blocks do not run.
-- `step "<provider>" "<name>" { skip_if { ... } }` — gates a single step. Other steps in the scenario keep running. Dependents of a skipped step cascade to skipped (see [Cascade](#cascade)).
+- `scenario { skip_if { ... } }`, gates the entire scenario. Steps and `teardown` blocks do not run.
+- `step "<provider>" "<name>" { skip_if { ... } }`, gates a single step. Other steps in the scenario keep running. Dependents of a skipped step cascade to skipped (see [Cascade](#cascade)).
 
 A block may be `skip_if` (skip when the condition is true) or `skip_unless` (skip when the condition is not true). The two are inverses; pick whichever reads more naturally for the rule you are expressing.
 
@@ -37,8 +37,8 @@ Every attribute is optional, but a block must declare at least one of `condition
 
 The `host` object exposes:
 
-- `host.os` — `runtime.GOOS` (e.g. `"darwin"`, `"linux"`, `"windows"`).
-- `host.arch` — `runtime.GOARCH` (e.g. `"amd64"`, `"arm64"`).
+- `host.os`, `runtime.GOOS` (e.g. `"darwin"`, `"linux"`, `"windows"`).
+- `host.arch`, `runtime.GOARCH` (e.g. `"amd64"`, `"arm64"`).
 
 The existing `env(name, default)` HCL function remains available inside `condition` expressions and elsewhere.
 
@@ -137,11 +137,11 @@ Every reporter surfaces the skip status and reason:
   Summary: scenarios 3 passed / 0 failed / 1 skipped, steps ...
   ```
 
-- **JSONL** — scenario and step events gain a `skip_reason` field when the status is `skipped`. The field is omitted otherwise so existing consumers see no schema change for the pass/fail majority.
+- **JSONL**, scenario and step events gain a `skip_reason` field when the status is `skipped`. The field is omitted otherwise so existing consumers see no schema change for the pass/fail majority.
 
-- **JUnit** — the `<testsuite>` element gains a `skipped="N"` attribute; each skipped scenario emits a `<skipped message="..."/>` child on its `<testcase>`. Compatible with Surefire / JUnit5 conventions.
+- **JUnit**, the `<testsuite>` element gains a `skipped="N"` attribute; each skipped scenario emits a `<skipped message="..."/>` child on its `<testcase>`. Compatible with Surefire / JUnit5 conventions.
 
-- **Visual HTML** — the `skip_reason` is exposed in the JSON payload at both scenario and step level (`omitempty`). The rendered HTML surfaces a step-level reason as a tooltip on the step header.
+- **Visual HTML**, the `skip_reason` is exposed in the JSON payload at both scenario and step level (`omitempty`). The rendered HTML surfaces a step-level reason as a tooltip on the step header.
 
 ## Exit code
 
@@ -157,5 +157,5 @@ Skipped scenarios and steps do not fail the suite. The CLI exit code stays at `0
 There is currently no `--fail-on-all-skipped` flag.
 
 <Aside type="caution" title="Skip is not a provider escape hatch">
-	The mobile provider, for example, still fails loudly when an iOS step is asked to run on a non-darwin host **without** an explicit skip rule. This prevents silent skips from masking real coverage gaps — if you want a scenario to be skipped on Linux, declare it.
+	The mobile provider, for example, still fails loudly when an iOS step is asked to run on a non-darwin host **without** an explicit skip rule. This prevents silent skips from masking real coverage gaps, if you want a scenario to be skipped on Linux, declare it.
 </Aside>

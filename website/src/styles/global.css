@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 @theme {
-	/* Tales — Slate + Violet design tokens */
+	/* Tales / Slate + Violet design tokens */
 	--color-bg: #0b0f19;
 	--color-surface: #111827;
 	--color-surface-2: #0f172a;

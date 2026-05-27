@@ -12,7 +12,15 @@ const i = strings.install;
 			<p class="mt-4 text-lg text-[var(--color-text-muted)]">{i.subtitle}</p>
 		</div>
 
-		<div class="mx-auto mt-12 grid max-w-4xl gap-6 md:grid-cols-2">
+		<div class="mx-auto mt-12 grid max-w-5xl gap-6 md:grid-cols-2">
+			<div class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-7">
+				<h3 class="text-lg font-semibold text-[var(--color-text)]">{i.homebrew.title}</h3>
+				<p class="mt-2 text-[var(--color-text-muted)] leading-relaxed">{i.homebrew.body}</p>
+				<div class="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] text-[12px]">
+					<Code code={i.homebrew.code} lang="bash" theme="github-dark-default" />
+				</div>
+			</div>
+
 			<div class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-7">
 				<h3 class="text-lg font-semibold text-[var(--color-text)]">{i.fromRelease.title}</h3>
 				<p class="mt-2 text-[var(--color-text-muted)] leading-relaxed">{i.fromRelease.body}</p>
@@ -30,6 +38,20 @@ const i = strings.install;
 				<div class="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] text-[12px]">
 					<Code code={i.fromSource.code} lang="bash" theme="github-dark-default" />
 				</div>
+			</div>
+
+			<div class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-7">
+				<h3 class="text-lg font-semibold text-[var(--color-text)]">{i.githubAction.title}</h3>
+				<p class="mt-2 text-[var(--color-text-muted)] leading-relaxed">{i.githubAction.body}</p>
+				<div class="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] text-[12px]">
+					<Code code={i.githubAction.code} lang="yaml" theme="github-dark-default" />
+				</div>
+				<a
+					href={i.githubAction.href}
+					class="mt-4 inline-block text-sm font-semibold text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
+				>
+					{i.githubAction.cta} →
+				</a>
 			</div>
 		</div>
 	</div>

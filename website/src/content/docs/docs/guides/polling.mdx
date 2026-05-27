@@ -1,6 +1,6 @@
 ---
 title: Polling with retry
-description: Poll an asynchronous side-effect with the retry block — when to use it, how to set attempts and interval, what not to do with it.
+description: Poll an asynchronous side-effect with the retry block, when to use it, how to set attempts and interval, what not to do with it.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -55,15 +55,15 @@ Match the budget to the worst-case time you've actually observed in production, 
 
 ## When to use retry
 
-- **Polling for a state transition** — order moves from `pending` to `processed`, user is marked `verified`, document finishes converting.
-- **Waiting for eventual consistency** — write to primary, read from replica, expect the replica to catch up.
-- **Inbox-style assertions** — verify an email landed, a webhook was received, a Slack message was posted.
+- **Polling for a state transition**, order moves from `pending` to `processed`, user is marked `verified`, document finishes converting.
+- **Waiting for eventual consistency**, write to primary, read from replica, expect the replica to catch up.
+- **Inbox-style assertions**, verify an email landed, a webhook was received, a Slack message was posted.
 
 ## When **not** to use retry
 
 - **As a band-aid for flaky tests.** If your test passes 60% of the time and a `retry { attempts = 5 }` makes it pass 100% of the time, you've hidden the bug, not fixed it.
 - **As a substitute for explicit synchronisation.** If your API gives you a "wait for completion" endpoint, call it. Don't poll an unrelated read endpoint.
-- **To compensate for race conditions in the system under test.** That's a server bug — file it, don't paper over it.
+- **To compensate for race conditions in the system under test.** That's a server bug, file it, don't paper over it.
 
 ## Combined with captures
 
@@ -95,7 +95,7 @@ This is the right idiom: the downstream step gets a known-good capture, not a pr
 
 The global `--timeout` flag wraps the entire run. If a retry loop sits inside a step that runs near the deadline, the runner cancels the in-flight HTTP request (via `context.DeadlineExceeded`) and the step fails with a clear error. Polling does **not** silently exceed the suite-wide budget.
 
-## Worked example — full polling scenario
+## Worked example, full polling scenario
 
 ```hcl
 scenario "Verify email then claim" {
@@ -150,8 +150,8 @@ scenario "Verify email then claim" {
 }
 ```
 
-Three steps, one retry block, one regex capture, one teardown — and the whole scenario reproduces deterministically with `--seed 1234`.
+Three steps, one retry block, one regex capture, one teardown, and the whole scenario reproduces deterministically with `--seed 1234`.
 
 <Aside type="tip" title="Mark polling steps as such in the name">
-	Name polling steps with a verb-first pattern (`find_verification_email`, `wait_for_processed`, `poll_until_indexed`) so the next reader knows immediately that the step might take seconds to succeed. A step called just `email` could be a fast lookup or a 30-second poll — readability wins.
+	Name polling steps with a verb-first pattern (`find_verification_email`, `wait_for_processed`, `poll_until_indexed`) so the next reader knows immediately that the step might take seconds to succeed. A step called just `email` could be a fast lookup or a 30-second poll, readability wins.
 </Aside>

@@ -1,6 +1,6 @@
 ---
 title: Step-local vars
-description: The vars block — once-per-step helper values evaluated in source order, scoped to the current step.
+description: The vars block, once-per-step helper values evaluated in source order, scoped to the current step.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -41,7 +41,7 @@ step "http" "signed_call" {
 - **Source order is preserved.** Later vars can reference earlier ones via `vars.<name>`.
 - **One evaluation per step.** `vars` are computed once, before the provider runs. Subsequent `request` / `expect` / `capture` see the same value.
 - **Step-scoped.** A var declared in step A is invisible to step B. To share values across steps, use [`capture`](/docs/writing-scenarios/captures/).
-- **Visible to `request`, `expect`, `capture` of the same step.** They are *not* visible to `when`, `skip_if`, or `skip_unless` — those are evaluated before the step body runs.
+- **Visible to `request`, `expect`, `capture` of the same step.** They are *not* visible to `when`, `skip_if`, or `skip_unless`, those are evaluated before the step body runs.
 
 <Aside type="caution" title="vars are not in scope for when / skip_*">
 	`when`, `skip_if`, `skip_unless` are evaluated *before* the step body, so the `vars` namespace is empty at that point. The parser rejects any `vars.<name>` reference inside those rules with a clear error.
@@ -52,7 +52,7 @@ step "http" "signed_call" {
 You could inline `now_unix()` directly in `request.headers`. But:
 
 1. `now_unix()` reads the wall clock at *each* evaluation. The header value and the body signed with that header would not match.
-2. Computing `jsonencode(payload)` and `hmac_sha256_hex(secret, payload)` separately would compute `jsonencode` twice — once for the body, once nested inside the HMAC — risking the two values diverging if the payload contained any non-determinism.
+2. Computing `jsonencode(payload)` and `hmac_sha256_hex(secret, payload)` separately would compute `jsonencode` twice, once for the body, once nested inside the HMAC, risking the two values diverging if the payload contained any non-determinism.
 
 `vars` makes the "compute once, use many times" pattern explicit and unambiguous.
 

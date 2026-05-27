@@ -80,7 +80,7 @@ The scenario is automatically skipped (with a clear reason) when the var is miss
 
 ## Production-safe tags
 
-For production smoke tests — running against a live production stack — use tags to scope strictly to read-only scenarios:
+For production smoke tests, running against a live production stack, use tags to scope strictly to read-only scenarios:
 
 ```hcl
 scenario "Production smoke - read health" {
@@ -154,5 +154,5 @@ config {
 Tales merges every `.tales` file in the directory into a single suite, so a top-level `config` declared once is visible to every scenario.
 
 <Aside type="tip" title="Print the effective config in CI">
-	A small "config check" scenario near the top of your suite — a single `step "http" "healthz"` against `config.base_url` with an assertion that returns the URL in the response — makes it trivial to verify in CI logs which environment a given run actually targeted.
+	A small "config check" scenario near the top of your suite, a single `step "http" "healthz"` against `config.base_url` with an assertion that returns the URL in the response, makes it trivial to verify in CI logs which environment a given run actually targeted.
 </Aside>

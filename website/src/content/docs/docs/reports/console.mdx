@@ -88,15 +88,15 @@ CLI exit codes are part of the public contract. CI pipelines can rely on them.
 | `3`  | Runtime or reporting fatal error.             |
 
 <Aside type="note">
-	Skipped scenarios never fail the suite. There is currently no `--fail-on-all-skipped` flag — if every scenario ends in `skipped`, the exit code is still `0`.
+	Skipped scenarios never fail the suite. There is currently no `--fail-on-all-skipped` flag, if every scenario ends in `skipped`, the exit code is still `0`.
 </Aside>
 
 ## Pairing with machine-readable reports
 
 The console reporter is always on. To also emit structured outputs for CI dashboards, add one or more of:
 
-- [`--report-junit <path>`](/docs/reports/junit/) — JUnit XML for Jenkins, GitLab CI, etc.
-- [`--report-jsonl <path>`](/docs/reports/jsonl/) — newline-delimited JSON event stream.
-- [`--report-html <path>`](/docs/reports/visual/) — single-file visual HTML report.
+- [`--report-junit <path>`](/docs/reports/junit/), JUnit XML for Jenkins, GitLab CI, etc.
+- [`--report-jsonl <path>`](/docs/reports/jsonl/), newline-delimited JSON event stream.
+- [`--report-html <path>`](/docs/reports/visual/), single-file visual HTML report.
 
 See [CI integration](/docs/reports/ci-integration/) for end-to-end recipes.

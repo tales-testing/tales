@@ -1,6 +1,6 @@
 ---
 title: DSL overview
-description: The Tales DSL — top-level blocks, the scenario / step / teardown structure, source-order rules, and the execution model.
+description: The Tales DSL, top-level blocks, the scenario / step / teardown structure, source-order rules, and the execution model.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -23,7 +23,7 @@ keyword   "<name>"          { … }   // zero or more
 scenario  "<name>"          { … }   // zero or more
 ```
 
-`version = 1` is optional and reserved for future format bumps. `config { ... }` is a free-form map exposed under the `config.*` expression namespace — put env-driven URLs, secrets, and connection definitions there.
+`version = 1` is optional and reserved for future format bumps. `config { ... }` is a free-form map exposed under the `config.*` expression namespace, put env-driven URLs, secrets, and connection definitions there.
 
 Source order matters for `scenario` blocks (they run in suite order) and for `step` blocks inside a scenario (they run sequentially). The parser preserves textual order even when `step` and the alias `case` are interleaved.
 
@@ -58,17 +58,17 @@ scenario "<name>" {
 }
 ```
 
-A `case` block is a backward-compatible alias for `step` — same decoding, same behaviour. A `response` block is a backward-compatible alias for `expect` — both names are accepted and `response` + `expect` may coexist on the same step.
+A `case` block is a backward-compatible alias for `step`, same decoding, same behaviour. A `response` block is a backward-compatible alias for `expect`, both names are accepted and `response` + `expect` may coexist on the same step.
 
 ## Execution model
 
 - **Scenarios run in parallel** with a configurable concurrency cap (`--parallel`, defaults to `runtime.NumCPU()`).
 - **Steps inside a scenario run sequentially** in `.tales` file order. A failing step halts the scenario; later steps are reported as `skipped`.
 - **`teardown` always runs** after the main steps, even when a step failed. Use `when = can(result.foo.id)` on a teardown step to skip it when the prerequisite capture is missing.
-- A step may reference (`result.<step>`) or `depends_on` only steps defined **earlier in the file** — forward / unknown references are rejected at load time with exit code `2`.
+- A step may reference (`result.<step>`) or `depends_on` only steps defined **earlier in the file**, forward / unknown references are rejected at load time with exit code `2`.
 
 <Aside type="note" title="depends_on is documentation, not ordering">
-	`depends_on` does not reorder steps — source order does that. It only adds a validation check that the referenced step exists and runs before this one. Use it to make implicit dependencies explicit, not to defer execution.
+	`depends_on` does not reorder steps, source order does that. It only adds a validation check that the referenced step exists and runs before this one. Use it to make implicit dependencies explicit, not to defer execution.
 </Aside>
 
 ## Steps and scoping

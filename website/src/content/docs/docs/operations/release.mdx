@@ -86,9 +86,9 @@ The snapshot output lives under `dist/` (gitignored). The version template is `<
 
 The following are intentionally out of scope for V1 and will be considered later:
 
-- **Windows builds** — not provided. The DSL and runtime are cross-platform, but no `windows` GOOS targets are configured.
-- **Docker images** — no container build is published.
-- **Homebrew tap / scoop / nfpm packaging** — install by downloading the archive or with `go install github.com/hyperxlab/tales/cmd/tales@latest`.
-- **macOS code signing and notarization** — released binaries are not signed. On a fresh macOS install you may need to run `xattr -d com.apple.quarantine tales` after extraction.
-- **iOS / XCUITest e2e** — the embedded Apple driver source ships in every macOS binary, but the release workflow runs on Ubuntu and does **not** execute `make e2e-ios` / `make e2e-ios-failure`. iOS e2e must be validated manually on a macOS + Xcode host before tagging.
-- **Artifact signatures (cosign / SBOM)** — not generated.
+- **Windows builds**, not provided. The DSL and runtime are cross-platform, but no `windows` GOOS targets are configured.
+- **Docker images**, no container build is published.
+- **scoop / nfpm packaging** are not provided. Install via the [Homebrew tap](/docs/getting-started/installation/#homebrew-macos--linux), the release archives, or `go install github.com/tales-testing/tales/cmd/tales@latest`.
+- **macOS code signing and notarization**, released binaries are not signed. On a fresh macOS install you may need to run `xattr -d com.apple.quarantine tales` after extraction.
+- **iOS / XCUITest e2e**, the embedded Apple driver source ships in every macOS binary, but the release workflow runs on Ubuntu and does **not** execute `make e2e-ios` / `make e2e-ios-failure`. iOS e2e must be validated manually on a macOS + Xcode host before tagging.
+- **Artifact signatures (cosign / SBOM)**, not generated.

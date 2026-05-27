@@ -1,6 +1,6 @@
 ---
 title: HTTP provider
-description: The HTTP provider — request methods, all four body modes, Basic auth, multipart uploads, headers, query params, and timeouts.
+description: The HTTP provider, request methods, all four body modes, Basic auth, multipart uploads, headers, query params, and timeouts.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
@@ -45,7 +45,7 @@ request {
 }
 ```
 
-Query params are merged into the URL. Header values are evaluated like any expression — env vars, captures, generators, vars, all valid.
+Query params are merged into the URL. Header values are evaluated like any expression, env vars, captures, generators, vars, all valid.
 
 ## Body modes
 
@@ -173,7 +173,7 @@ expect {
 | Field     | What it asserts                                                        |
 | --------- | ---------------------------------------------------------------------- |
 | `status`  | Exact match against the response status code.                          |
-| `headers` | Map of `name = expected` — values may be matchers (`contains`, etc.).  |
+| `headers` | Map of `name = expected`, values may be matchers (`contains`, etc.).  |
 | `json`    | Structural match against the JSON body. Matchers apply field-by-field. |
 | `body`    | Raw body string match.                                                 |
 | `strict`  | When `true`, **extra** JSON fields not listed in `expect.json` fail the step. |
@@ -208,7 +208,7 @@ See [Captures & result chaining](/docs/writing-scenarios/captures/) for full sem
 Each cookie object exposes: `name`, `value`, `raw`, `path`, `domain`, `expires` (RFC3339 string or `""`), `max_age`, `secure`, `http_only`, `same_site` (`"lax" | "strict" | "none" | ""`). Duplicate cookie names use the last-seen value (browser overwrite semantics).
 
 :::caution[Breaking change]
-`response.headers` no longer comma-joins multi-valued headers — it returns the first value deterministically. The lowercase-duplicate keys (`response.headers["content-type"]`) are also gone; always use the canonical MIME header name. Multi-value access lives on `response.headers_all`.
+`response.headers` no longer comma-joins multi-valued headers, it returns the first value deterministically. The lowercase-duplicate keys (`response.headers["content-type"]`) are also gone; always use the canonical MIME header name. Multi-value access lives on `response.headers_all`.
 :::
 
 ```hcl
@@ -224,7 +224,7 @@ Cookie names that are not HCL identifiers (e.g. `ia-session`) are accessible via
 
 #### Masking
 
-When the runner renders a response into a report, `Cookie`/`Set-Cookie` headers, any header whose name contains `signature` (case-insensitive), and the `value`/`raw` fields of every parsed cookie are replaced with `***`. Captures see the unmasked values — masking only applies to report output.
+When the runner renders a response into a report, `Cookie`/`Set-Cookie` headers, any header whose name contains `signature` (case-insensitive), and the `value`/`raw` fields of every parsed cookie are replaced with `***`. Captures see the unmasked values, masking only applies to report output.
 
 ## Timeouts
 
@@ -238,7 +238,7 @@ A timeout fires `context.DeadlineExceeded` through the HTTP client and the step 
 
 ## ConnectRPC
 
-ConnectRPC services that accept JSON over HTTP are just HTTP requests. No special configuration — use the JSON body mode and the right `Content-Type`:
+ConnectRPC services that accept JSON over HTTP are just HTTP requests. No special configuration, use the JSON body mode and the right `Content-Type`:
 
 ```hcl
 step "http" "create_user_connect" {
@@ -272,4 +272,4 @@ ConnectRPC tends to omit fields equal to their zero value. Use `optional(<defaul
 
 HTTP steps appear with `provider: "http"` in JSONL, JUnit, and visual HTML reports. The request shape carries `method`, `url`, `headers`, `query`, and the chosen body mode. The response shape carries `status_code`, `headers`, `json` (parsed when possible), and `body` (raw).
 
-Secrets injected via `auth.basic.password` are masked; values inlined into `headers` are not — capture them from a previous step's response if you need them masked.
+Secrets injected via `auth.basic.password` are masked; values inlined into `headers` are not, capture them from a previous step's response if you need them masked.

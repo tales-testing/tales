@@ -1,6 +1,6 @@
 ---
 title: CLI essentials
-description: Every Tales subcommand, every flag, every exit code — the complete CLI reference.
+description: Every Tales subcommand, every flag, every exit code, the complete CLI reference.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -82,7 +82,7 @@ On startup, `tales test` prints a single preflight line on stderr so you immedia
 tales: loaded 12 scenarios from 5 files; timeout=disabled
 ```
 
-While the runner is in flight (and `--no-progress` is not set), scenario start/end events are streamed on stderr. `--verbose` adds a heartbeat every 30 seconds listing scenarios still running — invaluable when you suspect one is stuck.
+While the runner is in flight (and `--no-progress` is not set), scenario start/end events are streamed on stderr. `--verbose` adds a heartbeat every 30 seconds listing scenarios still running, invaluable when you suspect one is stuck.
 
 If `--timeout` fires before the suite completes, the CLI prints the names of the in-flight scenarios so you know exactly which ones stalled.
 
@@ -92,7 +92,7 @@ If `--timeout` fires before the suite completes, the CLI prints the names of the
 tales validate <path>
 ```
 
-Parses every `.tales` file under `<path>`, checks step ordering, expression references, and provider configuration — without executing anything. Exits `0` on success, `2` on parse or validation error.
+Parses every `.tales` file under `<path>`, checks step ordering, expression references, and provider configuration, without executing anything. Exits `0` on success, `2` on parse or validation error.
 
 Use it as a fast pre-commit hook.
 
@@ -112,14 +112,14 @@ One-stop diagnostic. Prints:
 - Available simulator runtimes and devices.
 - Hints (cache wipe, env override, stale CoreSimulator recovery).
 
-`--json` emits the same data as a JSON document — scriptable from CI:
+`--json` emits the same data as a JSON document, scriptable from CI:
 
 ```bash
 tales doctor --json | jq .embedded_driver.source_hash_short
 tales doctor --json | jq '.cache.entries[] | select(.built == false)'
 ```
 
-Missing Xcode or unavailable `simctl` is reported as a degraded section, not as an error — `tales doctor` is the tool you reach for when things are broken.
+Missing Xcode or unavailable `simctl` is reported as a degraded section, not as an error, `tales doctor` is the tool you reach for when things are broken.
 
 ## Exit codes
 
@@ -143,4 +143,4 @@ CLI exit codes are part of the public contract. CI pipelines can rely on them.
 | `TALES_DRIVER_CACHE_DIR`  | Override the base directory of the embedded iOS driver cache (default `~/Library/Caches/tales/apple-driver/`). |
 | anything                  | Available inside `.tales` expressions via `env("NAME", "default")`.                       |
 
-User-defined env vars can gate scenarios via [`skip_if` / `skip_unless`](/docs/writing-scenarios/conditional-execution/) — see the env_set / env attributes there.
+User-defined env vars can gate scenarios via [`skip_if` / `skip_unless`](/docs/writing-scenarios/conditional-execution/), see the env_set / env attributes there.

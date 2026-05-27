@@ -1,11 +1,11 @@
 ---
 title: JSONL stream
-description: The Tales JSONL event stream — one JSON object per line, suitable for piping into jq, Loki, BigQuery, or any log pipeline.
+description: The Tales JSONL event stream, one JSON object per line, suitable for piping into jq, Loki, BigQuery, or any log pipeline.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-The JSONL reporter writes one JSON object per line — a complete event stream of the run. It is the richest of the four reporters: every step and every UI action carries its full request, response, and timing data.
+The JSONL reporter writes one JSON object per line, a complete event stream of the run. It is the richest of the four reporters: every step and every UI action carries its full request, response, and timing data.
 
 ## Usage
 
@@ -95,13 +95,13 @@ One per UI action, emitted after the step event when `step.actions` is populated
 }
 ```
 
-Secure values are masked to `"***"` at one boundary inside the mobile provider — see [Visual HTML report](/docs/reports/visual/#secure-values).
+Secure values are masked to `"***"` at one boundary inside the mobile provider, see [Visual HTML report](/docs/reports/visual/#secure-values).
 
 ## DSN and secret masking
 
-The SQL provider scrubs DSNs from every event before serialisation. Only the connection name, driver alias, SQL text, and arg *count* appear — never the connection string. See [SQL provider](/docs/providers/sql/#security-and-masking) for the full rules.
+The SQL provider scrubs DSNs from every event before serialisation. Only the connection name, driver alias, SQL text, and arg *count* appear, never the connection string. See [SQL provider](/docs/providers/sql/#security-and-masking) for the full rules.
 
-`auth.basic.password` is masked in HTTP request shapes. Other secrets injected via `headers` are not masked — capture them from upstream responses if you need masking.
+`auth.basic.password` is masked in HTTP request shapes. Other secrets injected via `headers` are not masked, capture them from upstream responses if you need masking.
 
 ## Consuming the stream
 
