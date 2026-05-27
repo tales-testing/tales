@@ -6,7 +6,12 @@
       "Bash(git commit *)",
       "Bash(git add *)",
       "Bash(xcodebuild *)",
-      "Edit(/.claude/skills/tales-test-generator/**)"
+      "Edit(/.claude/skills/tales-test-generator/**)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(shasum -a 256 e2e/pass/avatar.txt)"
     ]
   }
 }
