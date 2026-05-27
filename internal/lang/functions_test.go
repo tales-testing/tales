@@ -363,6 +363,65 @@ func TestHMACSHA1HexErrorDoesNotLeakSecret(t *testing.T) {
 	}
 }
 
+func TestHMACVariantsRegisteredAndLengths(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]int{
+		"hmac_sha1_hex":       40,
+		"hmac_sha224_hex":     56,
+		"hmac_sha256_hex":     64,
+		"hmac_sha384_hex":     96,
+		"hmac_sha512_hex":     128,
+		"hmac_sha512_224_hex": 56,
+		"hmac_sha512_256_hex": 64,
+	}
+
+	for name, length := range cases {
+		value := evalTestExpression(t, name+`("key", "message")`)
+		got := value.AsString()
+
+		if len(got) != length {
+			t.Fatalf("%s: expected %d-char hex, got %d: %s", name, length, len(got), got)
+		}
+
+		if got != strings.ToLower(got) {
+			t.Fatalf("%s: expected lowercase hex, got %s", name, got)
+		}
+	}
+}
+
+func TestHMACVariantsRFC4231Vectors(t *testing.T) {
+	t.Parallel()
+
+	// RFC 4231 test case 2: key="Jefe", data="what do ya want for nothing?".
+	// These vectors are the canonical interoperability proof for HMAC-SHA*.
+	cases := map[string]string{
+		"hmac_sha224_hex": "a30e01098bc6dbbf45690f3a7e9e6d0f8bbea2a39e6148008fd05e44",
+		"hmac_sha256_hex": "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+		"hmac_sha384_hex": "af45d2e376484031617f78d2b58a6b1b9c7ef464f5a01b47e42ec3736322445e8e2240ca5e69e2c78b3239ecfab21649",
+		"hmac_sha512_hex": "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737",
+	}
+
+	for name, expected := range cases {
+		value := evalTestExpression(t, name+`("Jefe", "what do ya want for nothing?")`)
+		if value.AsString() != expected {
+			t.Fatalf("%s vector mismatch: got %s, want %s", name, value.AsString(), expected)
+		}
+	}
+}
+
+func TestHMACVariantsRejectArity(t *testing.T) {
+	t.Parallel()
+
+	if _, err := evalTestExpressionError(`hmac_sha512_hex("only-one")`); err == nil {
+		t.Fatalf("expected error for single argument")
+	}
+
+	if _, err := evalTestExpressionError(`hmac_sha384_hex("a", "b", "c")`); err == nil {
+		t.Fatalf("expected error for extra argument")
+	}
+}
+
 func TestTOTPDefaultReturnsSixDigits(t *testing.T) {
 	t.Parallel()
 
