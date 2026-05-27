@@ -430,6 +430,266 @@ func TestHTTPProviderConnectHeaders(t *testing.T) {
 	}
 }
 
+func TestHTTPProviderResponseHeadersFirstValue(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Set-Cookie", "ia_session=abc123; Path=/; HttpOnly; Secure")
+		w.Header().Add("Set-Cookie", "theme=dark; Path=/")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	p := New()
+	out, err := p.Execute(context.Background(), provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal(ts.URL),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	headers := out.Response["headers"].AsValueMap()
+
+	setCookie, ok := headers["Set-Cookie"]
+	if !ok {
+		t.Fatalf("expected Set-Cookie header in response.headers, got keys: %v", headerKeys(headers))
+	}
+
+	if got := setCookie.AsString(); got != "ia_session=abc123; Path=/; HttpOnly; Secure" {
+		t.Fatalf("expected first Set-Cookie value, got %q", got)
+	}
+
+	if strings.Contains(setCookie.AsString(), ",") {
+		t.Fatalf("response.headers must not comma-join multi-valued headers, got %q", setCookie.AsString())
+	}
+
+	ct, ok := headers["Content-Type"]
+	if !ok {
+		t.Fatalf("expected Content-Type in response.headers")
+	}
+
+	if ct.AsString() != "application/json" {
+		t.Fatalf("unexpected Content-Type: %q", ct.AsString())
+	}
+}
+
+func TestHTTPProviderResponseHeadersAllPreservesValues(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Set-Cookie", "ia_session=abc123; Path=/; HttpOnly; Secure")
+		w.Header().Add("Set-Cookie", "theme=dark; Path=/")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	p := New()
+	out, err := p.Execute(context.Background(), provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal(ts.URL),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	headersAll := out.Response["headers_all"].AsValueMap()
+
+	setCookies, ok := headersAll["Set-Cookie"]
+	if !ok {
+		t.Fatalf("expected Set-Cookie in response.headers_all")
+	}
+
+	got := []string{}
+	for it := setCookies.ElementIterator(); it.Next(); {
+		_, v := it.Element()
+		got = append(got, v.AsString())
+	}
+
+	want := []string{
+		"ia_session=abc123; Path=/; HttpOnly; Secure",
+		"theme=dark; Path=/",
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d Set-Cookie values, got %d: %v", len(want), len(got), got)
+	}
+
+	for i, w := range want {
+		if got[i] != w {
+			t.Fatalf("Set-Cookie[%d]: got %q want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestHTTPProviderResponseCookies(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Set-Cookie", "ia_session=abc123; Path=/; HttpOnly; Secure")
+		w.Header().Add("Set-Cookie", "theme=dark; Path=/")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	p := New()
+	out, err := p.Execute(context.Background(), provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal(ts.URL),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cookies := out.Response["cookies"].AsValueMap()
+
+	session, ok := cookies["ia_session"]
+	if !ok {
+		t.Fatalf("expected ia_session cookie")
+	}
+
+	fields := session.AsValueMap()
+	if fields["value"].AsString() != "abc123" {
+		t.Fatalf("ia_session.value=%q want abc123", fields["value"].AsString())
+	}
+
+	if fields["path"].AsString() != "/" {
+		t.Fatalf("ia_session.path=%q want /", fields["path"].AsString())
+	}
+
+	if !fields["http_only"].True() {
+		t.Fatalf("ia_session.http_only should be true")
+	}
+
+	if !fields["secure"].True() {
+		t.Fatalf("ia_session.secure should be true")
+	}
+
+	if fields["name"].AsString() != "ia_session" {
+		t.Fatalf("ia_session.name=%q want ia_session", fields["name"].AsString())
+	}
+
+	theme, ok := cookies["theme"]
+	if !ok {
+		t.Fatalf("expected theme cookie")
+	}
+
+	if theme.AsValueMap()["value"].AsString() != "dark" {
+		t.Fatalf("theme.value=%q want dark", theme.AsValueMap()["value"].AsString())
+	}
+}
+
+func TestHTTPProviderResponseCookiesDuplicateNameLastWins(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Set-Cookie", "foo=1; Path=/")
+		w.Header().Add("Set-Cookie", "foo=2; Path=/")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	p := New()
+	out, err := p.Execute(context.Background(), provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal(ts.URL),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	foo := out.Response["cookies"].AsValueMap()["foo"]
+	if foo.AsValueMap()["value"].AsString() != "2" {
+		t.Fatalf("expected last-write-wins (value=2), got %q", foo.AsValueMap()["value"].AsString())
+	}
+}
+
+func TestHTTPProviderResponseCookiesDashedName(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Set-Cookie", "ia-session=xyz; Path=/")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	p := New()
+	out, err := p.Execute(context.Background(), provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal(ts.URL),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cookies := out.Response["cookies"].AsValueMap()
+
+	cookie, ok := cookies["ia-session"]
+	if !ok {
+		t.Fatalf("expected ia-session cookie under exact name (got keys: %v)", cookieKeys(cookies))
+	}
+
+	if cookie.AsValueMap()["value"].AsString() != "xyz" {
+		t.Fatalf("ia-session.value=%q want xyz", cookie.AsValueMap()["value"].AsString())
+	}
+}
+
+func TestHTTPProviderResponseHeadersEmpty(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	p := New()
+	out, err := p.Execute(context.Background(), provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal(ts.URL),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cookies := out.Response["cookies"]; !cookies.Type().Equals(cty.EmptyObject) {
+		t.Fatalf("expected empty cookies object, got type %s", cookies.Type().FriendlyName())
+	}
+}
+
+func headerKeys(m map[string]cty.Value) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	return keys
+}
+
+func cookieKeys(m map[string]cty.Value) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	return keys
+}
+
 func basicAuthValue(username, password string) cty.Value {
 	return cty.ObjectVal(map[string]cty.Value{
 		"basic": cty.ObjectVal(map[string]cty.Value{

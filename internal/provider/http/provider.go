@@ -18,6 +18,8 @@ import (
 const (
 	providerTypeHTTP = "http"
 	headersKey       = "headers"
+	headersAllKey    = "headers_all"
+	cookiesKey       = "cookies"
 )
 
 // Provider executes HTTP steps.
@@ -444,14 +446,6 @@ func buildOutput(
 	duration time.Duration,
 	request map[string]cty.Value,
 ) (*provider.Output, error) {
-	responseHeaders := map[string]cty.Value{}
-
-	for key, values := range resp.Header {
-		joined := strings.Join(values, ",")
-		responseHeaders[key] = cty.StringVal(joined)
-		responseHeaders[strings.ToLower(key)] = cty.StringVal(joined)
-	}
-
 	responseJSON := decodeResponseJSON(resp.Header.Get("Content-Type"), respBytes)
 	output := &provider.Output{
 		Duration:   duration,
@@ -462,10 +456,12 @@ func buildOutput(
 			headersKey: toStringMapValue(headers),
 		},
 		Response: map[string]cty.Value{
-			"status":   cty.NumberIntVal(int64(resp.StatusCode)),
-			headersKey: cty.ObjectVal(responseHeaders),
-			"body":     cty.StringVal(string(respBytes)),
-			"json":     responseJSON,
+			"status":      cty.NumberIntVal(int64(resp.StatusCode)),
+			headersKey:    buildResponseHeaders(resp.Header),
+			headersAllKey: buildResponseHeadersAll(resp.Header),
+			cookiesKey:    buildResponseCookies(resp.Cookies()),
+			"body":        cty.StringVal(string(respBytes)),
+			"json":        responseJSON,
 		},
 	}
 
@@ -478,6 +474,109 @@ func buildOutput(
 	}
 
 	return output, nil
+}
+
+// buildResponseHeaders exposes each header as its first value with the
+// canonical MIME header name. The lowercase-duplicate keys produced by the
+// previous implementation are gone — see CHANGELOG / docs for the breaking
+// change. Multi-valued headers should be read via response.headers_all.
+func buildResponseHeaders(header http.Header) cty.Value {
+	if len(header) == 0 {
+		return cty.EmptyObjectVal
+	}
+
+	values := make(map[string]cty.Value, len(header))
+	for key, vs := range header {
+		if len(vs) == 0 {
+			continue
+		}
+
+		values[key] = cty.StringVal(vs[0])
+	}
+
+	if len(values) == 0 {
+		return cty.EmptyObjectVal
+	}
+
+	return cty.ObjectVal(values)
+}
+
+// buildResponseHeadersAll exposes every value for every header as a list of
+// strings, preserving wire order. Use this for Set-Cookie or any header whose
+// semantics are multi-valued.
+func buildResponseHeadersAll(header http.Header) cty.Value {
+	if len(header) == 0 {
+		return cty.EmptyObjectVal
+	}
+
+	values := make(map[string]cty.Value, len(header))
+	for key, vs := range header {
+		if len(vs) == 0 {
+			values[key] = cty.ListValEmpty(cty.String)
+
+			continue
+		}
+
+		listValues := make([]cty.Value, 0, len(vs))
+		for _, v := range vs {
+			listValues = append(listValues, cty.StringVal(v))
+		}
+
+		values[key] = cty.ListVal(listValues)
+	}
+
+	return cty.ObjectVal(values)
+}
+
+// buildResponseCookies parses Set-Cookie headers and exposes them as a map of
+// cookie objects keyed by cookie name. Duplicate cookie names use the
+// last-seen value, matching browser overwrite behavior.
+func buildResponseCookies(cookies []*http.Cookie) cty.Value {
+	if len(cookies) == 0 {
+		return cty.EmptyObjectVal
+	}
+
+	mapped := make(map[string]cty.Value, len(cookies))
+	for _, c := range cookies {
+		mapped[c.Name] = cookieToCtyValue(c)
+	}
+
+	return cty.ObjectVal(mapped)
+}
+
+func cookieToCtyValue(c *http.Cookie) cty.Value {
+	expires := ""
+	if !c.Expires.IsZero() {
+		expires = c.Expires.UTC().Format(time.RFC3339)
+	}
+
+	return cty.ObjectVal(map[string]cty.Value{
+		"name":      cty.StringVal(c.Name),
+		"value":     cty.StringVal(c.Value),
+		"raw":       cty.StringVal(c.Raw),
+		"path":      cty.StringVal(c.Path),
+		"domain":    cty.StringVal(c.Domain),
+		"expires":   cty.StringVal(expires),
+		"max_age":   cty.NumberIntVal(int64(c.MaxAge)),
+		"secure":    cty.BoolVal(c.Secure),
+		"http_only": cty.BoolVal(c.HttpOnly),
+		"same_site": cty.StringVal(sameSiteString(c.SameSite)),
+	})
+}
+
+func sameSiteString(s http.SameSite) string {
+	switch s {
+	case http.SameSiteLaxMode:
+		return "lax"
+	case http.SameSiteStrictMode:
+		return "strict"
+	case http.SameSiteNoneMode:
+		return "none"
+	case http.SameSiteDefaultMode:
+		return ""
+	default:
+		return ""
+	}
 }
 
 func decodeResponseJSON(contentType string, respBytes []byte) cty.Value {
