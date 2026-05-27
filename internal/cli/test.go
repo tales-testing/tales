@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"time"
 
+	"github.com/hyperxlab/tales/internal/model"
 	"github.com/hyperxlab/tales/internal/parser"
 	"github.com/hyperxlab/tales/internal/provider"
 	httpprovider "github.com/hyperxlab/tales/internal/provider/http"
@@ -42,6 +44,32 @@ func NewTestCommand() *cli.Command {
 		},
 		Action: runTest,
 	}
+}
+
+// printPreflight summarizes what was loaded and whether the global wall-clock
+// budget is set, before any scenario runs. The "timeout=disabled" branch is
+// the load-bearing one: a silent run with no --timeout is exactly the failure
+// mode users hit when a provider stalls — surfacing it up front turns an
+// invisible config gap into an obvious one.
+func printPreflight(out io.Writer, suite *model.Suite, budget time.Duration) {
+	scenarioWord := pluralize("scenario", len(suite.Scenarios))
+	fileWord := pluralize("file", len(suite.Files))
+
+	timeoutNote := "disabled (use --timeout=<dur> to bound the run)"
+	if budget > 0 {
+		timeoutNote = budget.String()
+	}
+
+	_, _ = fmt.Fprintf(out, "tales: loaded %d %s from %d %s; timeout=%s\n",
+		len(suite.Scenarios), scenarioWord, len(suite.Files), fileWord, timeoutNote)
+}
+
+func pluralize(word string, count int) string {
+	if count == 1 {
+		return word
+	}
+
+	return word + "s"
 }
 
 // buildEventSink wires the streaming console reporter unless --no-progress
@@ -108,12 +136,15 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit(err.Error(), 2)
 	}
 
-	if budget := cmd.Duration("timeout"); budget > 0 {
+	budget := cmd.Duration("timeout")
+	if budget > 0 {
 		var cancel context.CancelFunc
 
 		ctx, cancel = context.WithTimeout(ctx, budget)
 		defer cancel()
 	}
+
+	printPreflight(os.Stderr, suite, budget)
 
 	runner := talesruntime.NewRunner(provider.NewRegistry(
 		httpprovider.New(),
