@@ -46,6 +46,25 @@ func NewTestCommand() *cli.Command {
 	}
 }
 
+// printTimeoutDiagnostic surfaces the list of scenarios still in-flight when
+// the global --timeout fired. The list is non-empty only when the runner's
+// deadline-watcher snapshotted active work at the moment DeadlineExceeded
+// was observed, so this print itself is the user-facing signal that the
+// budget ran out. A nil/empty list means either the run finished cleanly
+// or it was cancelled some other way (e.g. Ctrl-C).
+func printTimeoutDiagnostic(out io.Writer, budget time.Duration, stalled []string) {
+	if len(stalled) == 0 {
+		return
+	}
+
+	_, _ = fmt.Fprintf(out, "tales: global --timeout (%s) exceeded\n", budget)
+	_, _ = fmt.Fprintln(out, "  scenarios still running when timeout hit:")
+
+	for _, name := range stalled {
+		_, _ = fmt.Fprintf(out, "    - %q\n", name)
+	}
+}
+
 // printPreflight summarizes what was loaded and whether the global wall-clock
 // budget is set, before any scenario runs. The "timeout=disabled" branch is
 // the load-bearing one: a silent run with no --timeout is exactly the failure
@@ -168,6 +187,26 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("runtime failed", 3)
 	}
 
+	if result != nil {
+		printTimeoutDiagnostic(os.Stderr, budget, result.StalledScenarios)
+	}
+
+	if exitErr := emitReports(cmd, result, htmlPath); exitErr != nil {
+		return exitErr
+	}
+
+	if result.Failed() {
+		return cli.Exit("at least one scenario failed", 1)
+	}
+
+	return nil
+}
+
+// emitReports renders the console output and every requested report writer.
+// Extracted from runTest to keep that function under the gocyclo budget; the
+// flow is a straight sequence of "if requested, write — else skip", so the
+// helper has no branches that matter beyond the writes themselves.
+func emitReports(cmd *cli.Command, result *report.SuiteResult, htmlPath string) error {
 	consoleOptions := report.DefaultConsoleOptions(os.Stdout)
 	if cmd.Bool("no-color") {
 		consoleOptions.Color = false
@@ -199,10 +238,6 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		}
 
 		_, _ = fmt.Fprintf(os.Stdout, "HTML report: %s\n", htmlPath)
-	}
-
-	if result.Failed() {
-		return cli.Exit("at least one scenario failed", 1)
 	}
 
 	return nil

@@ -19,6 +19,12 @@ type SuiteResult struct {
 	EndedAt   time.Time
 	Duration  time.Duration
 	Scenarios []*ScenarioResult
+	// StalledScenarios holds the names of scenarios that were still
+	// in-flight when the runner's parent context hit its deadline. It is
+	// populated only when --timeout (or any other context.WithTimeout
+	// wrapper above the runner) fires before the suite finishes, and is
+	// used by the CLI to surface the culprits in the cancel message.
+	StalledScenarios []string
 }
 
 // ScenarioResult contains one scenario execution.
