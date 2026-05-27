@@ -341,6 +341,6 @@ step "sql" "insert_org" {
 				],
 			},
 		],
-		colophon: 'Built with Astro + Starlight + Tailwind CSS. Hosted on GitHub Pages.',
+		colophon: 'Built with Astro + Starlight + Tailwind CSS. Hosted on Cloudflare Pages.',
 	},
 } as const;

@@ -5,14 +5,12 @@ on:
     branches: [ master ]
     paths-ignore:
       - 'website/**'
-      - '.github/workflows/deploy-website.yml'
       - 'README.md'
       - 'CLAUDE.md'
   pull_request:
     branches: [ master ]
     paths-ignore:
       - 'website/**'
-      - '.github/workflows/deploy-website.yml'
       - 'README.md'
       - 'CLAUDE.md'
 
