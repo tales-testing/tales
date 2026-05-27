@@ -102,8 +102,20 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 			scenarioResult, runErr := r.runScenario(runCtx, suite, sc, configValues, opts.Seed)
 			result.Scenarios[index] = scenarioResult
 
+			// Capture the ctx state BEFORE the post-run bookkeeping so
+			// the deadline-watcher's snapshot stays race-free. If runCtx
+			// fired before we got here, the scenario was either cancelled
+			// mid-flight or finished an instant ahead of the deadline;
+			// either way we keep it in the tracker so the watcher can
+			// surface it in the stalled list. tracker.end is only called
+			// on the clean-completion path.
+			ctxAlreadyFired := runCtx.Err() != nil
+
 			emitScenarioEnded(opts.Events, scenarioResult)
-			tracker.end(sc.Name)
+
+			if !ctxAlreadyFired {
+				tracker.end(sc.Name)
+			}
 
 			if runErr != nil {
 				firstErrMu.Lock()
