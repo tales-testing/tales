@@ -11,14 +11,17 @@ import (
 	"time"
 )
 
-// TOTPOptions parameterizes GenerateTOTP. All fields are optional; zero values
-// trigger the documented RFC 6238 defaults (Period=30, Digits=6,
-// Algorithm="SHA1", Timestamp=time.Now().Unix()).
+// TOTPOptions parameterizes GenerateTOTP. Period, Digits and Algorithm fall
+// back to their RFC 6238 defaults (30, 6, "SHA1") when zero — neither 0 nor
+// "" is a valid user value for them. Timestamp uses a *int64 so callers can
+// distinguish "not set" (nil → wall clock) from the legal RFC 6238 value
+// timestamp=0 (Unix epoch); both 0 and a positive value reach the algorithm
+// unchanged.
 type TOTPOptions struct {
 	Period    int64
 	Digits    int
 	Algorithm string
-	Timestamp int64
+	Timestamp *int64
 }
 
 const (
@@ -68,11 +71,11 @@ func GenerateTOTP(secretBase32 string, opts TOTPOptions) (string, error) {
 		return "", fmt.Errorf("unsupported TOTP algorithm %q; supported algorithms: SHA1", algorithm)
 	}
 
-	timestamp := opts.Timestamp
-	if opts.Timestamp == 0 {
-		// A zero option means "use the wall clock". Negative timestamps are
-		// explicitly rejected below; zero on the wire is therefore unreachable.
+	var timestamp int64
+	if opts.Timestamp == nil {
 		timestamp = time.Now().Unix()
+	} else {
+		timestamp = *opts.Timestamp
 	}
 
 	if timestamp < 0 {

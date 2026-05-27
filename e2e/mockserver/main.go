@@ -713,11 +713,13 @@ func (s *serverState) verifyTOTP(w http.ResponseWriter, req *http.Request) {
 	period := int64(30)
 
 	for _, drift := range []int64{0, -period, period} {
+		ts := now + drift
+
 		expected, err := lang.GenerateTOTP(mfaTOTPSecret, lang.TOTPOptions{
 			Period:    period,
 			Digits:    6,
 			Algorithm: "SHA1",
-			Timestamp: now + drift,
+			Timestamp: &ts,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": "totp internal"})
