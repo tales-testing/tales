@@ -1,10 +1,243 @@
 ---
-title: Http
-description: Documentation page for Http — placeholder, content coming soon.
+title: HTTP provider
+description: The HTTP provider — request methods, all four body modes, Basic auth, multipart uploads, headers, query params, and timeouts.
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
-</Aside>
+The HTTP provider is the heart of Tales. It executes HTTP(S) requests (including ConnectRPC JSON-over-HTTP), with structured request building, declarative assertions, and a small set of well-defined body modes.
+
+## Anatomy of an HTTP step
+
+```hcl
+step "http" "<name>" {
+  request {
+    method  = "POST"          // optional, defaults to "GET"
+    url     = "..."           // required
+    headers = { ... }         // optional
+    query   = { ... }         // optional
+    timeout = "30s"           // optional, per-step override
+    body    { ... }           // optional, exactly one body mode
+    auth    { ... }           // optional
+  }
+
+  expect { ... }              // optional but recommended
+  capture { ... }             // optional
+}
+```
+
+The provider sets sensible defaults: `GET` if no method is given, `30s` request timeout, no body, no auth.
+
+## URL, headers, query
+
+```hcl
+request {
+  method  = "GET"
+  url     = "${config.base_url}/users/${result.create_user.id}"
+  headers = {
+    Accept     = "application/json"
+    X-Trace-Id = generate("trace_id")
+  }
+  query = {
+    page  = 1
+    sort  = "created_at"
+  }
+}
+```
+
+Query params are merged into the URL. Header values are evaluated like any expression — env vars, captures, generators, vars, all valid.
+
+## Body modes
+
+A request may carry **exactly one** of `json`, `form`, `raw`, or `multipart`. The parser rejects steps that combine them.
+
+<Tabs syncKey="body-mode">
+	<TabItem label="JSON">
+		Evaluated value → serialised as JSON. `Content-Type: application/json` is set automatically.
+
+		```hcl
+		request {
+		  method = "POST"
+		  url    = "${config.base_url}/users"
+		  body {
+		    json = {
+		      email    = "qa@example.com"
+		      password = "Sup3rS3cret!"
+		      preferences = {
+		        notifications = true
+		      }
+		    }
+		  }
+		}
+		```
+	</TabItem>
+	<TabItem label="Form">
+		Evaluated map → `application/x-www-form-urlencoded`.
+
+		```hcl
+		request {
+		  method = "POST"
+		  url    = "${config.base_url}/form-echo"
+		  body {
+		    form = {
+		      name  = "Alice"
+		      email = generate("user_email")
+		    }
+		  }
+		}
+		```
+	</TabItem>
+	<TabItem label="Raw">
+		Evaluated string → sent verbatim. You control `Content-Type` via `headers`.
+
+		```hcl
+		vars {
+		  payload = jsonencode({ id = "evt-1", type = "ping" })
+		}
+
+		request {
+		  method  = "POST"
+		  url     = "${config.base_url}/webhook"
+		  headers = { Content-Type = "application/json" }
+		  body { raw = vars.payload }
+		}
+		```
+	</TabItem>
+	<TabItem label="Multipart">
+		Structured `file` / `field` parts. Order on the wire is the declaration order. `Content-Type: multipart/form-data; boundary=...` is set automatically.
+
+		```hcl
+		request {
+		  method = "POST"
+		  url    = "${config.base_url}/upload"
+		  body {
+		    multipart {
+		      file {
+		        field        = "avatar"
+		        path         = "./avatar.txt"
+		        content_type = "text/plain"
+		      }
+		      file {
+		        field        = "attachment"
+		        content      = generate("attachment_blob")
+		        filename     = "attachment.bin"
+		        content_type = "application/octet-stream"
+		      }
+		      field { name = "description" value = "fixture upload" }
+		    }
+		  }
+		}
+		```
+
+		File parts support either `path` (file on disk, resolved relative to the `.tales` file) or `content` (string evaluated from any expression). `field` parts are plain form values.
+	</TabItem>
+</Tabs>
+
+## Basic auth
+
+```hcl
+request {
+  method = "GET"
+  url    = "${config.base_url}/basic-auth"
+
+  auth {
+    basic {
+      username = "admin"
+      password = env("ADMIN_PASSWORD")
+    }
+  }
+}
+```
+
+The provider sets the `Authorization: Basic <base64>` header and masks the password in reports. Combining `auth.basic` with a `headers.Authorization` value is rejected with a clear error.
+
+## Assertions (`expect`)
+
+```hcl
+expect {
+  status  = 200
+  headers = {
+    Content-Type = contains("application/json")
+  }
+  json = {
+    id     = is_string()
+    email  = "qa@example.com"
+    role   = optional("ROLE_UNSPECIFIED")
+    quota  = optional(any())
+  }
+  body   = "..."     // optional, raw body string match
+  strict = true      // optional, fail on extra JSON keys not in `expect`
+}
+```
+
+| Field     | What it asserts                                                        |
+| --------- | ---------------------------------------------------------------------- |
+| `status`  | Exact match against the response status code.                          |
+| `headers` | Map of `name = expected` — values may be matchers (`contains`, etc.).  |
+| `json`    | Structural match against the JSON body. Matchers apply field-by-field. |
+| `body`    | Raw body string match.                                                 |
+| `strict`  | When `true`, **extra** JSON fields not listed in `expect.json` fail the step. |
+
+Full matcher reference: [Matchers](/docs/reference/matchers/).
+
+## Captures
+
+After a step runs, the response is bound to the `response` namespace:
+
+```hcl
+capture {
+  id        = response.json.id
+  trace_id  = response.headers["X-Trace-Id"]
+  status    = response.status_code
+}
+```
+
+See [Captures & result chaining](/docs/writing-scenarios/captures/) for full semantics.
+
+## Timeouts
+
+| Source                       | Effect                                            |
+| ---------------------------- | ------------------------------------------------- |
+| `request.timeout`            | Per-step override. Bounds this single HTTP call.  |
+| `--timeout` on `tales test`  | Global cap on the whole suite.                    |
+| Provider default             | `30s` per request when neither is set.            |
+
+A timeout fires `context.DeadlineExceeded` through the HTTP client and the step fails with a clear error. Retries inside a `retry` block honour the same deadline.
+
+## ConnectRPC
+
+ConnectRPC services that accept JSON over HTTP are just HTTP requests. No special configuration — use the JSON body mode and the right `Content-Type`:
+
+```hcl
+step "http" "create_user_connect" {
+  request {
+    method  = "POST"
+    url     = "${config.base_url}/users.v1.UserService/CreateUser"
+    headers = { Content-Type = "application/json" }
+    body {
+      json = {
+        email = "qa@example.com"
+      }
+    }
+  }
+
+  expect {
+    status = 200
+    json = {
+      user = {
+        id    = is_string()
+        email = "qa@example.com"
+        role  = optional("ROLE_UNSPECIFIED")   // proto field, defaults absent
+      }
+    }
+  }
+}
+```
+
+ConnectRPC tends to omit fields equal to their zero value. Use `optional(<default>)` to express "either the field equals the default, or it is absent".
+
+## Reports
+
+HTTP steps appear with `provider: "http"` in JSONL, JUnit, and visual HTML reports. The request shape carries `method`, `url`, `headers`, `query`, and the chosen body mode. The response shape carries `status_code`, `headers`, `json` (parsed when possible), and `body` (raw).
+
+Secrets injected via `auth.basic.password` are masked; values inlined into `headers` are not — capture them from a previous step's response if you need them masked.
