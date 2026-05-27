@@ -1,0 +1,43 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# Proves the full RFC 7636 PKCE S256 transformation end-to-end. The verifier
+# below is the appendix B example from the RFC; pkce_challenge derives the
+# canonical challenge and the mockserver re-derives it server-side.
+scenario "Verify PKCE challenge" {
+  tags = ["oauth", "pkce"]
+
+  step "http" "verify_pkce" {
+    vars {
+      verifier  = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      challenge = pkce_challenge(vars.verifier)
+    }
+
+    request {
+      method = "POST"
+      url    = "${config.base_url}/oauth/pkce/verify"
+
+      headers = {
+        Content-Type = "application/json"
+      }
+
+      body {
+        json = {
+          verifier  = vars.verifier
+          challenge = vars.challenge
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        valid = true
+      }
+    }
+  }
+}
