@@ -1,0 +1,50 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Tales — Slate + Violet design tokens */
+	--color-bg: #0b0f19;
+	--color-surface: #111827;
+	--color-surface-2: #0f172a;
+	--color-border: #1f2937;
+	--color-border-strong: #334155;
+	--color-text: #f1f5f9;
+	--color-text-muted: #94a3b8;
+	--color-text-faint: #64748b;
+	--color-accent: #8b5cf6;
+	--color-accent-hover: #a78bfa;
+	--color-accent-strong: #7c3aed;
+	--color-success: #34d399;
+	--color-warning: #fbbf24;
+	--color-error: #fb7185;
+	--color-code-bg: #0a0e1a;
+
+	--font-sans:
+		'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+		Roboto, sans-serif;
+	--font-mono:
+		'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas,
+		monospace;
+
+	--radius-lg: 12px;
+	--radius-xl: 16px;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	background-color: var(--color-bg);
+	color: var(--color-text);
+	font-family: var(--font-sans);
+	font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+code,
+pre,
+kbd,
+samp {
+	font-family: var(--font-mono);
+}

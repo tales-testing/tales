@@ -1,0 +1,31 @@
+---
+import '../styles/global.css';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+
+const description =
+	'End-to-end tests, written once, replayable forever — in a single Go binary.';
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Tales — Declarative end-to-end testing in a single Go binary</title>
+		<meta name="description" content={description} />
+		<link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+	</head>
+	<body class="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
+		<main class="mx-auto max-w-3xl px-6 py-24">
+			<h1 class="text-4xl font-bold tracking-tight">Tales</h1>
+			<p class="mt-4 text-lg text-[var(--color-text-muted)]">{description}</p>
+			<a
+				href={`${import.meta.env.BASE_URL}docs/getting-started/introduction/`}
+				class="mt-8 inline-block rounded-lg bg-[var(--color-accent)] px-5 py-2.5 font-semibold text-white hover:bg-[var(--color-accent-hover)]"
+			>
+				Get started →
+			</a>
+		</main>
+	</body>
+</html>
