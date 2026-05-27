@@ -190,11 +190,47 @@ func pingWithBoundedTimeout(parent context.Context, db *dbsql.DB) error {
 	pingCtx, cancel := context.WithTimeout(parent, pingTimeout)
 	defer cancel()
 
+	budget := effectivePingBudget(pingCtx)
+
 	if err := db.PingContext(pingCtx); err != nil {
-		return fmt.Errorf("database did not respond within %s: %w", pingTimeout, err)
+		return fmt.Errorf("database did not respond within %s: %w", budget, err)
 	}
 
 	return nil
+}
+
+// effectivePingBudget reports the budget that actually applies to the ping —
+// either the full pingTimeout, or the smaller window remaining on the parent
+// ctx when it carries a stricter deadline. Used in the error message so a
+// user who set --timeout=2s sees "did not respond within 2s" instead of a
+// misleading "within 10s". Computed before PingContext so the value reflects
+// the budget the call started with, not how much was left after it failed.
+func effectivePingBudget(pingCtx context.Context) time.Duration {
+	deadline, ok := pingCtx.Deadline()
+	if !ok {
+		return pingTimeout
+	}
+
+	budget := time.Until(deadline)
+	if budget <= 0 {
+		// Parent was already cancelled before we got here: the ctx has
+		// no real budget to report. Fall back to the nominal cap so
+		// the message stays meaningful ("within 10s") rather than "0s".
+		return pingTimeout
+	}
+
+	// Round to the second so the message stays human-readable ("2s")
+	// instead of leaking sub-second noise from the clock read.
+	rounded := budget.Round(time.Second)
+	if rounded == 0 {
+		rounded = time.Second
+	}
+
+	if rounded > pingTimeout {
+		return pingTimeout
+	}
+
+	return rounded
 }
 
 // withTimeout wraps the parent ctx in a deadline when timeout > 0. Returning

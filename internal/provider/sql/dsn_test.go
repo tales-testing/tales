@@ -63,9 +63,10 @@ func TestInjectDefaultDialTimeout_Postgres(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		in   string
-		want string
+		name  string
+		alias string
+		in    string
+		want  string
 	}{
 		{
 			name: "URL form without query appends ?connect_timeout",
@@ -98,9 +99,10 @@ func TestInjectDefaultDialTimeout_Postgres(t *testing.T) {
 			want: "host=localhost connect_timeout=2",
 		},
 		{
-			name: "pgx alias is treated like postgres",
-			in:   "postgres://localhost/db",
-			want: "postgres://localhost/db?connect_timeout=10",
+			name:  "pgx alias is treated like postgres",
+			alias: driverAliasPgx,
+			in:    "postgres://localhost/db",
+			want:  "postgres://localhost/db?connect_timeout=10",
 		},
 	}
 
@@ -108,9 +110,14 @@ func TestInjectDefaultDialTimeout_Postgres(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := injectDefaultDialTimeout(driverAliasPostgres, tc.in)
+			alias := tc.alias
+			if alias == "" {
+				alias = driverAliasPostgres
+			}
+
+			got := injectDefaultDialTimeout(alias, tc.in)
 			if got != tc.want {
-				t.Errorf("injectDefaultDialTimeout(postgres, %q) = %q, want %q", tc.in, got, tc.want)
+				t.Errorf("injectDefaultDialTimeout(%s, %q) = %q, want %q", alias, tc.in, got, tc.want)
 			}
 		})
 	}

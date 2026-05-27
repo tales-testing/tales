@@ -239,7 +239,7 @@ Flags:
 - `--capture-screenshots <mode>`: mobile screenshot capture mode. One of `none`, `failures`, `steps`, `actions`. Defaults to `failures`, or `actions` when `--report-html` is set.
 - `--timeout <duration>`: global wall-clock budget for the whole run (e.g. `30s`, `5m`, `1h`). When it fires, in-flight steps see a canceled context, are reported as failed, the CLI lists the scenarios that were still running, and the run exits with `1`. `0` (the default) disables the budget — Tales then waits indefinitely.
 - `--verbose`: emit a heartbeat on stderr every 30s listing every scenario still in flight along with its elapsed time. Off by default.
-- `--no-progress`: silence the streaming `scenario X starting / PASS / FAIL` lines that are otherwise emitted on stderr while the suite is running. The final report on stdout is unaffected.
+- `--no-progress`: silence two things — the streaming `scenario X starting / PASS / FAIL` lines emitted on stderr while the suite is running, AND the per-step progress counters that the final stdout report adds when stdout is a TTY. The scenario/step pass-fail summary itself is always rendered.
 
 Examples:
 

@@ -114,9 +114,10 @@ func startHeartbeat(ctx context.Context, sink EventSink, tracker *liveScenarioTr
 
 // watchDeadlineFor returns a buffered channel that will receive the list of
 // scenarios still in flight at the exact moment ctx hits DeadlineExceeded.
-// On any other termination path (context.Canceled, normal completion when
-// the runner closes the channel via its parent context's cancel) the
-// returned channel receives nil.
+// On any other termination path (context.Canceled, including the normal
+// completion path where the runner cancels its internal runCtx) the
+// returned channel receives a nil slice — the channel itself is never
+// closed, callers should expect a single receive.
 //
 // The snapshot is taken as soon as ctx.Done fires, BEFORE the scheduler has
 // a chance to run the scenario goroutines, so they cannot race to call

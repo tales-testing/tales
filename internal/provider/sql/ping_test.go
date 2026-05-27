@@ -14,16 +14,20 @@ import (
 // that mentions the bounded budget, not after 10s. This is the property that
 // makes --timeout authoritative even when the dial happens inside a provider
 // the user did not write.
+//
+// No ExpectPing is registered here: database/sql short-circuits PingContext
+// when the supplied context is already canceled, so the driver mock is
+// never invoked. Asserting expectations would fail spuriously and would
+// also obscure the actual property under test, which is the wall-clock
+// behavior.
 func TestPingWithBoundedTimeout_RespectsParentCancel(t *testing.T) {
 	t.Parallel()
 
-	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	db, _, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
 	defer func() { _ = db.Close() }()
-
-	mock.ExpectPing()
 
 	parent, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -71,6 +75,10 @@ func TestPingWithBoundedTimeout_PingErrorWraps(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "connection refused") {
 		t.Errorf("error should propagate the driver message, got: %v", err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("ping expectation was not consumed: %v", err)
 	}
 }
 
