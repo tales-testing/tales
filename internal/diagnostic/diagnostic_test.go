@@ -264,6 +264,22 @@ func TestSanitizeMapDispatchesCookiesAndHeadersAll(t *testing.T) {
 	}
 }
 
+func TestIsSensitiveJSONFieldMasksCodeVerifier(t *testing.T) {
+	t.Parallel()
+
+	if !isSensitiveJSONField("code_verifier") {
+		t.Fatalf("code_verifier (RFC 7636 PKCE) must be masked in JSON bodies")
+	}
+
+	if !isSensitiveJSONField("Code_Verifier") {
+		t.Fatalf("code_verifier check should be case-insensitive")
+	}
+
+	if isSensitiveJSONField("verifier") {
+		t.Fatalf("bare \"verifier\" should not be masked — too prone to false positives (is_verified, etc.)")
+	}
+}
+
 func TestIsSensitiveJSONFieldSecretContains(t *testing.T) {
 	t.Parallel()
 

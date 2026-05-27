@@ -39,6 +39,7 @@ var sensitiveJSONFields = map[string]struct{}{
 	secretKey:       {},
 	"api_key":       {},
 	"client_secret": {},
+	"code_verifier": {}, // RFC 7636 PKCE; the verifier proves possession to the token endpoint
 }
 
 // FromCTYMap converts cty maps to plain Go values and applies secret masking.
