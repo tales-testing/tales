@@ -1,0 +1,44 @@
+---
+import LandingLayout from '../layouts/LandingLayout.astro';
+import SiteHeader from '../components/landing/SiteHeader.astro';
+import SiteFooter from '../components/landing/SiteFooter.astro';
+
+const base = import.meta.env.BASE_URL;
+---
+
+<LandingLayout
+	title="Page not found — Tales"
+	description="The page you were looking for does not exist."
+>
+	<SiteHeader />
+	<main class="mx-auto flex max-w-3xl flex-col items-center px-6 py-24 text-center">
+		<p
+			class="mb-5 inline-block rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase"
+		>
+			404
+		</p>
+		<h1 class="text-balance text-4xl font-bold tracking-tight md:text-5xl">
+			This page does not exist.
+		</h1>
+		<p class="mt-4 max-w-xl text-lg text-[var(--color-text-muted)]">
+			The link you followed may be broken, renamed, or yet to be written. Head back
+			to the documentation index or open an issue if you think something should be
+			here.
+		</p>
+		<div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+			<a
+				href={`${base}docs/`}
+				class="rounded-lg bg-[var(--color-accent)] px-5 py-2.5 font-semibold text-white transition hover:bg-[var(--color-accent-hover)]"
+			>
+				Browse the docs →
+			</a>
+			<a
+				href="https://github.com/hyperxlab/tales/issues/new"
+				class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-2.5 font-semibold text-[var(--color-text)] transition hover:border-[var(--color-border-strong)]"
+			>
+				Open an issue
+			</a>
+		</div>
+	</main>
+	<SiteFooter />
+</LandingLayout>
