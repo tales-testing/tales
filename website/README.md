@@ -1,6 +1,6 @@
 # Tales website
 
-Source for [tales-testing.github.io/tales](https://tales-testing.github.io/tales/), landing page (`/`) and documentation (`/docs/`).
+Source for [taleslabs.org/](https://taleslabs.org/), landing page (`/`) and documentation (`/docs/`).
 
 Built with [Astro](https://astro.build) 6, [Starlight](https://starlight.astro.build) and [Tailwind CSS](https://tailwindcss.com) 4. Output is fully static and deploys to Cloudflare Pages directly from the repository (no GitHub Actions workflow involved).
 

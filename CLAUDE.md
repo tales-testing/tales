@@ -105,7 +105,7 @@ For generating or maintaining `.tales` suites use the `tales-test-generator` ski
 
 ### Docs and skill sync
 
-User-facing docs now live in [website/src/content/docs/docs/](website/src/content/docs/docs/) (Astro + Starlight, published at https://tales-testing.github.io/tales/). The legacy `docs/` folder has been removed.
+User-facing docs now live in [website/src/content/docs/docs/](website/src/content/docs/docs/) (Astro + Starlight, published at https://taleslabs.org/). The legacy `docs/` folder has been removed.
 
 When changing the DSL, CLI flags, generators, matchers, or any user-facing behavior, update **all of these** in the same change:
 

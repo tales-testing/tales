@@ -6,8 +6,8 @@ import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import { visit } from 'unist-util-visit';
 
-const SITE = process.env.SITE_URL ?? 'https://tales-testing.github.io';
-const BASE = process.env.BASE_PATH ?? '/tales';
+const SITE = process.env.SITE_URL ?? 'https://taleslabs.org';
+const BASE = process.env.BASE_PATH ?? '/';
 
 // Prepend BASE to absolute Markdown links so /docs/foo/ deploys correctly
 // under a sub-path like /tales/. External, mailto, hash, and protocol-relative
