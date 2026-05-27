@@ -1,10 +1,159 @@
 ---
 title: Keywords
-description: Documentation page for Keywords — placeholder, content coming soon.
+description: Reusable flows with typed inputs and named outputs — defined once, called from any scenario.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+A `keyword` is a reusable flow — a named bundle of steps with declared inputs and outputs that any scenario can call. Use keywords to factor out the boilerplate that several scenarios share: a login flow, a "create tenant + admin user" bootstrap, a "verify email + claim password" handshake.
+
+Keywords keep .tales suites DRY without dragging in a templating engine: they are part of the DSL, evaluated by the runner, with the same expression semantics as a scenario.
+
+## Defining a keyword
+
+```hcl
+keyword "authenticate" {
+  inputs {
+    email    = string
+    password = string
+  }
+
+  step "http" "auth_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/auth"
+      body {
+        json = {
+          email    = input.email
+          password = input.password
+        }
+      }
+    }
+
+    expect {
+      status = 200
+      json = {
+        access_token = is_string()
+      }
+    }
+  }
+
+  outputs {
+    token = result.auth_user.response.json.access_token
+  }
+}
+```
+
+A keyword takes:
+
+- An `inputs { ... }` block declaring typed parameters. Types are HCL types (`string`, `number`, `bool`, `list(...)`, `map(...)`).
+- One or more `step` blocks — the same syntax as inside a scenario, with their own `capture`, `retry`, `vars`, etc.
+- An `outputs { ... }` block declaring named values exposed to the caller.
+
+Inputs are accessible via `input.<name>` (or `input.inputs.<name>`) anywhere in the keyword body. Outputs are evaluated *after* the keyword's steps complete and are exposed to the caller as `result.<call_name>.<output_name>`.
+
+## Calling a keyword
+
+The keyword pseudo-provider invokes a defined keyword by name and binds its inputs:
+
+```hcl
+scenario "Login then call protected endpoint" {
+  step "keyword" "do_login" {
+    name = "authenticate"
+    inputs = {
+      email    = "user@example.com"
+      password = "secret123"
+    }
+  }
+
+  step "http" "me" {
+    request {
+      method  = "GET"
+      url     = "${config.base_url}/me"
+      headers = {
+        Authorization = "Bearer ${result.do_login.token}"
+      }
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}
+```
+
+In the caller:
+
+| Expression                  | Value                                                |
+| --------------------------- | ---------------------------------------------------- |
+| `result.do_login.token`     | the keyword's declared `outputs.token` value         |
+| `result.do_login.<step>.id` | individual step captures are **not** exposed         |
+
+Only `outputs` cross the keyword boundary. Internal step captures stay internal.
+
+## Why use keywords?
+
+Three concrete wins over copy-pasting the steps:
+
+- **Single source of truth.** When the auth API changes, you update one keyword body and every scenario picks up the fix.
+- **Cleaner scenarios.** A scenario reads as a business story (`do_login`, `create_post`, `delete_post`) instead of HTTP plumbing.
+- **Typed inputs.** Mis-spelling a parameter or passing the wrong type fails at load time with a clear error, not in production.
+
+## Inputs typing
+
+```hcl
+keyword "create_tenant" {
+  inputs {
+    name      = string
+    tier      = string                  // any string
+    seats     = number                  // any number
+    is_active = bool
+    metadata  = map(string)             // map of string values
+    admins    = list(object({           // list of objects
+      email = string
+      role  = string
+    }))
+  }
+  // ...
+}
+```
+
+HCL's full type expression language is available. The parser rejects calls that don't satisfy the type constraints before any step runs.
+
+## Composition
+
+Keywords can call other keywords. There is no recursion limit beyond runtime stack constraints; in practice keep the call graph shallow.
+
+```hcl
+keyword "register_and_login" {
+  inputs {
+    email    = string
+    password = string
+  }
+
+  step "keyword" "register" {
+    name = "create_user"
+    inputs = { email = input.email, password = input.password }
+  }
+
+  step "keyword" "login" {
+    name = "authenticate"
+    inputs = { email = input.email, password = input.password }
+  }
+
+  outputs {
+    user_id = result.register.id
+    token   = result.login.token
+  }
+}
+```
+
+## Skip rules and keywords
+
+`skip_if` / `skip_unless` on a `keyword` step gate the **call**, not the keyword definition. The keyword's internal steps cannot have their own skip rules independent of the call site — keep complex conditional logic out of keywords and at the scenario level.
+
+<Aside type="tip" title="Keep keywords focused">
+	A good keyword does one thing well: log in, create a tenant, send a signed webhook. If a keyword starts to feel like a mini-scenario with branching logic, that is a signal to split it into two smaller keywords and let the caller compose them.
 </Aside>
+
+See also the [Keyword pseudo-provider](/docs/providers/keyword/) page for invocation semantics.

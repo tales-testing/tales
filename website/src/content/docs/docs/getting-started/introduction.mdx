@@ -1,8 +1,95 @@
 ---
 title: Introduction
-description: What Tales is, why it exists, and how it differs from other integration testing tools.
+description: What Tales is, who it is for, and how it differs from other integration testing tools.
 ---
 
-**Tales** is a declarative integration and end-to-end testing tool, packaged as a single Go binary. You write tests as plain `.tales` files using a readable HCL2 syntax, and a single `tales test` command runs them with deterministic, seedable data generation.
+import { Aside, CardGrid, Card, LinkCard } from '@astrojs/starlight/components';
 
-This page is the entry point to the Tales documentation. If you are new, read the rest of this section in order: [Installation](/tales/docs/getting-started/installation/), [Your first scenario](/tales/docs/getting-started/first-scenario/), and [CLI essentials](/tales/docs/getting-started/cli-essentials/).
+**Tales** is a declarative integration and end-to-end testing tool packaged as a single Go binary. You write tests as `.tales` files using the readable HCL2 syntax, and a single `tales test` command runs them with deterministic, seedable data generation.
+
+## Who is this for?
+
+You'll feel at home in Tales if you have ever:
+
+- inherited a Robot Framework suite and spent more time keeping Python deps alive than writing tests;
+- watched a Karate scenario quietly grow into a JavaScript codebase;
+- maintained three separate test stacks (HTTP, database, mobile) that each demand a different runner;
+- chased a flaky CI failure that you could never reproduce locally.
+
+Tales is designed to remove all four of those daily frictions.
+
+## What you can build today
+
+<CardGrid>
+	<Card title="API workflows" icon="rocket">
+		Chain HTTP requests with captured IDs, assert JSON with rich matchers, sign webhooks with HMAC, upload multipart files. The HTTP provider is the heart of Tales.
+	</Card>
+	<Card title="Database fixtures" icon="puzzle">
+		Set up and tear down PostgreSQL or MySQL state alongside HTTP scenarios. Scalar args with `int64` precision, DSNs masked in reports.
+	</Card>
+	<Card title="iOS smoke tests" icon="phone">
+		Drive a real iOS simulator with an embedded XCUITest driver — zero Swift code to write. The visual HTML report shows every tap, swipe, and screenshot.
+	</Card>
+	<Card title="Reusable flows" icon="list-format">
+		Extract login, signup, or any common sequence into a `keyword` with typed inputs and named outputs. Call it from any scenario.
+	</Card>
+</CardGrid>
+
+## The shape of a scenario
+
+```hcl
+generator "email" "user_email" {
+  prefix = "qa-"
+  domain = "example.com"
+}
+
+scenario "Create user" {
+  step "http" "register" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/users"
+      body {
+        json = {
+          email    = generate("user_email")
+          password = "Sup3rS3cret!"
+        }
+      }
+    }
+
+    expect {
+      status = 201
+      json = {
+        id    = is_string()
+        email = request.body.json.email
+      }
+    }
+
+    capture {
+      id = response.json.id
+    }
+  }
+}
+```
+
+Three things to notice:
+
+1. **Generators are declared once and reused.** `generate("user_email")` produces a stable value for the same seed.
+2. **The DSL is fully declarative.** No glue language, no callbacks — `expect`, `capture`, and assertions are all expressions.
+3. **Captures feed downstream steps.** Later steps read `result.register.id` to chain workflows without writing imperative code.
+
+## Determinism is a feature, not a side effect
+
+Tales generators are seeded. Two runs with the same `--seed` produce byte-identical generated values. This is what lets you reproduce a flaky CI run on your laptop with one flag:
+
+```bash
+tales test ./e2e/pass --seed 1234
+```
+
+The seed is mixed with the scenario name, the step name, the generator name, and the expression path, so identical runs produce identical values even under `--parallel`. See the [Deterministic test data](/docs/guides/determinism/) guide.
+
+## Where to go next
+
+<LinkCard title="Install Tales" href="/docs/getting-started/installation/" description="Pick up a pre-built binary or build from source." />
+<LinkCard title="Your first scenario" href="/docs/getting-started/first-scenario/" description="Write, validate and run a complete scenario in five minutes." />
+<LinkCard title="CLI essentials" href="/docs/getting-started/cli-essentials/" description="Every command, every flag, every exit code." />
+<LinkCard title="DSL overview" href="/docs/writing-scenarios/dsl-overview/" description="Top-level blocks, steps, source order, and the execution model." />

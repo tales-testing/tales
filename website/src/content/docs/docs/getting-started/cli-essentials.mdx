@@ -1,10 +1,146 @@
 ---
-title: Cli Essentials
-description: Documentation page for Cli Essentials — placeholder, content coming soon.
+title: CLI essentials
+description: Every Tales subcommand, every flag, every exit code — the complete CLI reference.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+The `tales` binary has three subcommands: `test`, `validate`, and `doctor`. This page documents each.
+
+## Global
+
+```bash
+tales --version
+tales --help
+```
+
+`--version` prints the embedded build tag, commit, Go runtime, and platform.
+
+## `tales test`
+
+```bash
+tales test <path> [flags]
+```
+
+Runs every `.tales` scenario found in `<path>` (recursively).
+
+### Flags
+
+| Flag                          | Type     | Default                  | Effect                                                                                     |
+| ----------------------------- | -------- | ------------------------ | ------------------------------------------------------------------------------------------ |
+| `--seed`                      | int64    | `time.Now().UnixNano()` (0) | Deterministic generator seed. Setting `0` triggers the system-time fallback.            |
+| `--parallel`                  | int      | `runtime.NumCPU()`       | Maximum number of scenarios running concurrently. Steps inside a scenario stay sequential. |
+| `--tag`                       | []string | (none)                   | Filter scenarios by tag. Multi-value, OR semantics.                                        |
+| `--scenario`                  | string   | (none)                   | Run only one scenario by exact name. Overrides `--tag` when both are set.                  |
+| `--no-color`                  | bool     | `false`                  | Strip ANSI colour codes from console output.                                               |
+| `--no-progress`               | bool     | `false`                  | Disable scenario start/end progress events on stderr.                                      |
+| `--timeout`                   | duration | `0` (disabled)           | Global wall-clock budget. Cancels in-flight scenarios when exceeded.                       |
+| `--verbose`                   | bool     | `false`                  | Print a 30s heartbeat listing scenarios still running.                                     |
+| `--report-junit <path>`       | string   | (none)                   | Write JUnit XML to `<path>`.                                                               |
+| `--report-jsonl <path>`       | string   | (none)                   | Write a JSONL event stream to `<path>`.                                                    |
+| `--report-html <path>`        | string   | (none)                   | Write the visual HTML report to `<path>`. Auto-enables `--capture-screenshots actions`.    |
+| `--capture-screenshots <mode>`| string   | mode-dependent           | Mobile capture mode: `none` / `failures` / `steps` / `actions`. Defaults documented below. |
+
+#### `--capture-screenshots` defaults
+
+| Flags passed                          | Effective mode      |
+| ------------------------------------- | ------------------- |
+| neither                               | `failures` (legacy) |
+| `--report-html` only                  | `actions`           |
+| explicit `--capture-screenshots`      | always wins         |
+
+### Examples
+
+```bash
+# Minimal: run the whole suite with a deterministic seed
+tales test ./e2e/pass --seed 1234
+
+# CI-style: parallel, with JUnit + JSONL + HTML
+tales test ./e2e/pass \
+  --seed     1234 \
+  --parallel 8 \
+  --timeout  10m \
+  --report-junit ./reports/junit.xml \
+  --report-jsonl ./reports/events.jsonl \
+  --report-html  ./reports/visual.html
+
+# Run a single scenario by name (overrides --tag)
+tales test ./e2e/pass --scenario "Create blog post"
+
+# Run only scenarios tagged smoke or critical
+tales test ./e2e/pass --tag smoke --tag critical
+
+# Quiet output for cron jobs
+tales test ./e2e/pass --no-color --no-progress
+```
+
+### Preflight, progress, and timeout
+
+On startup, `tales test` prints a single preflight line on stderr so you immediately see what got loaded:
+
+```text
+tales: loaded 12 scenarios from 5 files; timeout=disabled
+```
+
+While the runner is in flight (and `--no-progress` is not set), scenario start/end events are streamed on stderr. `--verbose` adds a heartbeat every 30 seconds listing scenarios still running — invaluable when you suspect one is stuck.
+
+If `--timeout` fires before the suite completes, the CLI prints the names of the in-flight scenarios so you know exactly which ones stalled.
+
+## `tales validate`
+
+```bash
+tales validate <path>
+```
+
+Parses every `.tales` file under `<path>`, checks step ordering, expression references, and provider configuration — without executing anything. Exits `0` on success, `2` on parse or validation error.
+
+Use it as a fast pre-commit hook.
+
+## `tales doctor`
+
+```bash
+tales doctor
+tales doctor --json
+```
+
+One-stop diagnostic. Prints:
+
+- Tales build info (version, commit, Go runtime, platform).
+- Embedded driver source hash (16-hex cache key prefix), file count, total bytes.
+- iOS driver cache enumeration: extract / build markers, recorded Xcode / SDK / iOS / macOS metadata, on-disk size, "matches embedded" flag.
+- Xcode + simctl probes (`xcodebuild -version`, `xcrun --show-sdk-version`, `xcode-select -p`, `sw_vers`).
+- Available simulator runtimes and devices.
+- Hints (cache wipe, env override, stale CoreSimulator recovery).
+
+`--json` emits the same data as a JSON document — scriptable from CI:
+
+```bash
+tales doctor --json | jq .embedded_driver.source_hash_short
+tales doctor --json | jq '.cache.entries[] | select(.built == false)'
+```
+
+Missing Xcode or unavailable `simctl` is reported as a degraded section, not as an error — `tales doctor` is the tool you reach for when things are broken.
+
+## Exit codes
+
+CLI exit codes are part of the public contract. CI pipelines can rely on them.
+
+| Code | Meaning                              |
+| ---- | ------------------------------------ |
+| `0`  | All scenarios passed (or skipped).   |
+| `1`  | At least one scenario failed.        |
+| `2`  | Parse or validation error.           |
+| `3`  | Runtime or reporting fatal error.    |
+
+<Aside type="note">
+	Skipped scenarios never fail the suite. If every scenario ends in `skipped`, the exit code is still `0`.
 </Aside>
+
+## Environment variables
+
+| Variable                  | Purpose                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| `TALES_DRIVER_CACHE_DIR`  | Override the base directory of the embedded iOS driver cache (default `~/Library/Caches/tales/apple-driver/`). |
+| anything                  | Available inside `.tales` expressions via `env("NAME", "default")`.                       |
+
+User-defined env vars can gate scenarios via [`skip_if` / `skip_unless`](/docs/writing-scenarios/conditional-execution/) — see the env_set / env attributes there.

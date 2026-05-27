@@ -1,10 +1,141 @@
 ---
-title: Captures
-description: Documentation page for Captures — placeholder, content coming soon.
+title: Captures & result chaining
+description: How to capture values from a step and reference them in later steps via the result namespace.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+`capture` blocks copy values out of a step's `response` (or `request`) into named slots under `result.<step>.<key>`. Later steps in the same scenario can read those slots in any expression: URL templates, request bodies, headers, assertions, even other captures.
+
+## Syntax
+
+```hcl
+step "http" "create_user" {
+  request {
+    method = "POST"
+    url    = "${config.base_url}/users"
+    body {
+      json = {
+        email    = "qa@example.com"
+        password = "Sup3rS3cret!"
+      }
+    }
+  }
+
+  expect {
+    status = 201
+    json = {
+      id    = is_string()
+      email = request.body.json.email
+    }
+  }
+
+  capture {
+    id    = response.json.id
+    email = response.json.email
+  }
+}
+```
+
+After this step:
+
+| Expression                    | Value                  |
+| ----------------------------- | ---------------------- |
+| `result.create_user.id`       | the JSON `id` field    |
+| `result.create_user.email`    | the JSON `email` field |
+
+## Reading captures downstream
+
+```hcl
+step "http" "get_user" {
+  request {
+    method = "GET"
+    url    = "${config.base_url}/users/${result.create_user.id}"
+  }
+
+  expect {
+    status = 200
+    json = {
+      email = result.create_user.email
+    }
+  }
+}
+```
+
+You can mix capture references with literal values, env vars, generators, etc. — anywhere an expression is valid.
+
+## What you can capture
+
+`capture` blocks accept any HCL expression. Common patterns:
+
+```hcl
+capture {
+  # Direct JSON fields
+  id        = response.json.id
+  email     = response.json.email
+
+  # Nested paths
+  first_tag = response.json.tags[0]
+
+  # Header values
+  request_id = response.headers["X-Request-Id"]
+
+  # Status code (rarely useful but possible)
+  status     = response.status_code
+
+  # Echoes of the request — useful for tests that round-trip
+  sent_email = request.body.json.email
+
+  # Computed values
+  greeting   = "Hello, ${response.json.first_name}!"
+}
+```
+
+For SQL steps, `response.json.rows[i].<column>` works the same way — see [SQL provider](/docs/providers/sql/) for the row shape.
+
+For mobile steps, the runtime injects two extra helpers — `value("id")` and `text("id")` — which read the current accessibility tree:
+
+```hcl
+capture {
+  current_text  = text("login.email")
+  current_value = value("login.email")
+}
+```
+
+## Forward references are rejected
+
+A step may only read captures from steps **defined earlier in the file**. The parser checks this at load time and exits with code `2` on a forward or unknown reference.
+
+```hcl
+step "http" "first" {
+  // ...
+  expect {
+    json = {
+      id = result.second.id   // ERROR: forward reference to a later step
+    }
+  }
+}
+
+step "http" "second" {
+  // ...
+  capture {
+    id = response.json.id
+  }
+}
+```
+
+The same applies to `depends_on`. Source order is the source of truth.
+
+## Captures across scenarios
+
+Captures **never cross scenario boundaries**. Each scenario starts with an empty `result` namespace. To share state between scenarios, persist it externally (database row, file, env var injected at the suite level) — or, more often, refactor the dependency into a [keyword](/docs/writing-scenarios/keywords/).
+
+## Captures and skip cascade
+
+If a step is skipped (via `skip_if`, `skip_unless`, or because a dependency failed/skipped), its `capture` block does not run. Any downstream step referencing `result.<skipped_step>.<key>` is automatically skipped with a `depends on skipped step "..."` reason — see [Conditional execution](/docs/writing-scenarios/conditional-execution/#cascade).
+
+This means you can write naïve downstream steps without defensive `can(...)` checks — the cascade handles it for you.
+
+<Aside type="tip" title="Defensive teardown">
+	The one place to use `can(result.foo.id)` is in `teardown` steps. Teardown always runs, even when the main flow fails before producing the capture. Wrap delete / cleanup operations in `when = can(result.create_user.id)` so they no-op when there's nothing to clean up.
 </Aside>

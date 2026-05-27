@@ -1,10 +1,108 @@
 ---
-title: Keyword
-description: Documentation page for Keyword — placeholder, content coming soon.
+title: Keyword pseudo-provider
+description: How the keyword pseudo-provider invokes reusable flows defined elsewhere in the suite.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+The `keyword` provider is a thin wrapper that invokes a [keyword definition](/docs/writing-scenarios/keywords/) by name, binds its declared inputs, and exposes the keyword's outputs to the caller.
+
+It is not a "real" provider in the sense that it does not make network calls or touch external state directly — those are done by the steps *inside* the keyword. Think of it as a sub-routine call inside a scenario.
+
+## Syntax
+
+```hcl
+step "keyword" "<call_name>" {
+  name = "<keyword_name>"
+
+  inputs = {
+    <input_name> = <expression>
+    ...
+  }
+}
+```
+
+Required attributes:
+
+| Attribute | Description                                                           |
+| --------- | --------------------------------------------------------------------- |
+| `name`    | The name of a defined keyword (case-sensitive).                       |
+| `inputs`  | Map of input bindings. Must satisfy the keyword's `inputs` type schema. |
+
+Unlike HTTP or SQL steps, a keyword call does not accept `request`, `expect`, `capture`, or `vars`. All of those live inside the keyword body. Whatever the keyword declares in its `outputs` block surfaces under `result.<call_name>.<output_name>`.
+
+## Example
+
+Keyword definition (lives in the same file or another `.tales` file in the suite):
+
+```hcl
+keyword "authenticate" {
+  inputs {
+    email    = string
+    password = string
+  }
+
+  step "http" "auth_user" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/auth"
+      body { json = { email = input.email, password = input.password } }
+    }
+    expect { status = 200, json = { access_token = is_string() } }
+  }
+
+  outputs {
+    token = result.auth_user.response.json.access_token
+  }
+}
+```
+
+Call site:
+
+```hcl
+scenario "Use authenticated endpoint" {
+  step "keyword" "do_login" {
+    name   = "authenticate"
+    inputs = {
+      email    = "user@example.com"
+      password = env("USER_PASSWORD")
+    }
+  }
+
+  step "http" "me" {
+    request {
+      method  = "GET"
+      url     = "${config.base_url}/me"
+      headers = { Authorization = "Bearer ${result.do_login.token}" }
+    }
+    expect { status = 200 }
+  }
+}
+```
+
+## What crosses the boundary
+
+| Inside the keyword                 | Visible to the caller        |
+| ---------------------------------- | ---------------------------- |
+| `input.<name>` (the bound inputs)  | no                           |
+| Internal step `capture { ... }`    | no                           |
+| Internal step `result.*` chains    | no                           |
+| `outputs { ... }`                  | **yes**, as `result.<call>.*` |
+
+This isolation is intentional. A keyword's internal step names can change without breaking callers; only the declared `outputs` are a stable contract.
+
+## Skip and retry
+
+- `skip_if` / `skip_unless` on the call site gate the **entire** keyword invocation. If the rule triggers, no internal step runs.
+- A `when = ...` expression on the call site behaves the same way.
+- `retry` is not currently supported on a `keyword` step. Wrap retry logic inside the keyword body if you need polling there.
+
+## Failures
+
+If any internal step fails (assertion mismatch, provider error, etc.), the keyword call fails. The caller's downstream steps that reference `result.<call>.*` cascade to `skipped` (see [Conditional execution](/docs/writing-scenarios/conditional-execution/#cascade)).
+
+The failure report shows both the call site (`do_login`) and the failing internal step (`do_login → auth_user`) so you can pinpoint the root cause without spelunking through the keyword body.
+
+<Aside type="tip" title="Use keywords to encode workflow vocabularly">
+	If three scenarios all start with `register user → verify email → log in`, extract those steps into a `register_and_verify` keyword. The scenarios become readable as business stories, and you have one place to fix the flow when the API changes.
 </Aside>
