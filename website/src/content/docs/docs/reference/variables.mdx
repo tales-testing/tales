@@ -1,10 +1,207 @@
 ---
-title: Variables
-description: Documentation page for Variables — placeholder, content coming soon.
+title: Expression variables
+description: The variables and helper functions Tales injects into expression scope — config, result, request, response, input, vars, host, value(), text().
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Tales exposes a handful of well-known variables and helper functions inside HCL expressions. They tell the runtime where to read configuration, captured values, the current step's request and response, and host details.
+
+## `config`
+
+The top-level `config { ... }` block of the suite, exposed as a free-form map.
+
+```hcl
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+  webhook_secret = env("WEBHOOK_SECRET")
+}
+
+// elsewhere
+url = "${config.base_url}/users"
+sig = hmac_sha256_hex(config.webhook_secret, vars.body)
+```
+
+Visible in every scenario, every step, every keyword.
+
+## `result`
+
+Captures from earlier steps, namespaced by step name. `result.<step>.<key>` resolves to whatever the upstream step's `capture { key = ... }` evaluated to.
+
+```hcl
+step "http" "create_user" {
+  // ...
+  capture { id = response.json.id, email = response.json.email }
+}
+
+step "http" "fetch_user" {
+  request {
+    url = "${config.base_url}/users/${result.create_user.id}"
+  }
+}
+```
+
+- Visible only in steps **after** the captured step's source position.
+- Forward references and unknown step names are rejected at load time (exit code `2`).
+- Captures don't cross scenario boundaries — each scenario starts with an empty `result`.
+
+For keywords, `result.<call_name>.<output_name>` exposes the keyword's `outputs`, not its internal captures.
+
+## `request`
+
+Inside the current step's `expect` and `capture` blocks, `request` is bound to the request payload Tales is about to send.
+
+```hcl
+step "http" "post_payload" {
+  request {
+    method = "POST"
+    url    = "${config.base_url}/users"
+    body { json = { email = "qa@example.com" } }
+  }
+
+  expect {
+    json = {
+      // Assert the server echoes back what we sent
+      email = request.body.json.email
+    }
+  }
+}
+```
+
+| Field                  | Available for |
+| ---------------------- | ------------- |
+| `request.method`       | HTTP          |
+| `request.url`          | HTTP          |
+| `request.headers`      | HTTP          |
+| `request.body.json`    | HTTP (json body) |
+| `request.body.form`    | HTTP (form body) |
+| `request.body.raw`     | HTTP (raw body)  |
+| `request.actions[i]`   | mobile (per-action record, including masked value) |
+| `request.sql`          | SQL           |
+| `request.args`         | SQL           |
+| `request.connection`   | SQL           |
+
+## `response`
+
+The provider's response, bound after the step's request fires. Available inside `expect` and `capture` on the *same* step.
+
+| Field                  | Notes                                                                |
+| ---------------------- | -------------------------------------------------------------------- |
+| `response.status_code` | HTTP status as integer.                                              |
+| `response.headers`     | Map of strings (HTTP).                                               |
+| `response.json`        | Parsed JSON body when the body is JSON; SQL result shape; mobile expects don't expose `response.json`. |
+| `response.body`        | Raw body string (HTTP).                                              |
+
+```hcl
+expect {
+  status = 200
+  json = {
+    id = is_string()
+  }
+}
+
+capture {
+  id        = response.json.id
+  trace_id  = response.headers["X-Trace-Id"]
+}
+```
+
+## `input`
+
+Inside a keyword's steps, `input` holds the bound input values from the call site.
+
+```hcl
+keyword "authenticate" {
+  inputs {
+    email    = string
+    password = string
+  }
+
+  step "http" "login" {
+    request {
+      body { json = { email = input.email, password = input.password } }
+    }
+  }
+}
+```
+
+Equivalent access pattern: `input.inputs.<name>` — both forms work.
+
+## `vars`
+
+Step-local variables declared via the `vars { ... }` block. Scoped to the current step only; not visible to other steps, to `when`, to `skip_if`, or to `skip_unless`.
+
+```hcl
+step "http" "signed" {
+  vars {
+    ts  = now_unix()
+    sig = hmac_sha256_hex(config.secret, "${vars.ts}.payload")
+  }
+
+  request {
+    headers = { X-Signature = "t=${vars.ts},v1=${vars.sig}" }
+  }
+}
+```
+
+See [Step-local vars](/docs/writing-scenarios/step-vars/) for evaluation order and scope rules.
+
+## `host`
+
+A small object describing the runtime host. Useful in `skip_if` / `skip_unless` rules.
+
+| Field       | Equivalent              | Example values             |
+| ----------- | ----------------------- | -------------------------- |
+| `host.os`   | Go's `runtime.GOOS`     | `"darwin"`, `"linux"`, `"windows"` |
+| `host.arch` | Go's `runtime.GOARCH`   | `"amd64"`, `"arm64"`       |
+
+```hcl
+skip_unless {
+  condition = host.os == "darwin"
+  reason    = "iOS tests require macOS"
+}
+```
+
+## Mobile-only helpers
+
+For mobile steps, the runtime injects two extra functions into expression scope that close over the current accessibility hierarchy:
+
+### `value("id")`
+
+Reads the `value` attribute of an element by accessibility identifier.
+
+```hcl
+capture {
+  current_email = value("login.email")
+}
+```
+
+### `text("id")`
+
+Reads the `label` (visible text) of an element.
+
+```hcl
+capture {
+  greeting = text("home.welcome")
+}
+```
+
+Both functions error if the element is missing. Wrap in `can(...)` if you want a soft probe.
+
+<Aside type="caution" title="Secure values stay masked">
+	`value("id")` on a `secure = true` `input_text` returns the mask `"***"`, not the typed value. To reuse a generated secret across steps, capture it once from `generate(...)` and reference the captured value instead.
 </Aside>
+
+## Quick reference
+
+| Variable / function | Scope                                       |
+| ------------------- | ------------------------------------------- |
+| `config`            | whole file                                  |
+| `result`            | steps after the captured step (same scenario) |
+| `request`           | current step's `expect` / `capture`         |
+| `response`          | current step's `expect` / `capture`         |
+| `input`             | keyword body                                |
+| `vars`              | current step's `request` / `expect` / `capture` |
+| `host`              | anywhere                                    |
+| `value("id")`       | mobile step's `capture` / `expect`          |
+| `text("id")`        | mobile step's `capture` / `expect`          |

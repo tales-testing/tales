@@ -1,10 +1,133 @@
 ---
-title: Functions
-description: Documentation page for Functions — placeholder, content coming soon.
+title: Built-in functions
+description: The HCL functions Tales adds on top of the standard library — env, generate, jsonencode, url_encode, hmac_sha256_hex, regex_find, and the wall-clock helpers.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+Tales extends HCL2 with a small set of helper functions tuned for integration testing: looking up env vars, generating data, encoding payloads, signing requests, and pulling values out of text.
+
+This page documents the helpers that are *not* matchers. For assertion matchers (`contains`, `optional`, `is_string`, etc.), see [Matchers](/docs/reference/matchers/).
+
+## `env(name, default?)`
+
+Reads an environment variable.
+
+```hcl
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+  api_key  = env("API_KEY")           // no default — empty string if unset
+}
+```
+
+| Argument | Type   | Notes                                                            |
+| -------- | ------ | ---------------------------------------------------------------- |
+| `name`   | string | Env var name.                                                    |
+| `default`| any    | Optional fallback when the var is unset or empty. Omit for `""`. |
+
+Common patterns:
+
+```hcl
+url = "${env("API_URL", "http://localhost:1337")}/users"
+debug = env("DEBUG", "0") == "1"
+```
+
+## `generate(name)`
+
+Calls a generator by name and returns its value. See [Generators](/docs/reference/generators/) for declaration and types.
+
+```hcl
+generate("user_email")             // string
+generate("demo_person").first_name // string
+```
+
+Output is deterministic given `(seed, scenario, step, generator name, expression path)`. Two calls in the same step return *different* values — the expression path differs. Capture or store in `vars` to reuse.
+
+## `jsonencode(value)`
+
+Serialises any HCL value to a canonical JSON string. **Object keys are sorted alphabetically**; sets are sorted by encoded form; numbers preserve `json.Number` precision.
+
+```hcl
+vars {
+  body = jsonencode({
+    id   = "evt-1"
+    type = "ping"
+    data = { user = "qa@example.com" }
+  })
+}
+```
+
+The deterministic key ordering matters for any signing scheme — the same payload always produces the same byte sequence, so HMAC and SHA-256 signatures stay stable across runs.
+
+## `url_encode(s)`
+
+URL-encodes a string (component-style encoding, suitable for query parameters or path segments).
+
+```hcl
+url = "${config.base_url}/search?q=${url_encode("hello world")}"
+//                                 → "hello%20world"
+```
+
+## `now_unix()`
+
+Returns the current Unix timestamp (seconds, integer) as observed at evaluation time. **Non-deterministic by design.**
+
+```hcl
+vars {
+  ts = now_unix()   // 1716822000
+}
+```
+
+<Aside type="caution" title="Always capture wall-clock helpers into `vars`">
+	`now_unix()` evaluates fresh every time it appears in an expression. If you reference it directly in both `request.headers.X-Timestamp` and inside an HMAC computation, the two will not match. Compute once with `vars { ts = now_unix() }` and reference `vars.ts` everywhere.
 </Aside>
+
+## `now_rfc3339()`
+
+Same idea, RFC3339 UTC string format.
+
+```hcl
+vars {
+  created_at = now_rfc3339()   // "2026-05-27T18:30:00Z"
+}
+```
+
+## `hmac_sha256_hex(secret, message)`
+
+Computes HMAC-SHA256 and returns the lowercase hex digest. The secret is **never** included in error messages.
+
+```hcl
+vars {
+  sig = hmac_sha256_hex(config.webhook_secret, "${vars.ts}.${vars.body}")
+}
+
+request {
+  headers = { X-Signature = "t=${vars.ts},v1=${vars.sig}" }
+  body { raw = vars.body }
+}
+```
+
+Pair with `jsonencode` for stable canonical inputs — see the [Signing webhooks](/docs/guides/signing-webhooks/) guide for a full recipe.
+
+## `regex_find(value, pattern, group?)`
+
+Extracts the first regex match from a string. With `group = 0` (default) returns the full match; with `group = N` returns the N-th capture group.
+
+```hcl
+capture {
+  // body contains "verification code is A1B2C3"
+  code = regex_find(response.body, "verification code is ([A-Z0-9]{6})", 1)
+}
+```
+
+| Argument  | Type   | Notes                                                              |
+| --------- | ------ | ------------------------------------------------------------------ |
+| `value`   | string | Subject string to search.                                          |
+| `pattern` | string | Go regexp syntax (RE2). Compiled at evaluation time.               |
+| `group`   | number | Optional capture group index (default 0 — the full match).         |
+
+Returns an error if the pattern doesn't match the value. Wrap in `can(...)` (see [Matchers](/docs/reference/matchers/#can)) if you want a soft probe.
+
+## Standard HCL functions
+
+In addition to the helpers above, Tales exposes the standard HCL2 function set: `format`, `formatlist`, `join`, `split`, `lower`, `upper`, `trim`, `length`, `concat`, `merge`, `keys`, `values`, `range`, `tonumber`, `tostring`, `jsondecode`, `coalesce`, `try`, and more. See the [Terraform language docs](https://developer.hashicorp.com/terraform/language/functions) for a comprehensive reference — they share the same `go-cty` function library.

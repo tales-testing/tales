@@ -1,10 +1,185 @@
 ---
 title: Generators
-description: Documentation page for Generators — placeholder, content coming soon.
+description: The seven built-in generator types — declaration syntax, options, and determinism rules.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Work in progress">
-  This page is being written. Check back soon — or contribute on [GitHub](https://github.com/hyperxlab/tales).
+A `generator` block declares a named source of faker data. Calling `generate("<name>")` from any expression returns a value produced by that generator. Output is **deterministic for a given seed** — see [Determinism](#determinism) below.
+
+```hcl
+generator "<type>" "<name>" {
+  # type-specific attributes
+}
+```
+
+The first label is the generator *type* (one of seven built-ins). The second is the *name* you reference from `generate(...)`.
+
+## Available types
+
+| Type          | Returns                  | Use for                                      |
+| ------------- | ------------------------ | -------------------------------------------- |
+| `email`       | string                   | Test email addresses                         |
+| `password`    | string                   | Throwaway passwords with configurable policy |
+| `timezone`    | string                   | IANA timezone identifiers                    |
+| `locale`      | string                   | BCP-47 locale tags                           |
+| `person`      | object                   | First name, last name, gender, full name     |
+| `mac_address` | string                   | MAC addresses                                |
+| `bytes`       | string (hex / base64)    | Random byte payloads                         |
+
+## `email`
+
+```hcl
+generator "email" "user_email" {
+  prefix = "qa-"          // optional, prepended after the random local-part
+  domain = "example.com"  // optional, defaults to a faker domain
+}
+```
+
+| Attribute | Type   | Default       | Notes                                      |
+| --------- | ------ | ------------- | ------------------------------------------ |
+| `prefix`  | string | `""`          | Prepended to the local-part for filtering. |
+| `domain`  | string | faker default | Overrides the random domain.               |
+
+```hcl
+generate("user_email")   // "qa-7f3a@example.com"
+```
+
+## `password`
+
+```hcl
+generator "password" "strong_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+  specials    = "!@#$%^&*"
+}
+```
+
+| Attribute     | Type   | Default | Notes                                                                |
+| ------------- | ------ | ------- | -------------------------------------------------------------------- |
+| `length`      | number | 12      | Total length of the generated password.                              |
+| `min_upper`   | number | 0       | Minimum count of uppercase letters.                                  |
+| `min_lower`   | number | 0       | Minimum count of lowercase letters.                                  |
+| `min_digit`   | number | 0       | Minimum count of digits.                                             |
+| `min_special` | number | 0       | Minimum count of characters from the `specials` alphabet.            |
+| `specials`    | string | a default punctuation set | Characters considered "special" for `min_special`.        |
+
+The sum of `min_*` constraints must not exceed `length`; the parser rejects impossible combinations.
+
+## `timezone`
+
+```hcl
+generator "timezone" "tz" {}
+```
+
+No options. Returns an IANA timezone string (e.g. `"America/New_York"`, `"Europe/Paris"`).
+
+## `locale`
+
+```hcl
+generator "locale" "loc" {
+  separator = "-"   // "-" → "en-US"; "_" → "en_US"; default "-"
+}
+```
+
+| Attribute   | Type   | Default | Notes                                                |
+| ----------- | ------ | ------- | ---------------------------------------------------- |
+| `separator` | string | `"-"`   | Glue character between language and region segments. |
+
+Returns a BCP-47 tag (e.g. `"en-US"`, `"fr_FR"`).
+
+## `person`
+
+```hcl
+generator "person" "demo_person" {
+  gender = "female"   // optional: "male", "female", omit for random
+}
+```
+
+| Attribute | Type   | Default | Notes                                            |
+| --------- | ------ | ------- | ------------------------------------------------ |
+| `gender`  | string | random  | Constrain to `"male"` or `"female"`.             |
+
+Returns an object:
+
+```hcl
+generate("demo_person")
+// {
+//   first_name = "Alice"
+//   last_name  = "Martin"
+//   gender     = "female"
+//   name       = "Alice Martin"
+// }
+```
+
+## `mac_address`
+
+```hcl
+generator "mac_address" "mac" {
+  prefix    = "aa:bb"   // optional, fixed leading octets
+  separator = "-"       // optional, ":" | "-" | "" (default ":")
+  lowercase = true      // optional, default false (uppercase hex)
+}
+```
+
+| Attribute   | Type   | Default | Notes                                      |
+| ----------- | ------ | ------- | ------------------------------------------ |
+| `prefix`    | string | `""`    | Fixed leading octets (with separator).     |
+| `separator` | string | `":"`   | Glue between octets. Use `""` for compact. |
+| `lowercase` | bool   | `false` | Emit lowercase hex.                        |
+
+## `bytes`
+
+```hcl
+generator "bytes" "trace_id" {
+  length   = 8        // optional, default 16 — count of bytes (not hex chars)
+  encoding = "hex"    // optional, "hex" (default) | "base64"
+}
+```
+
+| Attribute  | Type   | Default | Notes                                                       |
+| ---------- | ------ | ------- | ----------------------------------------------------------- |
+| `length`   | number | 16      | Number of bytes generated (before encoding).                |
+| `encoding` | string | `"hex"` | Output encoding. `"hex"` doubles length; `"base64"` is shorter. |
+
+```hcl
+generate("trace_id")   // "7f3a4c91" (length=4 hex)
+```
+
+## Determinism
+
+Every `generate(...)` call mixes:
+
+- the global `--seed`
+- the scenario name
+- the step name
+- the generator name
+- the *expression path* (where in the step body the call lives)
+
+So **two calls to the same generator in the same step produce different values** — the expression path differs. To reuse a generated value (for example, a password and its confirmation field), generate it once into a `vars` or `capture` block and reference that:
+
+```hcl
+step "http" "register" {
+  vars {
+    password = generate("strong_password")
+  }
+
+  request {
+    body {
+      json = {
+        password         = vars.password
+        password_confirm = vars.password   // same value
+      }
+    }
+  }
+}
+```
+
+Identical runs produce identical values regardless of `--parallel`, regardless of retry attempts. This is the core property that makes Tales suites replayable. See the [Deterministic test data](/docs/guides/determinism/) guide for more.
+
+<Aside type="caution" title="Wall-clock time is intentionally non-deterministic">
+	`now_unix()` and `now_rfc3339()` are *not* generators — they read the wall clock and return a different value every call. When you need a stable timestamp inside a step, capture it once in a `vars` block: `vars { ts = now_unix() }`.
 </Aside>
