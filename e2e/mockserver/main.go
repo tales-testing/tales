@@ -23,7 +23,10 @@ import (
 )
 
 // mfaTOTPSecret is the shared TOTP secret expected by /mfa/totp/verify, kept
-// in sync with the matching .tales scenario via config.mfa_secret.
+// in sync with the matching .tales scenario via config.mfa_secret. The value
+// is the public RFC 6238 SHA-1 appendix test vector.
+//
+//nolint:gosec // G101: public RFC 6238 test vector, not a real credential
 const mfaTOTPSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
 // webhookSignedSecret is the HMAC key shared with the matching .tales scenarios

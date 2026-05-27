@@ -2,7 +2,7 @@ package lang
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // G505: HMAC-SHA1 is mandated by RFC 6238 TOTP; this implementation is the spec, not a security primitive choice
 	"encoding/base32"
 	"encoding/binary"
 	"errors"
@@ -84,6 +84,7 @@ func GenerateTOTP(secretBase32 string, opts TOTPOptions) (string, error) {
 		return "", err
 	}
 
+	//nolint:gosec // G115: timestamp >= 0 and period > 0 are both validated above, so the quotient is non-negative
 	counter := uint64(timestamp / period)
 
 	var counterBytes [8]byte

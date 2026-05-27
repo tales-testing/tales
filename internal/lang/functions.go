@@ -2,7 +2,7 @@ package lang
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // G505: HMAC-SHA1 is mandated by RFC 6238 TOTP, exposed deliberately as a low-level primitive
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +16,15 @@ import (
 	"github.com/hyperxlab/tales/internal/diagnostic"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
+)
+
+const (
+	totpOptionPeriod    = "period"
+	totpOptionDigits    = "digits"
+	totpOptionAlgorithm = "algorithm"
+	totpOptionTimestamp = "timestamp"
+	paramSecret         = "secret"
+	paramMessage        = "message"
 )
 
 const (
@@ -343,8 +352,8 @@ func nowRFC3339Func() function.Function {
 func hmacSHA256HexFunc() function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{
-			{Name: "secret", Type: cty.String},
-			{Name: "message", Type: cty.String},
+			{Name: paramSecret, Type: cty.String},
+			{Name: paramMessage, Type: cty.String},
 		},
 		Type: function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
@@ -365,8 +374,8 @@ func hmacSHA256HexFunc() function.Function {
 func hmacSHA1HexFunc() function.Function {
 	return function.New(&function.Spec{
 		Params: []function.Parameter{
-			{Name: "secret", Type: cty.String},
-			{Name: "message", Type: cty.String},
+			{Name: paramSecret, Type: cty.String},
+			{Name: paramMessage, Type: cty.String},
 		},
 		Type: function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
@@ -410,16 +419,9 @@ func ctyNumberToInt64(value cty.Value) (int64, error) {
 // is decoded into a TOTPOptions struct; all validation lives inside
 // GenerateTOTP so the rules stay in one place. Errors never echo the secret.
 func totpFunc() function.Function {
-	allowedOptions := map[string]struct{}{
-		"period":    {},
-		"digits":    {},
-		"algorithm": {},
-		"timestamp": {},
-	}
-
 	return function.New(&function.Spec{
 		Params: []function.Parameter{
-			{Name: "secret", Type: cty.String},
+			{Name: paramSecret, Type: cty.String},
 		},
 		VarParam: &function.Parameter{
 			Name:             "options",
@@ -429,57 +431,13 @@ func totpFunc() function.Function {
 		},
 		Type: function.StaticReturnType(cty.String),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			opts := TOTPOptions{}
-
 			if len(args) > 2 {
 				return cty.NilVal, fmt.Errorf("totp: too many arguments")
 			}
 
-			if len(args) == 2 && !args[1].IsNull() {
-				optsVal := args[1]
-				if !optsVal.Type().IsObjectType() {
-					return cty.NilVal, fmt.Errorf("totp: options must be an object")
-				}
-
-				for name, attr := range optsVal.AsValueMap() {
-					if _, ok := allowedOptions[name]; !ok {
-						return cty.NilVal, fmt.Errorf("totp: unknown option %q", name)
-					}
-
-					if attr.IsNull() {
-						continue
-					}
-
-					switch name {
-					case "period":
-						period, err := ctyNumberToInt64(attr)
-						if err != nil {
-							return cty.NilVal, fmt.Errorf("totp: option %q must be an integer", name)
-						}
-
-						opts.Period = period
-					case "digits":
-						digits, err := ctyNumberToInt(attr)
-						if err != nil {
-							return cty.NilVal, fmt.Errorf("totp: option %q must be an integer", name)
-						}
-
-						opts.Digits = digits
-					case "algorithm":
-						if attr.Type() != cty.String {
-							return cty.NilVal, fmt.Errorf("totp: option %q must be a string", name)
-						}
-
-						opts.Algorithm = attr.AsString()
-					case "timestamp":
-						timestamp, err := ctyNumberToInt64(attr)
-						if err != nil {
-							return cty.NilVal, fmt.Errorf("totp: option %q must be an integer", name)
-						}
-
-						opts.Timestamp = timestamp
-					}
-				}
+			opts, err := decodeTOTPOptionsArg(args)
+			if err != nil {
+				return cty.NilVal, err
 			}
 
 			code, err := GenerateTOTP(args[0].AsString(), opts)
@@ -490,6 +448,76 @@ func totpFunc() function.Function {
 			return cty.StringVal(code), nil
 		},
 	})
+}
+
+func decodeTOTPOptionsArg(args []cty.Value) (TOTPOptions, error) {
+	if len(args) < 2 || args[1].IsNull() {
+		return TOTPOptions{}, nil
+	}
+
+	optsVal := args[1]
+	if !optsVal.Type().IsObjectType() {
+		return TOTPOptions{}, fmt.Errorf("totp: options must be an object")
+	}
+
+	allowed := map[string]struct{}{
+		totpOptionPeriod:    {},
+		totpOptionDigits:    {},
+		totpOptionAlgorithm: {},
+		totpOptionTimestamp: {},
+	}
+
+	opts := TOTPOptions{}
+
+	for name, attr := range optsVal.AsValueMap() {
+		if _, ok := allowed[name]; !ok {
+			return TOTPOptions{}, fmt.Errorf("totp: unknown option %q", name)
+		}
+
+		if attr.IsNull() {
+			continue
+		}
+
+		if err := assignTOTPOption(&opts, name, attr); err != nil {
+			return TOTPOptions{}, err
+		}
+	}
+
+	return opts, nil
+}
+
+func assignTOTPOption(opts *TOTPOptions, name string, attr cty.Value) error {
+	switch name {
+	case totpOptionPeriod:
+		period, err := ctyNumberToInt64(attr)
+		if err != nil {
+			return fmt.Errorf("totp: option %q must be an integer", name)
+		}
+
+		opts.Period = period
+	case totpOptionDigits:
+		digits, err := ctyNumberToInt(attr)
+		if err != nil {
+			return fmt.Errorf("totp: option %q must be an integer", name)
+		}
+
+		opts.Digits = digits
+	case totpOptionAlgorithm:
+		if attr.Type() != cty.String {
+			return fmt.Errorf("totp: option %q must be a string", name)
+		}
+
+		opts.Algorithm = attr.AsString()
+	case totpOptionTimestamp:
+		timestamp, err := ctyNumberToInt64(attr)
+		if err != nil {
+			return fmt.Errorf("totp: option %q must be an integer", name)
+		}
+
+		opts.Timestamp = timestamp
+	}
+
+	return nil
 }
 
 func baseFunctions() map[string]function.Function {
