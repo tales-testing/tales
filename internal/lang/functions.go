@@ -1,10 +1,6 @@
 package lang
 
 import (
-	"crypto/hmac"
-	"crypto/sha1" //nolint:gosec // G505: HMAC-SHA1 is mandated by RFC 6238 TOTP, exposed deliberately as a low-level primitive
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -347,48 +343,6 @@ func nowRFC3339Func() function.Function {
 	})
 }
 
-// hmacSHA256HexFunc computes HMAC-SHA256(secret, message) and returns the
-// digest as lowercase hex. Errors never embed the secret or message.
-func hmacSHA256HexFunc() function.Function {
-	return function.New(&function.Spec{
-		Params: []function.Parameter{
-			{Name: paramSecret, Type: cty.String},
-			{Name: paramMessage, Type: cty.String},
-		},
-		Type: function.StaticReturnType(cty.String),
-		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			mac := hmac.New(sha256.New, []byte(args[0].AsString()))
-			if _, err := mac.Write([]byte(args[1].AsString())); err != nil {
-				return cty.NilVal, fmt.Errorf("hmac_sha256_hex: write failed")
-			}
-
-			return cty.StringVal(hex.EncodeToString(mac.Sum(nil))), nil
-		},
-	})
-}
-
-// hmacSHA1HexFunc computes HMAC-SHA1(secret, message) and returns the digest
-// as lowercase hex. Errors never embed the secret or message. SHA-1 is exposed
-// because it is required by RFC 6238 TOTP and some legacy signing schemes;
-// prefer hmac_sha256_hex for new code.
-func hmacSHA1HexFunc() function.Function {
-	return function.New(&function.Spec{
-		Params: []function.Parameter{
-			{Name: paramSecret, Type: cty.String},
-			{Name: paramMessage, Type: cty.String},
-		},
-		Type: function.StaticReturnType(cty.String),
-		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
-			mac := hmac.New(sha1.New, []byte(args[0].AsString()))
-			if _, err := mac.Write([]byte(args[1].AsString())); err != nil {
-				return cty.NilVal, fmt.Errorf("hmac_sha1_hex: write failed")
-			}
-
-			return cty.StringVal(hex.EncodeToString(mac.Sum(nil))), nil
-		},
-	})
-}
-
 func ctyNumberToInt(value cty.Value) (int, error) {
 	if value.Type() != cty.Number {
 		return 0, fmt.Errorf("number value expected")
@@ -522,32 +476,34 @@ func assignTOTPOption(opts *TOTPOptions, name string, attr cty.Value) error {
 
 func baseFunctions() map[string]function.Function {
 	out := map[string]function.Function{
-		"env":             envFunc(),
-		"jsonencode":      jsonEncodeFunc(),
-		"now_unix":        nowUnixFunc(),
-		"now_rfc3339":     nowRFC3339Func(),
-		"hmac_sha256_hex": hmacSHA256HexFunc(),
-		"hmac_sha1_hex":   hmacSHA1HexFunc(),
-		"totp":            totpFunc(),
-		"regex_find":      regexFindFunc(),
-		"url_encode":      urlEncodeFunc(),
-		"contains":        matcherSingleArg("contains"),
-		"matches":         matchesFunc(),
-		"exists":          matcherNoArg("exists"),
-		"not_exists":      matcherNoArg("not_exists"),
-		"is_string":       matcherNoArg("is_string"),
-		"is_number":       matcherNoArg("is_number"),
-		"is_bool":         matcherNoArg("is_bool"),
-		"is_array":        matcherNoArg("is_array"),
-		"is_object":       matcherNoArg("is_object"),
-		"one_of":          oneOfFunc(),
-		"can":             matcherSingleArg("can"),
-		"optional":        optionalFunc(),
-		"required":        requiredFunc(),
-		"any":             matcherNoArg("any"),
+		"env":         envFunc(),
+		"jsonencode":  jsonEncodeFunc(),
+		"now_unix":    nowUnixFunc(),
+		"now_rfc3339": nowRFC3339Func(),
+		"totp":        totpFunc(),
+		"regex_find":  regexFindFunc(),
+		"url_encode":  urlEncodeFunc(),
+		"contains":    matcherSingleArg("contains"),
+		"matches":     matchesFunc(),
+		"exists":      matcherNoArg("exists"),
+		"not_exists":  matcherNoArg("not_exists"),
+		"is_string":   matcherNoArg("is_string"),
+		"is_number":   matcherNoArg("is_number"),
+		"is_bool":     matcherNoArg("is_bool"),
+		"is_array":    matcherNoArg("is_array"),
+		"is_object":   matcherNoArg("is_object"),
+		"one_of":      oneOfFunc(),
+		"can":         matcherSingleArg("can"),
+		"optional":    optionalFunc(),
+		"required":    requiredFunc(),
+		"any":         matcherNoArg("any"),
 	}
 
 	for name, fn := range hashFunctions() {
+		out[name] = fn
+	}
+
+	for name, fn := range hmacFunctions() {
 		out[name] = fn
 	}
 
