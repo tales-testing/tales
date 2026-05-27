@@ -61,6 +61,22 @@ preconditions are optional.
 The DSN is **never** copied into reports. Only the connection name, driver
 alias, SQL text and arg count appear in the JSONL / HTML / JUnit outputs.
 
+### Dial timeout
+
+Tales injects a default dial timeout into the DSN when none is set, so a
+missing or unreachable database fails fast instead of stalling on the OS
+TCP retry stack (~127s on Linux when SYN packets are dropped):
+
+- **MySQL**: `timeout=10s` is appended unless the DSN already carries
+  `timeout=...`.
+- **Postgres**: `connect_timeout=10` is appended unless the DSN already
+  carries `connect_timeout=...` (both URL and `key=value` flavors).
+
+The user-supplied value always wins. The first time a connection is used,
+Tales also runs a bounded `PingContext` (10s, or sooner if `--timeout` /
+per-step `request.timeout` is stricter) and surfaces a clear error if
+connectivity is broken — the connection is not cached when ping fails.
+
 ## Exec step
 
 ```hcl

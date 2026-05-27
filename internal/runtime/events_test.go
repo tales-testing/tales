@@ -43,6 +43,15 @@ func (s *recordingSink) ScenarioEnded(name string, status report.Status, duratio
 	s.events = append(s.events, "scenario-ended:"+name+":"+string(status))
 }
 
+func (s *recordingSink) Heartbeat(active []ActiveScenario) {
+	_ = active
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.events = append(s.events, "heartbeat")
+}
+
 func (s *recordingSink) SuiteEnded(duration time.Duration) {
 	_ = duration
 

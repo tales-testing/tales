@@ -27,6 +27,13 @@ type EventSink interface {
 	// failureMessage is empty unless status == StatusFail.
 	ScenarioEnded(name string, status report.Status, duration time.Duration, failureMessage string)
 
+	// Heartbeat fires from the runtime's ticker goroutine when
+	// Options.HeartbeatInterval > 0. The active slice lists scenarios
+	// still in flight, each with the wall-clock elapsed since they
+	// started. The slice is empty when nothing is running, in which
+	// case the sink should generally stay quiet.
+	Heartbeat(active []ActiveScenario)
+
 	// SuiteEnded fires once, after every scenario has ended.
 	SuiteEnded(duration time.Duration)
 }
@@ -47,6 +54,14 @@ func emitScenarioStarted(sink EventSink, name string) {
 	}
 
 	sink.ScenarioStarted(name)
+}
+
+func emitHeartbeat(sink EventSink, active []ActiveScenario) {
+	if sink == nil || len(active) == 0 {
+		return
+	}
+
+	sink.Heartbeat(active)
 }
 
 func emitScenarioEnded(sink EventSink, scenario *report.ScenarioResult) {

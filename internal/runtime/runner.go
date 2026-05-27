@@ -29,6 +29,11 @@ type Options struct {
 	// end. Nil disables streaming (the historical behavior). The sink must
 	// be safe for concurrent calls.
 	Events EventSink
+	// HeartbeatInterval, when > 0 and Events is non-nil, spawns a ticker
+	// that calls Events.Heartbeat with the list of in-flight scenarios at
+	// each tick. Used by --verbose to surface slow scenarios that would
+	// otherwise stay quiet between their start and end lines.
+	HeartbeatInterval time.Duration
 }
 
 // Runner executes a suite.
@@ -68,6 +73,9 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 	sem := make(chan struct{}, opts.Parallel)
 	tracker := newLiveScenarioTracker()
 	stalledCh := watchDeadlineFor(runCtx, tracker)
+
+	stopHeartbeat := startHeartbeat(runCtx, opts.Events, tracker, opts.HeartbeatInterval)
+	defer stopHeartbeat()
 
 	var (
 		wg         sync.WaitGroup
