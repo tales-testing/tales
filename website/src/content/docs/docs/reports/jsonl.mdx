@@ -5,7 +5,7 @@ description: The Tales JSONL event stream — one JSON object per line, suitable
 
 import { Aside } from '@astrojs/starlight/components';
 
-The JSONL reporter writes one JSON object per line — a complete event stream of the run. It is the richest of the four reporters: every step, every attempt, every action carries its full request, response, and timing data.
+The JSONL reporter writes one JSON object per line — a complete event stream of the run. It is the richest of the four reporters: every step and every UI action carries its full request, response, and timing data.
 
 ## Usage
 
@@ -13,54 +13,67 @@ The JSONL reporter writes one JSON object per line — a complete event stream o
 tales test ./e2e/pass --report-jsonl ./reports/events.jsonl
 ```
 
-The file is written incrementally as the run progresses (great for tailing in CI). The parent directory is created if missing.
+The file is written after the suite completes (not incrementally). The parent directory is created if missing.
 
 ## Event types
 
-Each line carries a `type` field. The full set:
+Each line carries a `type` field. There are three:
 
-| `type`              | Emitted when                                                       |
-| ------------------- | ------------------------------------------------------------------ |
-| `suite_start`       | Once, at the start of the run.                                     |
-| `scenario_start`    | Once per scenario, before its first step.                          |
-| `step`              | Once per step (after its attempts complete).                       |
-| `attempt`           | Once per attempt when `retry { ... }` runs more than once.          |
-| `action`            | Once per UI action for mobile steps (when `Actions` is populated). |
-| `teardown_step`     | Once per teardown step.                                            |
-| `scenario_end`      | Once per scenario, after teardown.                                 |
-| `suite_end`         | Once, at the end of the run.                                       |
+| `type`     | Emitted when                                                                                              |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| `scenario` | Once per scenario, summarising its final status, duration, and (when failed/skipped) error / skip reason. |
+| `step`     | Once per step. Includes a `phase` field set to `"step"` for main-flow steps and `"teardown"` for teardown steps. Retried steps surface their attempt count via `attempts`. |
+| `action`   | Once per UI action for mobile steps that recorded actions (any `--capture-screenshots` mode other than `none`). Emitted immediately after the parent `step` event. |
+
+There is no separate `suite_start` / `suite_end` envelope. Scenario aggregation is up to the consumer (`jq -s 'group_by(.scenario)'` or similar).
 
 ## Example
 
 ```jsonl
-{"type":"suite_start","seed":1234,"parallel":4,"files":5,"scenarios":12,"timestamp":"2026-05-27T18:30:00Z"}
-{"type":"scenario_start","scenario":"Create blog post","file":"e2e/pass/blog.tales","tags":[]}
-{"type":"step","scenario":"Create blog post","step":"create_user","provider":"http","status":"pass","duration_ms":312,"request":{"method":"POST","url":"http://localhost:1337/users","body":{"json":{"email":"qa-7f3a@example.com","password":"Sup3rS3cret!"}}},"response":{"status_code":201,"json":{"id":"u_abc","email":"qa-7f3a@example.com"}}}
-{"type":"step","scenario":"Create blog post","step":"create_post","provider":"http","status":"pass","duration_ms":418,"request":{...},"response":{...}}
-{"type":"teardown_step","scenario":"Create blog post","step":"delete_user","provider":"http","status":"pass","duration_ms":112}
-{"type":"scenario_end","scenario":"Create blog post","status":"pass","duration_ms":842}
-{"type":"suite_end","status":"pass","passed":12,"failed":0,"skipped":0,"duration_ms":1240}
+{"type":"scenario","scenario":"Create blog post","file":"e2e/pass/blog.tales","status":"pass","duration_ms":842,"seed":1234}
+{"type":"step","phase":"step","scenario":"Create blog post","step":"create_user","provider":"http","status":"pass","status_code":201,"duration_ms":312,"seed":1234,"file":"e2e/pass/blog.tales","request":{"method":"POST","url":"http://localhost:1337/users"},"response":{"status_code":201,"json":{"id":"u_abc"}}}
+{"type":"step","phase":"step","scenario":"Create blog post","step":"create_post","provider":"http","status":"pass","status_code":201,"duration_ms":418,"seed":1234,"file":"e2e/pass/blog.tales"}
+{"type":"step","phase":"teardown","scenario":"Create blog post","step":"delete_user","provider":"http","status":"pass","status_code":204,"duration_ms":112,"seed":1234,"file":"e2e/pass/blog.tales"}
 ```
+
+The order is `scenario` event first, then its `step` events (main flow, then teardown) interleaved with any `action` events.
 
 ## Fields you can rely on
 
+### `scenario` event
+
+| Field         | Type     | Notes                                                       |
+| ------------- | -------- | ----------------------------------------------------------- |
+| `type`        | string   | Always `"scenario"`.                                        |
+| `scenario`    | string   | Scenario name.                                              |
+| `file`        | string   | Path to the `.tales` file that defines the scenario.        |
+| `status`      | string   | `pass`, `fail`, `skipped`.                                  |
+| `duration_ms` | number   | End-to-end wall-clock duration of the scenario.             |
+| `seed`        | number   | The `--seed` value used for this run.                       |
+| `error`       | object   | When failed: kind, path, want, got, message.                |
+| `skip_reason` | string   | Present only when `status="skipped"`. Omitted otherwise.    |
+
 ### `step` event
 
-| Field           | Type     | Notes                                                            |
-| --------------- | -------- | ---------------------------------------------------------------- |
-| `scenario`      | string   | Scenario name.                                                   |
-| `step`          | string   | Step name.                                                       |
-| `provider`      | string   | `http`, `sql`, `mobile`, `keyword`.                              |
-| `status`        | string   | `pass`, `fail`, `skipped`.                                       |
-| `skip_reason`   | string   | Present only when `status="skipped"`. Omitted otherwise.         |
-| `duration_ms`   | number   | Step duration including retries.                                 |
-| `attempts`      | number   | Total attempts run when `retry { ... }` is set. Omitted otherwise.|
-| `request`       | object   | Provider-specific request shape.                                 |
-| `response`      | object   | Provider-specific response shape.                                |
-| `captures`      | object   | Resolved capture map.                                            |
-| `artifacts`     | object   | Mobile: paths to screenshot / hierarchy files.                   |
-| `actions`       | array    | Mobile: per-action records (kind, label, value, status, paths).  |
-| `failure`       | object   | When failed: kind, path, want, got, message.                     |
+| Field         | Type     | Notes                                                            |
+| ------------- | -------- | ---------------------------------------------------------------- |
+| `type`        | string   | Always `"step"`.                                                 |
+| `phase`       | string   | `"step"` for main-flow steps; `"teardown"` for teardown steps.   |
+| `scenario`    | string   | Scenario name.                                                   |
+| `step`        | string   | Step name.                                                       |
+| `provider`    | string   | `http`, `sql`, `mobile`, `keyword`.                              |
+| `status`      | string   | `pass`, `fail`, `skipped`.                                       |
+| `duration_ms` | number   | Step duration including retries.                                 |
+| `seed`        | number   | The `--seed` value used for this run.                            |
+| `file`        | string   | Path to the `.tales` file that defines the step.                 |
+| `status_code` | number   | HTTP status code, when applicable. Omitted for non-HTTP steps.   |
+| `attempts`    | number   | Total attempts run, present only when greater than 1 (the step retried). A single-attempt step omits the field entirely. |
+| `skip_reason` | string   | Present only when `status="skipped"`. Omitted otherwise.         |
+| `request`     | object   | Provider-specific request shape. Omitted when empty.             |
+| `response`    | object   | Provider-specific response shape. Omitted when empty.            |
+| `actions`     | array    | Mobile: per-action records, mirrored at the request level.       |
+| `artifacts`   | object   | Mobile: paths to screenshot / hierarchy files. Omitted when empty. |
+| `error`       | object   | When failed: kind, path, want, got, message.                     |
 
 ### `action` event (mobile only)
 
@@ -101,8 +114,11 @@ jq -c 'select(.type=="step" and .status=="fail")' events.jsonl | wc -l
 # All failure messages with their step path
 jq -c 'select(.type=="step" and .status=="fail") | {scenario, step, msg:.failure.message}' events.jsonl
 
-# Total wall-clock time
-jq -s 'map(select(.type=="suite_end")) | .[0].duration_ms' events.jsonl
+# Total wall-clock time across scenarios (parallelism aware)
+jq -s 'map(select(.type=="scenario") | .duration_ms) | add' events.jsonl
+
+# All retried steps with their attempt count
+jq -c 'select(.type=="step" and .attempts) | {scenario, step, attempts}' events.jsonl
 ```
 
 ### In a log pipeline

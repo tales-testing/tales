@@ -103,6 +103,6 @@ If any internal step fails (assertion mismatch, provider error, etc.), the keywo
 
 The failure report shows both the call site (`do_login`) and the failing internal step (`do_login → auth_user`) so you can pinpoint the root cause without spelunking through the keyword body.
 
-<Aside type="tip" title="Use keywords to encode workflow vocabularly">
+<Aside type="tip" title="Use keywords to encode workflow vocabulary">
 	If three scenarios all start with `register user → verify email → log in`, extract those steps into a `register_and_verify` keyword. The scenarios become readable as business stories, and you have one place to fix the flow when the API changes.
 </Aside>

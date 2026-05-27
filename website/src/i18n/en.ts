@@ -254,14 +254,24 @@ step "sql" "insert_org" {
   platform = "ios"
   target   = "iphone"
   actions {
-    input_text { id = "login.email"    value = "qa@example.com" }
-    input_text { id = "login.password" value = "secret"  secure = true }
-    tap        { id = "login.submit" }
+    input_text {
+      id    = "login.email"
+      value = "qa@example.com"
+    }
+    input_text {
+      id     = "login.password"
+      value  = "secret"
+      secure = true
+    }
+    tap { id = "login.submit" }
     wait_visible { id = "home.screen" }
   }
   expect {
     visible { id = "home.welcome" }
-    text    { id = "home.user"   value = contains("Welcome") }
+    text {
+      id    = "home.user"
+      value = contains("Welcome")
+    }
   }
 }`,
 			},
