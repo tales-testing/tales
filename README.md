@@ -1,28 +1,19 @@
 # Tales
 
-Tales is a single-binary integration and end-to-end testing tool inspired by Robot Framework and Karate.
+Tales is a single-binary integration and end-to-end testing tool. Scenarios are written in declarative HCL2 files with the `.tales` extension.
 
-Scenarios are written in declarative HCL2 files with the `.tales` extension.
+**📚 Full documentation: [hyperxlab.github.io/tales](https://hyperxlab.github.io/tales/)**
 
 ## Why Tales
 
-- Single Go binary, easy to run in CI.
-- Declarative DSL focused on API workflows.
-- Deterministic seeded data generation.
-- Scenarios run in parallel; steps within a scenario run sequentially in file order.
-- Built-in HTTP provider (including ConnectRPC JSON over HTTP).
-- Built-in SQL provider (`step "sql"`, PostgreSQL + MySQL) for preparing
-  internal state that is not exposed through the public API. See
-  [docs/providers/sql.md](docs/providers/sql.md).
-- Native iOS UI automation via XCUITest (`step "mobile"`), no Appium / no
-  Maestro at runtime. The XCUITest driver is **embedded** in the `tales`
-  binary and built on first use into `~/Library/Caches/tales/apple-driver/`,
-  so a released binary runs iOS tests on any macOS+Xcode host without the
-  repository on disk. `tales doctor` (`--json` for CI) inspects the cache,
-  embedded source, Xcode, and simctl state in one place. See
-  [docs/mobile/ios.md](docs/mobile/ios.md).
-- Human-readable console output.
-- JUnit XML and JSONL reports with artifact paths (screenshots, UI hierarchy).
+- **Single Go binary** — drop it in CI, no runtime, no plugins, no version manager.
+- **Declarative HCL2** — no JavaScript escape hatch, no glue code. What you write is what runs.
+- **Deterministic seeded data** — `--seed 1234` produces byte-identical generated values on every run.
+- **Scenarios in parallel, steps sequential in file order.** Chained captures stay deterministic.
+- **HTTP provider** including ConnectRPC JSON over HTTP and multipart uploads.
+- **SQL provider** (`step "sql"`) for PostgreSQL + MySQL preconditions and teardown. See [docs/providers/sql/](https://hyperxlab.github.io/tales/docs/providers/sql/).
+- **Native iOS UI automation via XCUITest** (`step "mobile"`), no Appium / no Maestro. The XCUITest driver is **embedded** in the `tales` binary and built on first use into `~/Library/Caches/tales/apple-driver/`, so a released binary runs iOS tests on any macOS+Xcode host. `tales doctor` (`--json` for CI) inspects the cache, embedded source, Xcode, and simctl state in one place. See [docs/providers/mobile-ios/](https://hyperxlab.github.io/tales/docs/providers/mobile-ios/).
+- **Reports** — human-readable console output, JUnit XML for CI dashboards, JSONL event stream for log pipelines, single-file visual HTML report with action-by-action screenshot replay.
 
 ## Current Status
 
@@ -61,8 +52,7 @@ make build
 Tagged releases (`v*`) are built by [the release workflow](.github/workflows/release.yml)
 and published to GitHub Releases. Pre-built binaries are provided for
 `linux/{amd64,arm64}` and `darwin/{amd64,arm64}`, with a `checksums.txt`
-file alongside. See [docs/release.md](docs/release.md) for the release
-process and how to verify a downloaded binary.
+file alongside. See [docs/operations/release/](https://hyperxlab.github.io/tales/docs/operations/release/) for the release process and how to verify a downloaded binary.
 
 ## Quick Start
 
@@ -263,7 +253,7 @@ Exit codes:
 - `scenario "..." { ... }`
 - `step "http" "name" { ... }`
 - `step "sql" "name" { connection = "<name>"; exec { ... } | query { ... } }`
-  — see [docs/providers/sql.md](docs/providers/sql.md).
+  — see [docs/providers/sql/](https://hyperxlab.github.io/tales/docs/providers/sql/).
 - `request.body { json = ... }` for JSON payloads.
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
@@ -283,7 +273,7 @@ Exit codes:
 - `generator "email"`, `generator "password"`, `generator "timezone"`, `generator "locale"`, `generator "person"`, `generator "mac_address"`, and `generator "bytes"` for deterministic test data.
 - `teardown { ... }` for deterministic cleanup.
 - `keyword \"...\" { ... }` for reusable flows.
-- `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/skip.md](docs/skip.md).
+- `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/writing-scenarios/conditional-execution/](https://hyperxlab.github.io/tales/docs/writing-scenarios/conditional-execution/).
 
 Backward-compatible aliases currently accepted:
 
@@ -593,7 +583,7 @@ Per-action artifacts live under:
 build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-<n>/actions/NNNN-<kind>-<id>/
 ```
 
-See [docs/reports/visual.md](docs/reports/visual.md) for a full walk-through, security notes, and limitations.
+See [docs/reports/visual/](https://hyperxlab.github.io/tales/docs/reports/visual/) for a full walk-through, security notes, and limitations.
 
 ## E2E and Mock Server
 
@@ -626,21 +616,24 @@ make e2e
 ## Project Layout
 
 - `cmd/tales`: CLI entrypoint.
-- `internal/cli`: command wiring (`test`, `validate`).
+- `internal/cli`: command wiring (`test`, `validate`, `doctor`).
 - `internal/parser`: loading and HCL decoding.
 - `internal/model`: suite/scenario/step models.
 - `internal/lang`: expression evaluation and functions.
 - `internal/runtime`: execution engine, sequential step runner, seed logic.
 - `internal/assertion`: matcher and JSON assertion logic.
-- `internal/provider/http`: HTTP execution provider.
-- `internal/report`: console/JUnit/JSONL reporting.
+- `internal/provider/http`: HTTP execution provider (including multipart, Basic auth).
+- `internal/provider/sql`: SQL provider (PostgreSQL + MySQL).
+- `internal/provider/mobile`: iOS XCUITest provider with embedded driver.
+- `internal/provider/keyword`: reusable-flow pseudo-provider.
+- `internal/report`: console / JUnit / JSONL / visual HTML reporting.
 - `e2e/mockserver`: in-memory test API used by E2E.
+- `website/`: Astro + Starlight + Tailwind v4 source of [hyperxlab.github.io/tales](https://hyperxlab.github.io/tales/).
 
 ## Current Limitations
 
-- HTTP is the only production-ready external provider.
-- No browser/mobile providers.
-- No external plugin system.
+- No browser provider yet (iOS mobile is supported via XCUITest).
+- No external plugin system — providers are compiled in.
 - No dedicated ConnectRPC provider (Connect JSON works through HTTP).
 
 ## License
