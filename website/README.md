@@ -2,7 +2,7 @@
 
 Source for [tales-testing.github.io/tales](https://tales-testing.github.io/tales/), landing page (`/`) and documentation (`/docs/`).
 
-Built with [Astro](https://astro.build) 6, [Starlight](https://starlight.astro.build) and [Tailwind CSS](https://tailwindcss.com) 4. Output is fully static and deploys to GitHub Pages (workflow lives in `.github/workflows/deploy-website.yml`).
+Built with [Astro](https://astro.build) 6, [Starlight](https://starlight.astro.build) and [Tailwind CSS](https://tailwindcss.com) 4. Output is fully static and deploys to Cloudflare Pages directly from the repository (no GitHub Actions workflow involved).
 
 ## Local development
 
@@ -62,7 +62,7 @@ Once a second locale is registered, Starlight's language switcher appears automa
 
 ## Deployment
 
-Production build is published by `.github/workflows/deploy-website.yml` on every push to `master` that touches `website/**`. Override `SITE_URL` and `BASE_PATH` to retarget the build (for example for a custom domain set `BASE_PATH=/`).
+The website is deployed by Cloudflare Pages from this repository. The build command is `bun run build` and the output directory is `website/dist`. Override `SITE_URL` and `BASE_PATH` in the Cloudflare Pages project settings to retarget the build (for a root-domain deploy, set `BASE_PATH=/`).
 
 ## Search
 
