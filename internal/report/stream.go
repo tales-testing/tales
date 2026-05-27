@@ -21,7 +21,6 @@ type StreamSink struct {
 	mu      sync.Mutex
 	out     io.Writer
 	painter colorPainter
-	started time.Time
 }
 
 // NewStreamSink builds a sink that writes to out. Pass color=true to enable
@@ -35,8 +34,6 @@ func NewStreamSink(out io.Writer, color bool) *StreamSink {
 func (s *StreamSink) SuiteStarted(totalScenarios, parallel int, seed int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	s.started = time.Now()
 
 	label := s.painter.paint(ansiBlue, "Suite")
 
@@ -125,8 +122,10 @@ func (s *StreamSink) SuiteEnded(duration time.Duration) {
 	_, _ = fmt.Fprintf(s.out, "%s: finished in %s\n", label, duration.Round(time.Millisecond))
 }
 
-// firstLine returns the first non-empty line of s, or s itself if it has no
-// newline. Used to keep streamed failure summaries to one line.
+// firstLine returns the substring of s up to the first newline (which may
+// be empty if s starts with one), or s unchanged when it has no newline.
+// Used to keep streamed failure summaries to one line; the empty case is
+// handled by ScenarioEnded which falls back to a no-summary format.
 func firstLine(s string) string {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\n' {
