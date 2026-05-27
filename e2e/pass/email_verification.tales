@@ -119,7 +119,7 @@ scenario "Register and verify account from email" {
 
     capture {
       code      = regex_find(response.body, "verification code is ([A-Z0-9]{6})", 1)
-      header_ct = response.headers["content-type"]
+      header_ct = response.headers["Content-Type"]
     }
   }
 
