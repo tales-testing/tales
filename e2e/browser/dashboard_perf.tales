@@ -1,0 +1,53 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        viewport = {
+          width  = 1440
+          height = 1000
+        }
+        timeout = "30s"
+        args    = ["--disable-gpu"]
+      }
+    }
+  }
+}
+
+scenario "Browser web performance budget" {
+  tags = ["browser", "web", "perf"]
+
+  step "browser" "dashboard_perf" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/dashboard?email=demo@example.com"
+      }
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+        timeout  = "10s"
+      }
+    }
+
+    # Thresholds are intentionally generous because shared CI runners
+    # are noisy and we only want to catch order-of-magnitude regressions
+    # in V1.
+    expect {
+      web_perf {
+        dom_content_loaded = lt("5s")
+        load               = lt("5s")
+        fcp                = lt("5s")
+        resources_count    = gte(1)
+      }
+    }
+
+    capture {
+      perf = browser.performance
+    }
+  }
+}

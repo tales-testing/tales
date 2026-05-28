@@ -1,0 +1,36 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "HTTP load smoke" {
+  tags = ["load", "perf"]
+
+  step "load" "healthz" {
+    http {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    run {
+      requests    = 50
+      concurrency = 5
+    }
+
+    # Thresholds are intentionally permissive because shared CI runners
+    # are noisy. Tighten them in your own projects, not in the Tales
+    # demo suite.
+    expect {
+      status_2xx_ratio = gte(1.0)
+      error_ratio      = lte(0.0)
+      p95              = lt("1s")
+      rps              = gt(0)
+    }
+
+    capture {
+      p95 = response.json.latency.p95_ms
+      rps = response.json.rps
+    }
+  }
+}
