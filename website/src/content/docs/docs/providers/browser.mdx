@@ -227,11 +227,13 @@ Artifact paths are surfaced on `StepResult.Artifacts` and per-action `ActionResu
 When `--report-html` is set, the browser provider populates the same `report.ActionResult` records used by the mobile provider's visual replay. The HTML report shows:
 
 - Action timeline with per-action duration
-- Screenshots inline (base64-embedded for portability)
+- Per-action screenshots (referenced via relative path under `build/artifacts/browser/...`)
 - Masked secure values
-- DOM snapshots linked from each action
+- Per-action DOM snapshots (`dom.html`)
 
 There is no browser-specific renderer — the visual layout is shared with mobile.
+
+To share the report, ship the `e2e-browser.html` file **together with the `build/artifacts/browser/` directory** — the HTML uses relative paths to load the PNG / DOM files. The CSS / JS template assets are baked into the HTML itself, so opening the report from any local folder that preserves the relative artifact layout works without a web server.
 
 ## Timeout layering
 
