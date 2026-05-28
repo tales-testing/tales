@@ -59,15 +59,15 @@ func TestMaskHeadersCaseInsensitive(t *testing.T) {
 		"Accept":        "application/json",
 	})
 
-	if headers["Authorization"] != "***" {
+	if got := headers["Authorization"]; len(got) != 1 || got[0] != "***" {
 		t.Fatalf("authorization should be masked: %v", headers)
 	}
 
-	if headers["x-api-key"] != "***" {
+	if got := headers["x-api-key"]; len(got) != 1 || got[0] != "***" {
 		t.Fatalf("x-api-key should be masked: %v", headers)
 	}
 
-	if headers["Accept"] != "application/json" {
+	if got := headers["Accept"]; len(got) != 1 || got[0] != "application/json" {
 		t.Fatalf("accept should remain visible: %v", headers)
 	}
 }
@@ -153,23 +153,23 @@ func TestMaskHeadersSignatureContains(t *testing.T) {
 		"X-Visible":             "ok",
 	})
 
-	if headers["X-Anchorify-Signature"] != "***" {
+	if got := headers["X-Anchorify-Signature"]; len(got) != 1 || got[0] != "***" {
 		t.Fatalf("X-Anchorify-Signature should be masked: %v", headers)
 	}
 
-	if headers["X-My-Signature-Token"] != "***" {
+	if got := headers["X-My-Signature-Token"]; len(got) != 1 || got[0] != "***" {
 		t.Fatalf("X-My-Signature-Token should be masked: %v", headers)
 	}
 
-	if headers["X-Visible"] != "ok" {
+	if got := headers["X-Visible"]; len(got) != 1 || got[0] != "ok" {
 		t.Fatalf("non-sensitive header should stay visible: %v", headers)
 	}
 }
 
-func TestMaskHeadersAllMasksEverySetCookie(t *testing.T) {
+func TestMaskHeadersMasksEverySetCookie(t *testing.T) {
 	t.Parallel()
 
-	headers := MaskHeadersAll(map[string]interface{}{
+	headers := MaskHeaders(map[string]interface{}{
 		"Set-Cookie": []interface{}{
 			"ia_session=abc; Path=/; HttpOnly",
 			"theme=dark; Path=/",
@@ -179,7 +179,7 @@ func TestMaskHeadersAllMasksEverySetCookie(t *testing.T) {
 
 	setCookie, ok := headers["Set-Cookie"]
 	if !ok {
-		t.Fatalf("expected Set-Cookie in masked headers_all")
+		t.Fatalf("expected Set-Cookie in masked headers")
 	}
 
 	if len(setCookie) != 2 {
@@ -236,11 +236,11 @@ func TestMaskCookiesRedactsValueAndRaw(t *testing.T) {
 	}
 }
 
-func TestSanitizeMapDispatchesCookiesAndHeadersAll(t *testing.T) {
+func TestSanitizeMapDispatchesCookiesAndMultiValueHeaders(t *testing.T) {
 	t.Parallel()
 
 	sanitized := SanitizeMap(map[string]interface{}{
-		"headers_all": map[string]interface{}{
+		"headers": map[string]interface{}{
 			"Set-Cookie": []interface{}{"session=secret-1", "theme=dark"},
 		},
 		"cookies": map[string]interface{}{
@@ -252,9 +252,9 @@ func TestSanitizeMapDispatchesCookiesAndHeadersAll(t *testing.T) {
 		},
 	})
 
-	headersAll := sanitized["headers_all"].(map[string][]string)
-	if headersAll["Set-Cookie"][0] != "***" || headersAll["Set-Cookie"][1] != "***" {
-		t.Fatalf("Set-Cookie values should be masked end-to-end: %#v", headersAll)
+	headers := sanitized["headers"].(map[string][]string)
+	if headers["Set-Cookie"][0] != "***" || headers["Set-Cookie"][1] != "***" {
+		t.Fatalf("Set-Cookie values should be masked end-to-end: %#v", headers)
 	}
 
 	cookies := sanitized["cookies"].(map[string]map[string]interface{})

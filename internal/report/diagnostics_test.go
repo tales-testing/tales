@@ -84,7 +84,8 @@ func TestJSONLFailureOutputMasksSensitiveFields(t *testing.T) {
 
 		request := event["request"].(map[string]interface{})
 		headers := request["headers"].(map[string]interface{})
-		if headers["Authorization"] != "***" {
+		authz := headers["Authorization"].([]interface{})
+		if len(authz) != 1 || authz[0] != "***" {
 			t.Fatalf("authorization must be masked: %#v", headers)
 		}
 
@@ -223,7 +224,7 @@ func TestJSONLFailureOutputMasksBasicAuth(t *testing.T) {
 	}
 
 	assertNoBasicAuthLeak(t, string(content))
-	if !strings.Contains(string(content), `"Authorization":"Basic ***"`) {
+	if !strings.Contains(string(content), `"Authorization":["Basic ***"]`) {
 		t.Fatalf("expected masked basic authorization, got: %s", string(content))
 	}
 }

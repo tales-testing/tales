@@ -275,7 +275,9 @@ func renderHeadersForJUnit(values map[string]interface{}, key string) string {
 	builder.WriteString("  headers:\n")
 
 	for _, headerName := range diagnostic.SortedHeaderKeys(headers) {
-		_, _ = fmt.Fprintf(&builder, "    %s: %s\n", headerName, headers[headerName])
+		for _, value := range headers[headerName] {
+			_, _ = fmt.Fprintf(&builder, "    %s: %s\n", headerName, value)
+		}
 	}
 
 	return builder.String()

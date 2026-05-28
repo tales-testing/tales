@@ -18,7 +18,6 @@ import (
 const (
 	providerTypeHTTP = "http"
 	headersKey       = "headers"
-	headersAllKey    = "headers_all"
 	cookiesKey       = "cookies"
 )
 
@@ -456,12 +455,11 @@ func buildOutput(
 			headersKey: toStringMapValue(headers),
 		},
 		Response: map[string]cty.Value{
-			"status":      cty.NumberIntVal(int64(resp.StatusCode)),
-			headersKey:    buildResponseHeaders(resp.Header),
-			headersAllKey: buildResponseHeadersAll(resp.Header),
-			cookiesKey:    buildResponseCookies(resp.Cookies()),
-			"body":        cty.StringVal(string(respBytes)),
-			"json":        responseJSON,
+			"status":   cty.NumberIntVal(int64(resp.StatusCode)),
+			headersKey: buildResponseHeaders(resp.Header),
+			cookiesKey: buildResponseCookies(resp.Cookies()),
+			"body":     cty.StringVal(string(respBytes)),
+			"json":     responseJSON,
 		},
 	}
 
@@ -476,35 +474,11 @@ func buildOutput(
 	return output, nil
 }
 
-// buildResponseHeaders exposes each header as its first value with the
-// canonical MIME header name. The lowercase-duplicate keys produced by the
-// previous implementation are gone — see CHANGELOG / docs for the breaking
-// change. Multi-valued headers should be read via response.headers_all.
+// buildResponseHeaders exposes every value for every header as a list of
+// strings, preserving wire order. Single-valued headers are returned as a
+// one-element list (`response.headers["Content-Type"][0]`); Set-Cookie and
+// other multi-valued headers carry every value.
 func buildResponseHeaders(header http.Header) cty.Value {
-	if len(header) == 0 {
-		return cty.EmptyObjectVal
-	}
-
-	values := make(map[string]cty.Value, len(header))
-	for key, vs := range header {
-		if len(vs) == 0 {
-			continue
-		}
-
-		values[key] = cty.StringVal(vs[0])
-	}
-
-	if len(values) == 0 {
-		return cty.EmptyObjectVal
-	}
-
-	return cty.ObjectVal(values)
-}
-
-// buildResponseHeadersAll exposes every value for every header as a list of
-// strings, preserving wire order. Use this for Set-Cookie or any header whose
-// semantics are multi-valued.
-func buildResponseHeadersAll(header http.Header) cty.Value {
 	if len(header) == 0 {
 		return cty.EmptyObjectVal
 	}

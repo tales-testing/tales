@@ -738,7 +738,8 @@ func (s *serverState) verifyTOTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // sessionCookies emits two Set-Cookie headers and a small JSON body so e2e
-// scenarios can exercise response.headers_all and response.cookies.
+// scenarios can exercise response.headers (multi-value list shape) and
+// response.cookies.
 func (s *serverState) sessionCookies(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Add("Set-Cookie", "ia_session=abc123; Path=/; HttpOnly; Secure")
 	w.Header().Add("Set-Cookie", "theme=dark; Path=/")
