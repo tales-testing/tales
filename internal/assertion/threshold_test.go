@@ -72,6 +72,27 @@ func TestThresholdLtBoundaryFails(t *testing.T) {
 	}
 }
 
+func TestThresholdLtePassFail(t *testing.T) {
+	t.Parallel()
+
+	if err := MatchJSON(lteMatcher(cty.NumberIntVal(100)), cty.NumberIntVal(42), true, "$"); err != nil {
+		t.Fatalf("lte should pass when 42 < 100, got %v", err)
+	}
+
+	err := MatchJSON(lteMatcher(cty.NumberIntVal(100)), cty.NumberIntVal(150), true, "$")
+	if err == nil {
+		t.Fatalf("lte should fail when 150 > 100")
+	}
+
+	if !strings.Contains(err.Error(), "value must be <= 100") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "got 150") {
+		t.Fatalf("error must report actual value, got %v", err)
+	}
+}
+
 func TestThresholdLteBoundaryPasses(t *testing.T) {
 	t.Parallel()
 
@@ -96,11 +117,36 @@ func TestThresholdGtPassFail(t *testing.T) {
 	}
 }
 
+func TestThresholdGtePassFail(t *testing.T) {
+	t.Parallel()
+
+	if err := MatchJSON(gteMatcher(cty.NumberIntVal(40)), cty.NumberIntVal(99), true, "$"); err != nil {
+		t.Fatalf("gte should pass when 99 > 40, got %v", err)
+	}
+
+	err := MatchJSON(gteMatcher(cty.NumberIntVal(40)), cty.NumberIntVal(20), true, "$")
+	if err == nil {
+		t.Fatalf("gte should fail when 20 < 40")
+	}
+
+	if !strings.Contains(err.Error(), "value must be >= 40") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "got 20") {
+		t.Fatalf("error must report actual value, got %v", err)
+	}
+}
+
 func TestThresholdGteBoundaryPasses(t *testing.T) {
 	t.Parallel()
 
 	if err := MatchJSON(gteMatcher(cty.NumberFloatVal(0.95)), cty.NumberFloatVal(0.95), true, "$"); err != nil {
 		t.Fatalf("gte should pass at boundary value, got %v", err)
+	}
+
+	if err := MatchJSON(gteMatcher(cty.NumberFloatVal(0.95)), cty.NumberFloatVal(0.94), true, "$"); err == nil {
+		t.Fatalf("gte should fail when actual < threshold")
 	}
 }
 
