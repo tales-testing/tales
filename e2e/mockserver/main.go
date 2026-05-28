@@ -104,6 +104,10 @@ func main() {
 	r.HandleFunc("/mfa/totp/verify", state.verifyTOTP).Methods(http.MethodPost)
 	r.HandleFunc("/cookies/session", state.sessionCookies).Methods(http.MethodGet)
 	r.HandleFunc("/oauth/pkce/verify", state.verifyPKCE).Methods(http.MethodPost)
+	r.HandleFunc("/web/login", state.webLoginGet).Methods(http.MethodGet)
+	r.HandleFunc("/web/login", state.webLoginPost).Methods(http.MethodPost)
+	r.HandleFunc("/web/dashboard", state.webDashboard).Methods(http.MethodGet)
+	r.HandleFunc("/web/form", state.webForm).Methods(http.MethodGet)
 
 	addr := ":" + port
 	server := &http.Server{
