@@ -75,10 +75,21 @@
 	--sl-color-bg-inline-code: #f1f5f9;
 }
 
-/* Slight code-block polish */
+/* Slight code-block polish. Scope the dark frame background to dark mode
+ * only: in light mode Expressive Code renders its light syntax theme
+ * (dim tokens meant for a light background), so forcing a dark frame
+ * here would leave the code unreadable. */
 .expressive-code {
 	--ec-brdRad: 10px;
+}
+
+:root .expressive-code,
+:root[data-theme='dark'] .expressive-code {
 	--ec-frm-edBg: #0a0e1a;
+}
+
+:root[data-theme='light'] .expressive-code {
+	--ec-frm-edBg: #f8fafc;
 }
 
 /* Pagefind search modal */
