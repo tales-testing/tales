@@ -267,6 +267,54 @@ Pin flakiness with:
 
 The seed mixer continues to work for everything outside the browser step (config, vars, generators, expressions evaluated before the provider runs).
 
+## Web performance budgets
+
+Browser steps collect a Web Performance snapshot from Chrome after the actions settle. The snapshot is exposed under `browser.performance` and can be asserted via an `expect { web_perf { ... } }` block. Pair it with the numeric threshold matchers (`lt`, `lte`, `gt`, `gte`, `between`) and Go duration strings (`"1800ms"`, `"3s"`) to write readable budgets.
+
+```hcl
+step "browser" "dashboard_perf" {
+  target = "chrome"
+  actions {
+    goto { url = "${config.base_url}/web/dashboard" }
+    wait_visible { selector = "[data-testid='dashboard.title']" }
+  }
+  expect {
+    web_perf {
+      fcp                = lt("1800ms")
+      lcp                = lt("2500ms")
+      cls                = lt(0.1)
+      load               = lt("3000ms")
+      dom_content_loaded = lt("1500ms")
+      resources_count    = gte(1)
+    }
+  }
+  capture {
+    perf = browser.performance
+  }
+}
+```
+
+### Available metrics
+
+| Canonical name (capture)         | Friendly aliases (web_perf)                | Source                                     |
+| -------------------------------- | ------------------------------------------ | ------------------------------------------ |
+| `dom_content_loaded_ms`          | `dom_content_loaded`, `dom_ready`          | Navigation Timing API                       |
+| `load_event_ms`                  | `load`, `load_event`                       | Navigation Timing API                       |
+| `fcp_ms`                         | `fcp`                                      | Paint Timing API (`first-contentful-paint`) |
+| `lcp_ms`                         | `lcp`                                      | `PerformanceObserver` (LCP)                 |
+| `cls`                            | `cls`                                      | `PerformanceObserver` (layout-shift)         |
+| `resources_count`                | `resources_count`                          | Resource Timing API                          |
+| `transfer_size_bytes`            | `transfer_size`                            | Resource Timing API                          |
+| `encoded_body_size_bytes`        | `encoded_body_size`                        | Resource Timing API                          |
+| `decoded_body_size_bytes`        | `decoded_body_size`                        | Resource Timing API                          |
+| `url`, `title`                   | —                                          | `location` / `document`                      |
+
+### Implementation notes
+
+- A small JS script is injected via `Page.addScriptToEvaluateOnNewDocument` before the first navigation. It installs `PerformanceObserver`s for `largest-contentful-paint` and `layout-shift` so LCP and CLS accumulate from the first paint. Observer entries with `hadRecentInput` are excluded from CLS, matching the Web Vitals definition.
+- When a metric is intrinsically optional (LCP / CLS / FCP) and the browser did not surface a value (very simple pages or aborted navigations), `expect.web_perf` fails with `browser performance metric "lcp_ms" is not available` rather than silently passing or comparing against zero. Capture also exposes the metric as `null`, so HCL can branch on it.
+- Web performance is fundamentally non-deterministic. Use generous thresholds in shared CI and tighten them in environment-specific projects.
+
 ## V1 limitations
 
 - **Chrome / Chromium only.** Firefox and WebKit are out of scope.
