@@ -518,6 +518,11 @@ func baseFunctions() map[string]function.Function {
 		"optional":         optionalFunc(),
 		"required":         requiredFunc(),
 		"any":              matcherNoArg("any"),
+		"lt":               thresholdFunc("lt"),
+		"lte":              thresholdFunc("lte"),
+		"gt":               thresholdFunc("gt"),
+		"gte":              thresholdFunc("gte"),
+		"between":          betweenFunc(),
 	}
 
 	for name, fn := range hashFunctions() {

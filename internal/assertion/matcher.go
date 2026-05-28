@@ -34,6 +34,11 @@ var matcherHandlers = map[string]matcherHandler{
 	"matches":        matchRegex,
 	"one_of":         matchOneOf,
 	matcherAny:       matchAny,
+	"lt":             matchLt,
+	"lte":            matchLte,
+	"gt":             matchGt,
+	"gte":            matchGte,
+	"between":        matchBetween,
 }
 
 func isMatcher(value cty.Value) (string, map[string]cty.Value, bool) {
@@ -102,7 +107,7 @@ func matchIsNumber(args map[string]cty.Value, actual cty.Value, path string) err
 		return nil
 	}
 
-	return &Mismatch{Kind: kindAssertion, Path: path, Message: "value is not a number"}
+	return &Mismatch{Kind: kindAssertion, Path: path, Message: msgValueNotNumber}
 }
 
 func matchIsBool(args map[string]cty.Value, actual cty.Value, path string) error {
