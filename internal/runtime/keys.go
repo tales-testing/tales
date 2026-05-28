@@ -26,5 +26,16 @@ const (
 	keyURL      = "url"
 	keyMasked   = "***"
 
+	keyPerformance          = "performance"
+	keyDOMContentLoadedMS   = "dom_content_loaded_ms"
+	keyLoadEventMS          = "load_event_ms"
+	keyFCPMS                = "fcp_ms"
+	keyLCPMS                = "lcp_ms"
+	keyCLS                  = "cls"
+	keyResourcesCount       = "resources_count"
+	keyTransferSizeBytes    = "transfer_size_bytes"
+	keyEncodedBodySizeBytes = "encoded_body_size_bytes"
+	keyDecodedBodySizeBytes = "decoded_body_size_bytes"
+
 	kindRuntime = "runtime"
 )

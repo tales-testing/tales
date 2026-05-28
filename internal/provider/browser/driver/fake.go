@@ -27,6 +27,8 @@ type FakeDriver struct {
 	URLValue        string
 	TitleValue      string
 	ScreenshotPNG   []byte
+	Perf            *PerformanceMetrics
+	PerfErr         error
 	FailOnSelector  map[string]error // make a specific click/fill/wait fail
 	FailFirstClick  bool
 	HasClickedFirst bool
@@ -268,6 +270,13 @@ func (f *FakeDriver) Screenshot(_ context.Context) ([]byte, error) {
 	f.record(Call{Method: "Screenshot"})
 
 	return f.ScreenshotPNG, nil
+}
+
+// Performance returns the configured metrics or error.
+func (f *FakeDriver) Performance(_ context.Context) (*PerformanceMetrics, error) {
+	f.record(Call{Method: "Performance"})
+
+	return f.Perf, f.PerfErr
 }
 
 // Close records the call.
