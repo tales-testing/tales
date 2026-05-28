@@ -112,8 +112,6 @@ func SanitizeMap(values map[string]interface{}) map[string]interface{} {
 		switch strings.ToLower(key) {
 		case "headers":
 			sanitized[key] = MaskHeaders(value)
-		case "headers_all":
-			sanitized[key] = MaskHeadersAll(value)
 		case "cookies":
 			sanitized[key] = MaskCookies(value)
 		case jsonKey:
@@ -178,50 +176,25 @@ func SanitizeUnknown(value interface{}) interface{} {
 	}
 }
 
-// MaskHeaders masks sensitive headers case-insensitively.
-func MaskHeaders(value interface{}) map[string]string {
-	headers := map[string]string{}
-
-	switch typed := value.(type) {
-	case map[string]interface{}:
-		for key, nested := range typed {
-			headers[key] = stringify(nested)
-		}
-	case map[string]string:
-		for key, nested := range typed {
-			headers[key] = nested
-		}
-	default:
-		return headers
-	}
-
-	for key, current := range headers {
-		if isSensitiveHeader(key) {
-			if strings.HasPrefix(strings.ToLower(current), "basic ") {
-				headers[key] = "Basic " + maskedValue
-			} else {
-				headers[key] = maskedValue
-			}
-
-			continue
-		}
-
-		headers[key] = current
-	}
-
-	return headers
-}
-
-// MaskHeadersAll masks sensitive headers in the multi-value response shape
-// (map[string][]string). Every value of a sensitive header is replaced with
-// the placeholder; non-sensitive headers pass through unchanged.
-func MaskHeadersAll(value interface{}) map[string][]string {
+// MaskHeaders masks sensitive headers case-insensitively and always returns
+// the multi-value shape `map[string][]string`. Single-valued inputs (request
+// headers, where each name has exactly one string value) become 1-element
+// lists; multi-valued inputs (response headers, where Set-Cookie / WWW-
+// Authenticate / etc. carry several values) preserve every value. For
+// sensitive headers, each value is replaced with the placeholder, with the
+// `Basic ` prefix kept intact so masked Authorization headers are still
+// recognizable.
+func MaskHeaders(value interface{}) map[string][]string {
 	result := map[string][]string{}
 
 	switch typed := value.(type) {
 	case map[string]interface{}:
 		for key, nested := range typed {
 			result[key] = headerValuesToStrings(nested)
+		}
+	case map[string]string:
+		for key, nested := range typed {
+			result[key] = []string{nested}
 		}
 	case map[string][]string:
 		for key, values := range typed {
@@ -239,7 +212,13 @@ func MaskHeadersAll(value interface{}) map[string][]string {
 		}
 
 		masked := make([]string, len(values))
-		for i := range values {
+		for i, v := range values {
+			if strings.HasPrefix(strings.ToLower(v), "basic ") {
+				masked[i] = "Basic " + maskedValue
+
+				continue
+			}
+
 			masked[i] = maskedValue
 		}
 
@@ -477,7 +456,7 @@ func PrettyJSON(value interface{}) string {
 }
 
 // SortedHeaderKeys returns deterministic sorted keys.
-func SortedHeaderKeys(headers map[string]string) []string {
+func SortedHeaderKeys(headers map[string][]string) []string {
 	keys := make([]string, 0, len(headers))
 	for key := range headers {
 		keys = append(keys, key)

@@ -532,8 +532,10 @@ func printHeaders(out io.Writer, values map[string]interface{}, key string) erro
 	}
 
 	for _, headerKey := range diagnostic.SortedHeaderKeys(headers) {
-		if _, err := fmt.Fprintf(out, "        %s: %s\n", headerKey, headers[headerKey]); err != nil {
-			return fmt.Errorf("print header %s: %w", headerKey, err)
+		for _, value := range headers[headerKey] {
+			if _, err := fmt.Fprintf(out, "        %s: %s\n", headerKey, value); err != nil {
+				return fmt.Errorf("print header %s: %w", headerKey, err)
+			}
 		}
 	}
 

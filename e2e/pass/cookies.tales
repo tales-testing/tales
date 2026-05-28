@@ -6,9 +6,9 @@ config {
 
 # Proves that the HTTP provider exposes structured Set-Cookie data:
 #   - response.cookies parses each Set-Cookie into name/value/path/...
-#   - response.headers_all preserves both Set-Cookie values in wire order
-#   - response.headers returns the first value only (deterministic), never a
-#     comma-joined string
+#   - response.headers["<name>"] is a list of strings preserving wire order;
+#     single-valued headers come back as 1-element lists, multi-valued ones
+#     (Set-Cookie) carry every value.
 scenario "Capture response cookies" {
   tags = ["http", "cookies"]
 
@@ -30,8 +30,8 @@ scenario "Capture response cookies" {
       session      = response.cookies.ia_session.value
       theme        = response.cookies.theme.value
       session_path = response.cookies.ia_session.path
-      set_cookies  = response.headers_all["Set-Cookie"]
-      content_type = response.headers["Content-Type"]
+      set_cookies  = response.headers["Set-Cookie"]
+      content_type = response.headers["Content-Type"][0]
     }
   }
 }

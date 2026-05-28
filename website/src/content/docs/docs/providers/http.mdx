@@ -187,7 +187,7 @@ After a step runs, the response is bound to the `response` namespace:
 ```hcl
 capture {
   id        = response.json.id
-  trace_id  = response.headers["X-Trace-Id"]
+  trace_id  = response.headers["X-Trace-Id"][0]
   status    = response.status_code
 }
 ```
@@ -196,27 +196,22 @@ See [Captures & result chaining](/docs/writing-scenarios/captures/) for full sem
 
 ### Response shape
 
-| Field                  | Type                            | Notes                                                                        |
-| ---------------------- | ------------------------------- | ---------------------------------------------------------------------------- |
-| `response.status`      | number                          | HTTP status code.                                                            |
-| `response.json`        | dynamic                         | Decoded JSON (or `null` when the body is not JSON).                          |
-| `response.body`        | string                          | Raw response body.                                                           |
-| `response.headers`     | map of string                   | First value per header, keyed by the canonical MIME name.                    |
-| `response.headers_all` | map of list(string)             | Every value, preserving wire order. Use this for multi-valued headers.       |
-| `response.cookies`     | map of cookie object            | Parsed `Set-Cookie` cookies, keyed by cookie name.                           |
+| Field              | Type                  | Notes                                                                                                                                  |
+| ------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `response.status`  | number                | HTTP status code.                                                                                                                      |
+| `response.json`    | dynamic               | Decoded JSON (or `null` when the body is not JSON).                                                                                    |
+| `response.body`    | string                | Raw response body.                                                                                                                     |
+| `response.headers` | map of list(string)   | Every value for every header, in wire order, keyed by the canonical MIME name. Single-valued headers come back as a one-element list.  |
+| `response.cookies` | map of cookie object  | Parsed `Set-Cookie` cookies, keyed by cookie name.                                                                                     |
 
 Each cookie object exposes: `name`, `value`, `raw`, `path`, `domain`, `expires` (RFC3339 string or `""`), `max_age`, `secure`, `http_only`, `same_site` (`"lax" | "strict" | "none" | ""`). Duplicate cookie names use the last-seen value (browser overwrite semantics).
-
-:::caution[Breaking change]
-`response.headers` no longer comma-joins multi-valued headers, it returns the first value deterministically. The lowercase-duplicate keys (`response.headers["content-type"]`) are also gone; always use the canonical MIME header name. Multi-value access lives on `response.headers_all`.
-:::
 
 ```hcl
 capture {
   session     = response.cookies.ia_session.value
   theme       = response.cookies.theme.value
-  set_cookies = response.headers_all["Set-Cookie"]
-  ct          = response.headers["Content-Type"]
+  set_cookies = response.headers["Set-Cookie"]         # list, both values preserved
+  ct          = response.headers["Content-Type"][0]    # single-valued, index 0 reads the string
 }
 ```
 

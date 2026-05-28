@@ -430,7 +430,7 @@ func TestHTTPProviderConnectHeaders(t *testing.T) {
 	}
 }
 
-func TestHTTPProviderResponseHeadersFirstValue(t *testing.T) {
+func TestHTTPProviderResponseHeadersPreservesValues(t *testing.T) {
 	t.Parallel()
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -455,57 +455,9 @@ func TestHTTPProviderResponseHeadersFirstValue(t *testing.T) {
 
 	headers := out.Response["headers"].AsValueMap()
 
-	setCookie, ok := headers["Set-Cookie"]
+	setCookies, ok := headers["Set-Cookie"]
 	if !ok {
-		t.Fatalf("expected Set-Cookie header in response.headers, got keys: %v", headerKeys(headers))
-	}
-
-	if got := setCookie.AsString(); got != "ia_session=abc123; Path=/; HttpOnly; Secure" {
-		t.Fatalf("expected first Set-Cookie value, got %q", got)
-	}
-
-	if strings.Contains(setCookie.AsString(), ",") {
-		t.Fatalf("response.headers must not comma-join multi-valued headers, got %q", setCookie.AsString())
-	}
-
-	ct, ok := headers["Content-Type"]
-	if !ok {
-		t.Fatalf("expected Content-Type in response.headers")
-	}
-
-	if ct.AsString() != "application/json" {
-		t.Fatalf("unexpected Content-Type: %q", ct.AsString())
-	}
-}
-
-func TestHTTPProviderResponseHeadersAllPreservesValues(t *testing.T) {
-	t.Parallel()
-
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Add("Set-Cookie", "ia_session=abc123; Path=/; HttpOnly; Secure")
-		w.Header().Add("Set-Cookie", "theme=dark; Path=/")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	}))
-	defer ts.Close()
-
-	p := New()
-	out, err := p.Execute(context.Background(), provider.Input{
-		Request: map[string]cty.Value{
-			"method": cty.StringVal("GET"),
-			"url":    cty.StringVal(ts.URL),
-		},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	headersAll := out.Response["headers_all"].AsValueMap()
-
-	setCookies, ok := headersAll["Set-Cookie"]
-	if !ok {
-		t.Fatalf("expected Set-Cookie in response.headers_all")
+		t.Fatalf("expected Set-Cookie in response.headers, got keys: %v", headerKeys(headers))
 	}
 
 	got := []string{}
@@ -514,19 +466,34 @@ func TestHTTPProviderResponseHeadersAllPreservesValues(t *testing.T) {
 		got = append(got, v.AsString())
 	}
 
-	want := []string{
+	wantCookies := []string{
 		"ia_session=abc123; Path=/; HttpOnly; Secure",
 		"theme=dark; Path=/",
 	}
 
-	if len(got) != len(want) {
-		t.Fatalf("expected %d Set-Cookie values, got %d: %v", len(want), len(got), got)
+	if len(got) != len(wantCookies) {
+		t.Fatalf("expected %d Set-Cookie values, got %d: %v", len(wantCookies), len(got), got)
 	}
 
-	for i, w := range want {
+	for i, w := range wantCookies {
 		if got[i] != w {
 			t.Fatalf("Set-Cookie[%d]: got %q want %q", i, got[i], w)
 		}
+	}
+
+	ct, ok := headers["Content-Type"]
+	if !ok {
+		t.Fatalf("expected Content-Type in response.headers")
+	}
+
+	ctValues := []string{}
+	for it := ct.ElementIterator(); it.Next(); {
+		_, v := it.Element()
+		ctValues = append(ctValues, v.AsString())
+	}
+
+	if len(ctValues) != 1 || ctValues[0] != "application/json" {
+		t.Fatalf("unexpected Content-Type values: %v", ctValues)
 	}
 }
 
