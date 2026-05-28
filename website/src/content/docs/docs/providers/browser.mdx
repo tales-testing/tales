@@ -77,6 +77,16 @@ config {
 
 If `target = "<name>"` is omitted on a step and exactly one target is declared, that target is used. Multiple targets without an explicit `target` produce a clear error so misconfigurations don't pick the wrong browser silently.
 
+### Headless defaults
+
+When `headless = true` (the default), Tales adds three Chrome flags on top of the user-supplied `args` so the browser starts cleanly in CI / Docker environments:
+
+- `--no-sandbox` — required on GitHub Actions runners and most Docker images, where the setuid sandbox cannot be created without `CAP_SYS_ADMIN`. Without it Chrome hangs silently at startup before CDP is reachable.
+- `--disable-dev-shm-usage` — avoids crashes on runners where `/dev/shm` is too small (typical 64 MiB containers).
+- `--disable-gpu` — removes a startup warning + saves a few hundred milliseconds in headless mode where GPU acceleration is irrelevant.
+
+When `headless = false`, none of these flags are added — the local Chrome sandbox stays enabled and the GPU is used. To override a default in headless mode, pass the opposite flag in `args` (e.g. `--enable-gpu` if you really want it).
+
 ### Chrome resolution
 
 The provider looks for a Chrome executable in this order:

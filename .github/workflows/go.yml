@@ -81,11 +81,17 @@ jobs:
       # required. The target itself skips with exit 0 if Chrome is not
       # found, so removing the runner image's Chrome (or running on a
       # different OS) does not fail the job.
+      #
+      # timeout-minutes is a hard cap on the step in case Chrome or the
+      # mockserver hangs in a way the inner --timeout cannot break out
+      # of. The expected runtime is well under 30s on ubuntu-latest.
       - name: E2E browser
         run: make e2e-browser
+        timeout-minutes: 5
 
       - name: E2E browser failure
         run: make e2e-browser-failure
+        timeout-minutes: 3
       # - name: Coveralls
       #  uses: shogo82148/actions-goveralls@v1
       #  with:
