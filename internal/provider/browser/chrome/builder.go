@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -21,6 +22,25 @@ func chromeDebugf(format string, args ...any) {
 // DefaultBuilder returns a SessionBuilder that drives Chrome via chromedp.
 // One Chrome subprocess is started per target; each scenario gets a fresh
 // chromedp.Context off that allocator for incognito-style isolation.
+//
+// Isolation guarantees (intentional and load-bearing — the user's
+// regular Chrome must never be touched by `tales test`):
+//
+//   - Per-scenario subprocess. Each scenario spawns its own Chrome
+//     via chromedp.NewExecAllocator. cleanup() cancels ONLY that
+//     allocator context. chromedp translates the cancellation into a
+//     Browser.close CDP command followed by SIGTERM (then SIGKILL on
+//     grace timeout) to that subprocess's exact PID. Other Chrome
+//     instances on the host are not affected.
+//   - Isolated profile. Every subprocess gets an explicit
+//     --user-data-dir under $TMPDIR/tales-chrome-<random>/, so it
+//     shares nothing with the user's normal Chrome profile (cookies,
+//     history, extensions, sessions, keychain, …). The temp dir is
+//     wiped on cleanup.
+//   - No name-based termination. The tales binary never invokes
+//     pkill, killall, or any process matcher by name. Every kill is
+//     PID-scoped through context cancellation. A unit test
+//     (no_pkill_test.go) pins this property.
 func DefaultBuilder() browser.SessionBuilder {
 	return browser.SessionBuilderFunc{
 		BuildFn:    build,
@@ -45,14 +65,27 @@ func newScenarioContext(_ context.Context, sess *browser.Session, scenario strin
 		return nil, fmt.Errorf("locate chrome: %w", err)
 	}
 
-	chromeDebugf("spawning chrome target=%q scenario=%q exec=%q headless=%v viewport=%dx%d args=%v",
+	// Force an isolated per-allocator user-data-dir under $TMPDIR. chromedp
+	// already defaults to a temp dir when UserDataDir is unset, but
+	// setting it explicitly:
+	//   - makes the path visible in debug logs (auditable)
+	//   - guarantees no shared state with the user's regular Chrome
+	//     profile, regardless of any host-level Chrome flags users might
+	//     have picked up from ~/.zshrc / ~/.bashrc.
+	userDataDir, err := os.MkdirTemp("", "tales-chrome-")
+	if err != nil {
+		return nil, fmt.Errorf("create user data dir: %w", err)
+	}
+
+	chromeDebugf("spawning chrome target=%q scenario=%q exec=%q headless=%v viewport=%dx%d user_data_dir=%q args=%v",
 		sess.Target.Name, scenario, execPath, sess.Target.Driver.Headless,
 		sess.Target.Driver.Viewport.Width, sess.Target.Driver.Viewport.Height,
-		sess.Target.Driver.Args)
+		userDataDir, sess.Target.Driver.Args)
 
 	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	opts = append(opts,
 		chromedp.ExecPath(execPath),
+		chromedp.UserDataDir(userDataDir),
 		chromedp.Flag("headless", sess.Target.Driver.Headless),
 		chromedp.WindowSize(sess.Target.Driver.Viewport.Width, sess.Target.Driver.Viewport.Height),
 	)
@@ -65,9 +98,20 @@ func newScenarioContext(_ context.Context, sess *browser.Session, scenario strin
 	ctx, cancel := chromedp.NewContext(allocCtx)
 
 	cleanup := func() {
-		chromeDebugf("cleanup target=%q scenario=%q", sess.Target.Name, scenario)
+		pid := browserPID(ctx)
+		chromeDebugf("cleanup target=%q scenario=%q pid=%d user_data_dir=%q",
+			sess.Target.Name, scenario, pid, userDataDir)
+		// Cancel both contexts. chromedp owns the SIGTERM → grace → SIGKILL
+		// dance, scoped to the subprocess we spawned (PID %d above). It
+		// does NOT touch any other Chrome process on the host.
 		cancel()
 		allocCancel()
+		// Wipe the per-scenario user data dir. Best-effort: never blocks
+		// scenario teardown on a stale directory.
+		if rmErr := os.RemoveAll(userDataDir); rmErr != nil {
+			chromeDebugf("user data dir cleanup failed dir=%q err=%v",
+				filepath.Clean(userDataDir), rmErr)
+		}
 	}
 
 	chromeDebugf("calling chromedp.Run target=%q scenario=%q", sess.Target.Name, scenario)
@@ -78,12 +122,28 @@ func newScenarioContext(_ context.Context, sess *browser.Session, scenario strin
 		return nil, fmt.Errorf("start chrome: %w", err)
 	}
 
-	chromeDebugf("chrome ready target=%q scenario=%q", sess.Target.Name, scenario)
+	chromeDebugf("chrome ready target=%q scenario=%q pid=%d",
+		sess.Target.Name, scenario, browserPID(ctx))
 
 	return &browser.ScenarioBrowserCtx{
 		Driver: NewDriver(ctx, cleanup),
 		Cancel: cleanup,
 	}, nil
+}
+
+// browserPID returns the OS PID of the Chrome subprocess chromedp spawned
+// for the given browser context, or 0 when the PID is unavailable (e.g.,
+// chrome hasn't started yet, or the browser was started by another
+// allocator). The PID is the same one chromedp signals during cleanup —
+// surfacing it in debug logs makes the "we only touch our own subprocess"
+// guarantee auditable.
+func browserPID(ctx context.Context) int {
+	c := chromedp.FromContext(ctx)
+	if c == nil || c.Browser == nil || c.Browser.Process() == nil {
+		return 0
+	}
+
+	return c.Browser.Process().Pid
 }
 
 // trimDash strips leading "--" from a chromedp flag string. chromedp.Flag
