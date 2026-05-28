@@ -1,0 +1,82 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        viewport = {
+          width  = 1440
+          height = 1000
+        }
+        timeout = "30s"
+        args    = ["--disable-gpu"]
+      }
+    }
+  }
+}
+
+scenario "Browser login flow" {
+  tags = ["browser", "web"]
+
+  step "browser" "login" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/login"
+      }
+      fill {
+        selector = "[data-testid='login.email']"
+        value    = "demo@example.com"
+      }
+      fill {
+        selector = "[data-testid='login.password']"
+        value    = "Passw0rd!"
+        secure   = true
+      }
+      click {
+        selector = "[data-testid='login.submit']"
+      }
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+        timeout  = "10s"
+      }
+    }
+
+    expect {
+      visible {
+        selector = "[data-testid='dashboard.title']"
+      }
+      text {
+        selector = "[data-testid='dashboard.title']"
+        value    = "Dashboard"
+      }
+      text {
+        selector = "[data-testid='dashboard.email']"
+        value    = "demo@example.com"
+      }
+      attribute {
+        selector = "meta[name='csrf-token']"
+        name     = "content"
+        value    = "csrf-demo-token"
+      }
+      url {
+        value = contains("/web/dashboard")
+      }
+      title {
+        value = "Dashboard"
+      }
+    }
+
+    capture {
+      heading = text("[data-testid='dashboard.title']")
+      email   = text("[data-testid='dashboard.email']")
+      csrf    = attribute("meta[name='csrf-token']", "content")
+      current = browser.url
+      title   = browser.title
+    }
+  }
+}

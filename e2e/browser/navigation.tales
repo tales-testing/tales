@@ -1,0 +1,54 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+scenario "Browser navigation" {
+  tags = ["browser", "web", "navigation"]
+
+  step "browser" "history" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/login"
+      }
+      wait_visible {
+        selector = "[data-testid='login.title']"
+      }
+      goto {
+        url = "${config.base_url}/web/dashboard"
+      }
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+      }
+      back {}
+      wait_visible {
+        selector = "[data-testid='login.title']"
+      }
+      forward {}
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+      }
+      reload {}
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+      }
+    }
+
+    expect {
+      url {
+        value = contains("/web/dashboard")
+      }
+    }
+  }
+}

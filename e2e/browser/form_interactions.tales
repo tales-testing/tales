@@ -1,0 +1,60 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+scenario "Form interactions" {
+  tags = ["browser", "web", "forms"]
+
+  step "browser" "fill_form" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/form"
+      }
+      wait_visible {
+        selector = "[data-testid='form.title']"
+      }
+      select {
+        selector = "[data-testid='form.country']"
+        value    = "FR"
+      }
+      check {
+        selector = "[data-testid='form.subscribe']"
+      }
+      uncheck {
+        selector = "[data-testid='form.tos']"
+      }
+      fill {
+        selector = "[data-testid='form.notes']"
+        value    = "These are my notes."
+      }
+      scroll {
+        selector = "[data-testid='form.submit']"
+      }
+    }
+
+    expect {
+      visible {
+        selector = "[data-testid='form.submit']"
+      }
+      title {
+        value = "Form"
+      }
+    }
+
+    capture {
+      heading = text("[data-testid='form.title']")
+    }
+  }
+}

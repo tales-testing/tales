@@ -1,0 +1,33 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "2s"
+      }
+    }
+  }
+}
+
+scenario "Missing selector fails fast" {
+  tags = ["browser", "fail"]
+
+  step "browser" "fill_unknown" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/login"
+      }
+      fill {
+        selector = "[data-testid='login.totally-missing']"
+        value    = "x"
+        timeout  = "1s"
+      }
+    }
+  }
+}
