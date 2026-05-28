@@ -1,0 +1,108 @@
+version = 1
+
+# Browser test template. Demonstrates the V1 surface of the browser
+# provider: ordered actions, polled expectations, browser-only capture
+# helpers (text / attribute / browser.url / browser.title) and the
+# secure-value masking convention.
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        viewport = {
+          width  = 1440
+          height = 1000
+        }
+        timeout = "30s"
+        args = [
+          "--disable-gpu",
+        ]
+      }
+    }
+  }
+}
+
+scenario "User signs in and lands on dashboard" {
+  tags = ["browser", "web", "auth"]
+
+  step "browser" "login_flow" {
+    target = "chrome"
+
+    retry {
+      attempts = 2
+      interval = "1s"
+    }
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/login"
+      }
+
+      fill {
+        selector = "[data-testid='login.email']"
+        value    = "demo@example.com"
+      }
+
+      # Always pass secure = true for credentials so the value never
+      # leaks into console, JSONL, JUnit, or visual HTML reports.
+      fill {
+        selector = "[data-testid='login.password']"
+        value    = env("DEMO_PASSWORD", "Passw0rd!")
+        secure   = true
+      }
+
+      click {
+        selector = "[data-testid='login.submit']"
+      }
+
+      # Always wait for the post-action UI before asserting against it;
+      # real browsers are not seed-deterministic.
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+        timeout  = "10s"
+      }
+    }
+
+    expect {
+      visible {
+        selector = "[data-testid='dashboard.title']"
+      }
+
+      text {
+        selector = "[data-testid='dashboard.title']"
+        value    = "Dashboard"
+      }
+
+      text {
+        selector = "[data-testid='dashboard.email']"
+        value    = "demo@example.com"
+      }
+
+      attribute {
+        selector = "meta[name='csrf-token']"
+        name     = "content"
+        value    = is_string()
+      }
+
+      url {
+        value = contains("/web/dashboard")
+      }
+
+      title {
+        value = "Dashboard"
+      }
+    }
+
+    capture {
+      heading      = text("[data-testid='dashboard.title']")
+      email        = text("[data-testid='dashboard.email']")
+      csrf         = attribute("meta[name='csrf-token']", "content")
+      current_url  = browser.url
+      page_title   = browser.title
+    }
+  }
+}

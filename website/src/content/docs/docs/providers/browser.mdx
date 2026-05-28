@@ -1,0 +1,281 @@
+---
+title: Browser provider
+description: The browser provider drives Chrome / Chromium via the Chrome DevTools Protocol for end-to-end web UI tests, with declarative actions, expectations, captures and visual report integration.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The browser provider drives Chrome / Chromium through the Chrome DevTools Protocol using [chromedp](https://github.com/chromedp/chromedp). It is Go-native: no Node, no Playwright, no Selenium / WebDriver. Tales stays a single binary.
+
+<Aside type="note">
+V1 supports **Chrome / Chromium only** and **CSS selectors only**. Firefox / WebKit are not supported. You need Chrome (or Chromium) installed on the host, or `CHROME_PATH` pointing at the executable.
+</Aside>
+
+## When to use it
+
+Reach for the browser provider when you need to assert behaviour that only the rendered page produces: cookies set by the server-side login flow, JavaScript-driven form interactions, redirects after authentication, etc. For pure HTTP / API checks, the [HTTP provider](./http) is faster and gives you cleaner failure diagnostics.
+
+## Anatomy of a browser step
+
+```hcl
+step "browser" "<name>" {
+  target = "chrome"              // required — config.browser.targets key
+
+  actions {                      // ordered list, runs sequentially
+    goto         { url = "..." }
+    fill         { selector = "..." value = "..." }
+    click        { selector = "..." }
+    wait_visible { selector = "..." timeout = "10s" }
+    // …
+  }
+
+  expect {                       // optional, polled until timeout
+    visible    { selector = "..." }
+    text       { selector = "..." value = "..." }
+    attribute  { selector = "..." name = "..." value = "..." }
+    url        { value = contains("/dashboard") }
+    title      { value = "Dashboard" }
+  }
+
+  capture {                      // optional, evaluated against the
+                                 // post-step snapshot
+    heading = text("[data-testid='dashboard.title']")
+    csrf    = attribute("meta[name='csrf-token']", "content")
+    current = browser.url
+    title   = browser.title
+  }
+}
+```
+
+## Configuration
+
+Browser targets live under `config.browser.targets`:
+
+```hcl
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"        // "chrome" only in V1
+        headless = true            // default true
+        executable = env("CHROME_PATH", "")  // optional override
+        viewport = {
+          width  = 1440             // default 1440
+          height = 1000             // default 1000
+        }
+        timeout = "30s"             // default 30s — action / expect default
+        args = [
+          "--disable-gpu",
+        ]
+      }
+    }
+  }
+}
+```
+
+If `target = "<name>"` is omitted on a step and exactly one target is declared, that target is used. Multiple targets without an explicit `target` produce a clear error so misconfigurations don't pick the wrong browser silently.
+
+### Chrome resolution
+
+The provider looks for a Chrome executable in this order:
+
+1. The target's `driver.executable` (when set)
+2. The `CHROME_PATH` environment variable
+3. Common binary names on `PATH`: `google-chrome`, `google-chrome-stable`, `chromium`, `chromium-browser`, `chrome`
+4. OS-specific install locations (macOS `/Applications/Google Chrome.app/...`, Linux `/usr/bin/...`)
+
+A missing Chrome surfaces as a clear error suggesting `driver.executable` or `CHROME_PATH`.
+
+## Actions
+
+Actions execute in the order they appear in the `.tales` file. A failing action stops the step; subsequent actions are recorded as `"skipped"` so the visual report shows the full sequence.
+
+| Action               | Required attrs                                                      | Notes |
+|----------------------|---------------------------------------------------------------------|-------|
+| `goto`               | `url`                                                               | Navigates and waits for the document to settle |
+| `click`              | `selector`                                                          | Waits for visibility, then clicks |
+| `fill`               | `selector`, `value`                                                 | Clears and types `value`. Set `secure = true` to mask the value in reports |
+| `clear`              | `selector`                                                          | Erases the input value |
+| `press`              | `key`, optional `selector`                                          | Focuses `selector` first if set, then sends the keystroke |
+| `submit`             | `selector`                                                          | Calls `HTMLFormElement.requestSubmit()` (falls back to `.submit()`) |
+| `scroll`             | `selector` *or* `x` + `y`                                           | Scrolls element into view, or scrolls the page by offset |
+| `wait_visible`       | `selector`                                                          | Polls until the element is visible |
+| `wait_not_visible`   | `selector`                                                          | Polls until the element is gone or hidden |
+| `hover`              | `selector`                                                          | Dispatches a `mouseover` event |
+| `select`             | `selector`, `value`                                                 | Sets `<select>` value and fires `change` |
+| `check` / `uncheck`  | `selector`                                                          | Toggles a checkbox / radio input |
+| `reload`             | —                                                                   | Reloads the current page |
+| `back` / `forward`   | —                                                                   | Navigates the browser history. See limitations below |
+
+All actions accept an optional `timeout = "<duration>"` and `interval = "<duration>"`.
+
+### Secure values
+
+`fill` with `secure = true` masks the value to `"***"` in every report (console, JSONL, visual HTML, JUnit). The masking happens once inside the provider; reporters never see the plaintext.
+
+```hcl
+fill {
+  selector = "[data-testid='login.password']"
+  value    = config.test_password
+  secure   = true
+}
+```
+
+## Expectations
+
+Expectations poll until the timeout elapses. Default timeout: `10s`; default interval: `250ms`.
+
+```hcl
+expect {
+  visible { selector = "#dashboard" }
+  not_visible { selector = ".spinner" }
+
+  text {
+    selector = "h1"
+    value    = "Dashboard"                 // exact match
+  }
+
+  text {
+    selector = "[data-testid='greeting']"
+    value    = contains("Welcome")          // matcher
+  }
+
+  attribute {
+    selector = "meta[name='csrf-token']"
+    name     = "content"
+    value    = is_string()                  // any string is fine
+  }
+
+  url   { value = matches("/web/dashboard$") }
+  title { value = "Dashboard" }
+}
+```
+
+All of Tales' built-in matchers (`contains`, `matches`, `one_of`, `any`, `exists`, `is_string`, `is_number`, `is_bool`, `is_array`, `is_object`) are reusable in browser `expect` blocks.
+
+## Capture helpers
+
+Inside a browser step's `capture` block, the runtime injects four browser-specific helpers backed by the snapshot recorded after the step ran:
+
+| Helper                            | Returns                                   |
+|-----------------------------------|-------------------------------------------|
+| `text("selector")`                | The rendered text of the first matching element |
+| `attribute("selector", "name")`   | The value of the named DOM attribute      |
+| `browser.url`                     | The document URL after the step           |
+| `browser.title`                   | The document title after the step         |
+
+```hcl
+capture {
+  heading      = text("h1")
+  csrf         = attribute("meta[name='csrf-token']", "content")
+  current_url  = browser.url
+  page_title   = browser.title
+}
+```
+
+These helpers are **only available inside a `browser` step's `capture` block**. The standard expression scope (`config`, `result`, `vars`, `input`, generators, host, …) is still available.
+
+## Sessions and isolation
+
+V1 spawns **one Chrome subprocess per (target, scenario) pair**. This gives each scenario a fresh BrowserContext with its own cookies, localStorage, and history — at the cost of a ~600ms startup per scenario. The Provider holds the per-target session map and closes everything via `io.Closer` at suite end, so no Chrome processes leak after `tales test` returns.
+
+Inside one scenario, all steps on the same target share the browser context. Use that to carry login state across steps.
+
+## Artifacts
+
+On step failure (and per `--capture-screenshots`), the provider writes:
+
+```
+build/artifacts/browser/
+  <scenario-safe>-<hash>/<step-safe>/<phase>/attempt-<N>/
+    step/
+      screenshot.png        // viewport PNG
+      dom.html              // outerHTML of <html> when the step failed
+    actions/
+      0000-goto-<selector>/
+        screenshot.png      // when --capture-screenshots=actions
+        dom.html
+      0001-fill-loginemail/
+        ...
+```
+
+Artifact paths are surfaced on `StepResult.Artifacts` and per-action `ActionResult.Screenshot` / `ActionResult.Hierarchy`, which the visual HTML report renders inline.
+
+### Capture modes
+
+`--capture-screenshots <mode>` (or default driven by `--report-html`):
+
+- `none` — no captures at all
+- `failures` (default without `--report-html`) — one screenshot + dom.html at step level when the step fails
+- `steps` — one screenshot + dom.html at the end of each step (success or failure)
+- `actions` (default with `--report-html`) — per-action capture, plus a failure capture if any action fails
+
+## Visual report integration
+
+When `--report-html` is set, the browser provider populates the same `report.ActionResult` records used by the mobile provider's visual replay. The HTML report shows:
+
+- Action timeline with per-action duration
+- Screenshots inline (base64-embedded for portability)
+- Masked secure values
+- DOM snapshots linked from each action
+
+There is no browser-specific renderer — the visual layout is shared with mobile.
+
+## Timeout layering
+
+Tales applies timeouts in this precedence order (innermost first):
+
+1. Per-expectation `timeout = "..."` (just that expectation)
+2. Per-action `timeout = "..."` (just that action)
+3. Target `driver.timeout` (default for actions / expectations in the step)
+4. Built-in 10s default for expectations, 30s default for actions
+5. CLI `--timeout` (wraps the entire suite ctx)
+
+## Selectors
+
+CSS selectors only in V1. Recommended pattern: add `data-testid="..."` attributes to your application markup and select by those — they are stable across CSS / styling changes.
+
+```hcl
+click { selector = "[data-testid='login.submit']" }
+```
+
+The provider also accepts any selector chromedp's `ByQuery` mode supports (tag, id, class, attribute, descendant, combinator).
+
+## Determinism caveat
+
+Browser steps are **not seed-deterministic**. Real-browser interaction depends on layout reflow timing, async script execution, and network latency — none of which the Tales seed mixer controls.
+
+Pin flakiness with:
+
+- `expect.<kind> { timeout = "10s" interval = "100ms" }` — bounded polling
+- `retry { attempts = 3 interval = "1s" }` on the step
+- Synchronous waits (`wait_visible`) after navigations before asserting
+
+The seed mixer continues to work for everything outside the browser step (config, vars, generators, expressions evaluated before the provider runs).
+
+## V1 limitations
+
+- **Chrome / Chromium only.** Firefox and WebKit are out of scope.
+- **CSS selectors only.** No XPath, no role-based locators.
+- **`back` and `forward` have known navigation-timing quirks.** The naive chromedp navigation primitives hang waiting for a CDP response that the page tears down during navigation. V1 ships a workaround based on JS `history.back()` / `history.forward()` plus a short settle delay; in practice this works for the common case (back to the previous page) but may report `context deadline exceeded` on pages that redirect immediately. Prefer explicit `goto` calls when reliability matters.
+- **Per-scenario Chrome startup cost (~600ms).** Acceptable for now per the V1 brief; V2 may introduce a "shared context" mode.
+- **No image / pixel diffing.** Out of scope for V1.
+
+## CI example
+
+```bash
+make e2e-browser            # passes when Chrome is present; skips otherwise
+make e2e-browser-failure    # asserts exit 1 on a deliberately broken scenario
+```
+
+The make targets gate on Chrome availability and exit 0 with a clear message when Chrome is missing, so CI runners without a browser stay green.
+
+## Debugging
+
+Set `TALES_BROWSER_DEBUG=1` to enable verbose stderr logging from the browser provider and the Chrome builder. Each action, session start, and cleanup is timestamped.
+
+```bash
+TALES_BROWSER_DEBUG=1 tales test --verbose ./e2e/browser/login.tales
+```

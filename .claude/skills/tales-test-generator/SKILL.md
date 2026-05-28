@@ -24,16 +24,22 @@ Use this skill when asked to:
 - `internal/parser/schema.go`
 - `internal/parser/mobile.go` (mobile DSL surface)
 - `internal/parser/sql.go` (sql DSL surface)
+- `internal/parser/browser.go` (browser DSL surface)
 - `internal/model/mobile.go` (mobile model types)
+- `internal/model/browser.go` (browser model types)
 - `internal/lang/functions.go`
 - `internal/runtime/runner.go`
 - `internal/runtime/mobile.go` (mobile execution + capture functions)
 - `internal/runtime/sql.go` (sql execution: expression evaluation + provider dispatch)
+- `internal/runtime/browser.go` (browser execution + capture functions)
 - `internal/provider/sql/` (sql provider package: drivers, config resolver, args/row conversion)
-- `docs/mobile/ios.md` (mobile architecture and config)
-- `docs/providers/sql.md` (sql provider reference)
+- `internal/provider/browser/` (browser provider package: chromedp driver, Chrome locator, session lifecycle)
+- `website/src/content/docs/docs/providers/mobile-ios.mdx` (mobile architecture and config)
+- `website/src/content/docs/docs/providers/sql.mdx` (sql provider reference)
+- `website/src/content/docs/docs/providers/browser.mdx` (browser provider reference)
 - `e2e/pass/*.tales` (HTTP and SQL examples; `e2e/pass/sql.tales` is the canonical SQL scenario)
 - `e2e/ios/pass/*.tales` (mobile examples)
+- `e2e/browser/*.tales` (browser examples)
 
 2. Build tests with only supported structures:
 - `version = 1`
@@ -42,6 +48,7 @@ Use this skill when asked to:
 - `scenario "..." { ... }`
 - `step "http" "name" { optional retry { ... } request { ... } expect { ... } capture { ... } }`
 - `step "sql" "name" { connection = "<name>"; exec { sql; args } | query { sql; args } }` — see the SQL provider section below.
+- `step "browser" "name" { target = "<name>"; actions { goto/click/fill/... } expect { visible/text/url/title/... } capture { ... } }` — see the Browser provider section below.
 - optional `teardown { step ... }`
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
 - optional `skip_if { ... }` / `skip_unless { ... }` on a `scenario` or `step` to gate execution on `host.os` / `host.arch`, env vars, or any bool expression. Attribute set: `condition`, `reason`, `os`, `arch`, `env_set`, `env`. Skipped scenarios skip their steps and teardown; skipped steps cascade-skip their dependents. See [docs/skip.md](../../../docs/skip.md).
@@ -519,3 +526,113 @@ teardown {
   them.
 - Never put a secret inline in `args`; let it flow through a previous
   step's `result.*` so the .tales source stays clean.
+
+## Browser provider
+
+The browser provider drives Chrome / Chromium via the Chrome DevTools
+Protocol (chromedp). Use it for end-to-end web UI flows the HTTP
+provider cannot cover: cookies set during login, JS-driven form
+interactions, redirect chains, etc.
+
+### DSL shape
+
+```hcl
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        viewport = { width = 1440, height = 1000 }
+        timeout  = "30s"
+      }
+    }
+  }
+}
+
+scenario "Login flow" {
+  step "browser" "login" {
+    target = "chrome"
+
+    actions {
+      goto { url = "${config.base_url}/web/login" }
+      fill {
+        selector = "[data-testid='login.email']"
+        value    = "demo@example.com"
+      }
+      fill {
+        selector = "[data-testid='login.password']"
+        value    = config.test_password
+        secure   = true              # masks value as "***" in reports
+      }
+      click { selector = "[data-testid='login.submit']" }
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+        timeout  = "10s"
+      }
+    }
+
+    expect {
+      visible   { selector = "[data-testid='dashboard.title']" }
+      text      { selector = "[data-testid='dashboard.title']" value = "Dashboard" }
+      attribute { selector = "meta[name='csrf-token']" name = "content" value = is_string() }
+      url       { value = contains("/web/dashboard") }
+      title     { value = "Dashboard" }
+    }
+
+    capture {
+      heading = text("[data-testid='dashboard.title']")
+      csrf    = attribute("meta[name='csrf-token']", "content")
+      current = browser.url
+      title   = browser.title
+    }
+  }
+}
+```
+
+### Action surface
+
+`goto`, `click`, `fill`, `clear`, `press`, `submit`, `scroll` (selector
+or x/y offsets), `wait_visible`, `wait_not_visible`, `hover`, `select`
+(for `<select>`), `check` / `uncheck` (for checkboxes / radios),
+`reload`, `back`, `forward`. Every action accepts optional `timeout`
+and `interval`.
+
+### Expectations
+
+`visible`, `not_visible`, `text`, `value`, `enabled`, `disabled`,
+`attribute` (with `name = "..."`), `url`, `title`. Each polls until
+the timeout (default 10s, interval 250ms). All built-in matchers are
+reusable: `contains`, `matches`, `one_of`, `any`, `exists`,
+`is_string`, etc.
+
+### Capture helpers (browser steps only)
+
+- `text("css-selector")` — rendered text of the first matching element.
+- `attribute("css-selector", "name")` — value of the named DOM attribute.
+- `browser.url` — document URL after the step.
+- `browser.title` — document title after the step.
+
+These are backed by a single post-step snapshot the provider records;
+they are only available inside a `step "browser"` `capture` block.
+
+### Authoring rules
+
+- **Prefer `[data-testid="..."]` selectors** over fragile CSS class /
+  position selectors. Tales tests assert behaviour, not styling.
+- **Always `wait_visible` (or rely on `click`'s built-in wait) before
+  asserting** — real-browser steps are not seed-deterministic; layout
+  reflow and async script execution mean a value may not be present
+  the very microsecond the previous action returned.
+- **Use `secure = true` on every password / token `fill`.** The provider
+  masks the value to `"***"` at one boundary; reporters never see the
+  plaintext.
+- **Pin flakiness explicitly** via `retry { attempts = 3 interval = "1s" }`
+  on the step and bounded `expect.<kind> { timeout = "..." }`.
+- **`back` and `forward` have known navigation-timing limits** in V1
+  (the chromedp CDP layer hangs waiting for a response the page tears
+  down). They work for the common case but prefer explicit `goto` calls
+  when reliability matters.
+- **Do not put real credentials in the .tales file.** Pipe them through
+  `env(...)` or a previous step's `result.*`.
