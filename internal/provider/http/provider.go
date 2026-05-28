@@ -19,6 +19,7 @@ const (
 	providerTypeHTTP = "http"
 	headersKey       = "headers"
 	cookiesKey       = "cookies"
+	maskedBasicAuth  = "Basic ***"
 )
 
 // Provider executes HTTP steps.
@@ -79,7 +80,7 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	if basicAuth != nil {
 		req.SetBasicAuth(basicAuth.username, basicAuth.password)
 
-		reportHeaders["Authorization"] = "Basic ***"
+		reportHeaders["Authorization"] = maskedBasicAuth
 	}
 
 	client := p.client
