@@ -93,6 +93,70 @@ scenario "perf" {
 	}
 }
 
+func TestLoadPathHTTPRejectsWebPerf(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "demo" {
+  step "http" "smoke" {
+    request {
+      method = "GET"
+      url    = "http://example.com"
+    }
+    expect {
+      web_perf {
+        fcp = lt("1s")
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatalf("http must reject web_perf")
+	}
+
+	if !strings.Contains(diags.Error(), "web_perf expectation is browser-only") {
+		t.Fatalf("unexpected error: %s", diags.Error())
+	}
+}
+
+func TestLoadPathLoadRejectsWebPerf(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "demo" {
+  step "load" "smoke" {
+    http {
+      method = "GET"
+      url    = "http://example.com"
+    }
+    run {
+      requests    = 1
+      concurrency = 1
+    }
+    expect {
+      web_perf {
+        fcp = lt("1s")
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatalf("load must reject web_perf")
+	}
+
+	if !strings.Contains(diags.Error(), "web_perf expectation is browser-only") {
+		t.Fatalf("unexpected error: %s", diags.Error())
+	}
+}
+
 func TestLoadPathMobileRejectsWebPerf(t *testing.T) {
 	t.Parallel()
 

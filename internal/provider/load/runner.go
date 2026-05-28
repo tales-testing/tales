@@ -119,6 +119,15 @@ func executeRun(
 
 	result.totalDuration = time.Since(start)
 
+	// The duration-mode child ctx is allowed to fire — that's the normal
+	// stopping rule. But if the *parent* ctx was canceled (suite-level
+	// --timeout, Ctrl-C, or a step deadline hit while requests-mode was
+	// still running), surface it as an error so the step fails instead
+	// of reporting a "successful" run with partial data.
+	if err := ctx.Err(); err != nil {
+		return result, fmt.Errorf("load run canceled: %w", err)
+	}
+
 	return result, nil
 }
 

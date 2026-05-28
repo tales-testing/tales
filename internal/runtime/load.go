@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/tales-testing/tales/internal/diagnostic"
@@ -231,9 +232,15 @@ func evalOptionalInt(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioNa
 		return 0, fmt.Errorf("%s must be a number, got %s", path, value.Type().FriendlyName())
 	}
 
-	f, _ := value.AsBigFloat().Float64()
+	// Counts (requests / concurrency) must be whole numbers; a fractional
+	// value would silently truncate, which the user almost certainly
+	// did not intend.
+	n, acc := value.AsBigFloat().Int64()
+	if acc != big.Exact {
+		return 0, fmt.Errorf("%s must be an integer, got fractional value", path)
+	}
 
-	return int(f), nil
+	return int(n), nil
 }
 
 func evalOptionalFloat(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, path string, expression model.Expression, fallback float64) (float64, error) {
