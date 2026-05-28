@@ -69,6 +69,34 @@ json = {
 }
 ```
 
+### Numeric thresholds, `lt(v)`, `lte(v)`, `gt(v)`, `gte(v)`, `between(min, max)`
+
+Compare an actual numeric value against a threshold. The argument may be a number or a Go duration string (`"100ms"`, `"2.5s"`, `"1m"`); durations are normalised to milliseconds, so a metric reported in `_ms` compares directly against a `"200ms"` threshold.
+
+```hcl
+json = {
+  latency_ms = lt(200)
+  score      = gte(0.95)
+  size       = between(100, 500)
+}
+
+expect {
+  web_perf {
+    fcp = lt("1800ms")
+    lcp = lt("2500ms")
+    cls = lt(0.1)
+  }
+}
+
+expect {
+  p95         = lt("200ms")
+  error_ratio = lte(0.01)
+  rps         = gte(40)
+}
+```
+
+`between(min, max)` is inclusive on both ends. Invalid threshold types and reversed bounds are rejected at parse time, before any step runs.
+
 ## Field matchers
 
 These describe the *presence* of a JSON key, not its value.

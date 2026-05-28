@@ -1,0 +1,177 @@
+---
+title: Load (HTTP benchmarks)
+description: The Tales load provider runs concurrent HTTP requests and computes latency percentiles, RPS, and error/status-class ratios. Smoke performance and regression guard, not a full load tool.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Not a substitute for k6 / Gatling / wrk.">
+  The `load` provider exists so a Tales suite can pin **smoke-level** performance budgets and catch order-of-magnitude regressions on an endpoint the rest of the scenario already exercises. It is not designed to replace a dedicated load-testing platform. Tales does not ship distributed runners, scripted think-time, or detailed traffic shaping; pick a real load tool if you need any of those.
+</Aside>
+
+The `load` provider replays one HTTP request concurrently for a given duration or request count, then asserts thresholds on latency percentiles, request rate, and error / status ratios. Existing matchers (`lt`, `lte`, `gt`, `gte`, `between`) accept Go duration strings, so a 200ms p95 budget reads as `p95 = lt("200ms")`.
+
+## Anatomy of a load step
+
+```hcl
+step "load" "health" {
+  http {
+    method = "GET"
+    url    = "${config.base_url}/health"
+    headers = {
+      Accept = "application/json"
+    }
+    timeout = "5s"
+  }
+
+  run {
+    duration    = "10s"   # OR requests = N (exactly one)
+    concurrency = 10
+    rate        = 50       # global RPS cap, optional
+    warmup      = "1s"     # primed traffic, results discarded
+  }
+
+  expect {
+    status_2xx_ratio = gte(0.99)
+    error_ratio      = lte(0.01)
+    p95              = lt("200ms")
+    p99              = lt("500ms")
+    rps              = gte(40)
+  }
+
+  capture {
+    p95 = response.json.latency.p95_ms
+    rps = response.json.rps
+  }
+}
+```
+
+### `http { ... }`
+
+The `http` block accepts the same surface as a standard HTTP step's `request` block: `method`, `url`, `headers`, `query`, `body { json | form | raw }`, `auth { basic { ... } }`, and a per-call `timeout`.
+
+Multipart bodies are intentionally rejected — the encoder boundary lives inside the `Content-Type` header and cannot be safely reused across concurrent workers in V1.
+
+### `run { ... }`
+
+| Attribute      | Type     | Required                          | Default | Meaning                                      |
+| -------------- | -------- | --------------------------------- | ------- | -------------------------------------------- |
+| `duration`     | duration | one of `duration` / `requests`    | —       | wall-clock window for measurement            |
+| `requests`     | number   | one of `duration` / `requests`    | —       | total measured requests across all workers   |
+| `concurrency`  | number   | optional                          | `1`     | number of worker goroutines                  |
+| `rate`         | number   | optional                          | unset   | global RPS cap (token bucket)                |
+| `warmup`       | duration | optional                          | unset   | initial round whose samples are discarded    |
+
+Validation rejects `duration` and `requests` declared together, `concurrency <= 0`, and `rate < 0`.
+
+## Response shape
+
+The provider returns its measurements both under `response.json` (for generic `expect.json` assertions and capture) and at the top level (for the shortcut attributes):
+
+```json
+{
+  "requests": 3000,
+  "duration_ms": 30000,
+  "rps": 100.0,
+  "errors": 0,
+  "error_ratio": 0.0,
+  "status": {
+    "1xx": 0,
+    "2xx": 3000,
+    "3xx": 0,
+    "4xx": 0,
+    "5xx": 0
+  },
+  "status_2xx_ratio": 1.0,
+  "status_3xx_ratio": 0.0,
+  "status_4xx_ratio": 0.0,
+  "status_5xx_ratio": 0.0,
+  "latency": {
+    "min_ms": 12.0,
+    "mean_ms": 43.2,
+    "p50_ms": 35.0,
+    "p90_ms": 80.0,
+    "p95_ms": 120.0,
+    "p99_ms": 240.0,
+    "max_ms": 410.0
+  },
+  "bytes": { "in": 123456, "out": 45678 }
+}
+```
+
+### Expect shortcuts
+
+The following flat attributes are recognised inside the load `expect` block and resolved against the top-level response:
+
+| Attribute          | Source                          |
+| ------------------ | ------------------------------- |
+| `requests`         | `response.requests`             |
+| `errors`           | `response.errors`               |
+| `duration_ms`      | `response.duration_ms`          |
+| `rps`              | `response.rps`                  |
+| `error_ratio`      | `response.error_ratio`          |
+| `status_2xx_ratio` | `response.status_2xx_ratio`     |
+| `status_3xx_ratio` | `response.status_3xx_ratio`     |
+| `status_4xx_ratio` | `response.status_4xx_ratio`     |
+| `status_5xx_ratio` | `response.status_5xx_ratio`     |
+| `p50`              | `response.latency.p50_ms`       |
+| `p90`              | `response.latency.p90_ms`       |
+| `p95`              | `response.latency.p95_ms`       |
+| `p99`              | `response.latency.p99_ms`       |
+| `min`              | `response.latency.min_ms`       |
+| `max`              | `response.latency.max_ms`       |
+| `mean`             | `response.latency.mean_ms`      |
+
+Unknown attribute names are rejected at parse time. The equivalent generic form using `expect.json` works as well and can be mixed with the shortcuts:
+
+```hcl
+expect {
+  p95 = lt("200ms")
+  json = {
+    latency = {
+      p99_ms = lt(500)
+    }
+  }
+}
+```
+
+## Percentile method
+
+Percentiles use the **nearest-rank** definition: `rank = ceil(p/100 * n)`, returning the sample at `sorted[max(rank-1, 0)]`. It is intentionally simple and deterministic; suites that need linear interpolation or HDR histograms should reach for a dedicated load tool.
+
+## Console output
+
+A successful load step prints a compact recap below its PASS line:
+
+```
+step health PASS 10.2s
+    requests: 500
+    rps: 49.1
+    errors: 0 (0.00%)
+    status: 1xx=0 2xx=500 3xx=0 4xx=0 5xx=0
+    latency: p50=21.0ms p95=44.0ms p99=80.0ms max=110.0ms
+```
+
+The recap is missing if the step failed before any sample was collected.
+
+## CI guidance
+
+<Aside type="caution" title="Benchmark noise on shared runners">
+  Latency on GitHub Actions, Buildkite, or any shared cloud runner is noisy. Use generous thresholds (`gt(0)`, `lt("1s")`) for the in-repo demo suite and tighten them in environment-specific projects with controlled hardware. The Tales-internal `make e2e-load` target is intentionally local-only and not wired into the GitHub Actions workflow.
+</Aside>
+
+## V1 limitations
+
+- **No multipart bodies.** Rejected at decode time.
+- **No cookie jar / redirect customisation.** The provider uses the stdlib defaults (`http.Client`).
+- **Single endpoint per step.** Compose multiple steps in the scenario for multi-URL traffic mixes.
+- **No detailed traffic shaping (ramp-up, think-time, scripted sequences).**
+- **Single-process.** No distributed runners.
+
+## Validation commands
+
+```bash
+make e2e-load   # local-only — runs the mockserver and exercises e2e/load/*.tales
+```
+
+`make e2e-load` is intentionally not part of `make e2e` to keep the normal CI suite fast and noise-free.
