@@ -104,6 +104,35 @@ func decodeLoadExpect(path string, expect *expectBlock, out *model.Expect) hcl.D
 	return diags
 }
 
+// rejectWebPerfOnNonBrowser emits a typed diagnostic when a step that
+// is neither browser nor mobile (mobile rejects via its own path with
+// a more specific message) declares an `expect { web_perf { ... } }`
+// block. Without this check the typed schema field silently parses
+// and the assertion never runs, which would let perf budgets pass
+// vacuously.
+func rejectWebPerfOnNonBrowser(expect *expectBlock) hcl.Diagnostics {
+	if expect == nil || len(expect.WebPerf) == 0 {
+		return nil
+	}
+
+	var diags hcl.Diagnostics
+
+	for _, b := range expect.WebPerf {
+		if b == nil {
+			continue
+		}
+
+		rng := b.Body.MissingItemRange()
+		diags = append(diags, diagError(
+			"Unexpected web_perf block",
+			"web_perf expectation is browser-only; only step \"browser\" supports web performance assertions.",
+			&rng,
+		))
+	}
+
+	return diags
+}
+
 // validateExpectExtras rejects any attribute that appears in
 // expect.Remainder for a non-load provider. The full attribute name
 // is surfaced so users can fix the typo without having to consult

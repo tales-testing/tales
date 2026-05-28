@@ -174,19 +174,8 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 		}
 
 		if expect != nil {
-			step.Expect = &model.Expect{
-				Status:  expr(path, expect.Status),
-				Headers: expr(path, expect.Headers),
-				JSON:    expr(path, expect.JSON),
-				Body:    expr(path, expect.Body),
-				Strict:  expr(path, expect.Strict),
-			}
-
-			if rs.Provider == loadProviderType {
-				diags = append(diags, decodeLoadExpect(path, expect, step.Expect)...)
-			} else {
-				diags = append(diags, validateExpectExtras(expect)...)
-			}
+			expectDiags := decodeStepExpect(path, rs.Provider, expect, step)
+			diags = append(diags, expectDiags...)
 		}
 
 		if rs.Retry != nil {
@@ -763,6 +752,36 @@ func bodyToNamedExprMap(path string, body hcl.Body) (map[string]model.Expression
 	}
 
 	return res, diags
+}
+
+// decodeStepExpect copies the typed expect attributes into the step
+// model and dispatches to the provider-aware validators. Keeping it
+// outside decodeSteps keeps the latter under the gocyclo budget.
+func decodeStepExpect(path, providerType string, expect *expectBlock, step *model.Step) hcl.Diagnostics {
+	step.Expect = &model.Expect{
+		Status:  expr(path, expect.Status),
+		Headers: expr(path, expect.Headers),
+		JSON:    expr(path, expect.JSON),
+		Body:    expr(path, expect.Body),
+		Strict:  expr(path, expect.Strict),
+	}
+
+	var diags hcl.Diagnostics
+
+	if providerType == loadProviderType {
+		diags = append(diags, decodeLoadExpect(path, expect, step.Expect)...)
+	} else {
+		diags = append(diags, validateExpectExtras(expect)...)
+	}
+
+	// web_perf belongs to the browser provider only. Mobile rejects it
+	// via its own validator with a more specific message; every other
+	// provider is caught here.
+	if providerType != browserProviderType && providerType != mobileProviderType {
+		diags = append(diags, rejectWebPerfOnNonBrowser(expect)...)
+	}
+
+	return diags
 }
 
 func expr(path string, e hcl.Expression) model.Expression {

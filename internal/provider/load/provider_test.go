@@ -157,6 +157,47 @@ func TestLoadProviderCountsErrors(t *testing.T) {
 	}
 }
 
+func TestLoadProviderHonorsParentCancellation(t *testing.T) {
+	t.Parallel()
+
+	// Slow transport that never returns until the request ctx is canceled.
+	rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		<-req.Context().Done()
+
+		return nil, req.Context().Err()
+	})
+
+	p := &Provider{client: &http.Client{Transport: rt}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel the parent context after a short delay so the load run is
+	// interrupted while requests are still in flight.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := p.Execute(ctx, provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal("http://example.com/"),
+		},
+		Load: &provider.LoadExecution{
+			Mode:        "requests",
+			Requests:    1000,
+			Concurrency: 2,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected parent cancellation to surface as error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "load run canceled") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadProviderEmptyConfigError(t *testing.T) {
 	t.Parallel()
 
