@@ -15,6 +15,7 @@ import (
 	chromebrowser "github.com/tales-testing/tales/internal/provider/browser/chrome"
 	httpprovider "github.com/tales-testing/tales/internal/provider/http"
 	keywordprovider "github.com/tales-testing/tales/internal/provider/keyword"
+	loadprovider "github.com/tales-testing/tales/internal/provider/load"
 	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
 	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
 	"github.com/tales-testing/tales/internal/report"
@@ -180,6 +181,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		mobileprovider.NewApple(mobileprovider.WithCaptureMode(captureMode)),
 		sqlprovider.New(),
 		chromebrowser.New(browserprovider.WithCaptureMode(captureMode)),
+		loadprovider.New(),
 	))
 
 	sink := buildEventSink(cmd.Bool("no-progress"), cmd.Bool("no-color"))
