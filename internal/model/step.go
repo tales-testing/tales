@@ -18,6 +18,7 @@ type Step struct {
 	Mobile    *MobileStep
 	SQL       *SQLCall
 	Browser   *BrowserStep
+	Load      *LoadCall
 	Retry     *Retry
 	SkipRules []SkipRule
 }
@@ -96,11 +97,22 @@ type BasicAuth struct {
 
 // Expect holds provider-agnostic assertions.
 type Expect struct {
-	Status  Expression
-	Headers Expression
-	JSON    Expression
-	Body    Expression
-	Strict  Expression
+	Status    Expression
+	Headers   Expression
+	JSON      Expression
+	Body      Expression
+	Strict    Expression
+	Shortcuts []ExpectShortcut
+}
+
+// ExpectShortcut is a flat `key = matcher_or_value` assertion. The
+// runtime resolves Name against the provider's Response map and runs
+// MatchJSON. Load steps populate this with metric names like p95 or
+// status_2xx_ratio so users can write the friendly form documented in
+// the provider reference.
+type ExpectShortcut struct {
+	Name     string
+	Expected Expression
 }
 
 // Retry controls repeated execution of a step until it passes.

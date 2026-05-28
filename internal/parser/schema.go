@@ -57,8 +57,20 @@ type stepBlock struct {
 	Connection  hcl.Expression          `hcl:"connection,optional"`
 	Exec        *sqlOpBlock             `hcl:"exec,block"`
 	Query       *sqlOpBlock             `hcl:"query,block"`
+	HTTPReq     *requestBlock           `hcl:"http,block"`
+	Run         *runBlock               `hcl:"run,block"`
 	SkipIf      []skipBlock             `hcl:"skip_if,block"`
 	SkipUnless  []skipBlock             `hcl:"skip_unless,block"`
+}
+
+// runBlock describes how a load step should drive its request. Exactly
+// one of duration / requests must be set; the parser validates it.
+type runBlock struct {
+	Duration    hcl.Expression `hcl:"duration,optional"`
+	Requests    hcl.Expression `hcl:"requests,optional"`
+	Concurrency hcl.Expression `hcl:"concurrency,optional"`
+	Rate        hcl.Expression `hcl:"rate,optional"`
+	Warmup      hcl.Expression `hcl:"warmup,optional"`
 }
 
 type sqlOpBlock struct {
@@ -124,6 +136,11 @@ type expectBlock struct {
 	URL        []*urlBlock       `hcl:"url,block"`
 	Title      []*titleBlock     `hcl:"title,block"`
 	WebPerf    []*webPerfBlock   `hcl:"web_perf,block"`
+	// Remainder carries any attribute not matched by a typed field above.
+	// Non-load providers must verify it is empty (validateExpectExtras);
+	// the load provider walks it to resolve shortcut attributes such as
+	// `p95 = lt("200ms")` or `error_ratio = lte(0.01)`.
+	Remainder hcl.Body `hcl:",remain"`
 }
 
 // webPerfBlock holds the per-metric assertions inside an
