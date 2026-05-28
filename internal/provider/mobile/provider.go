@@ -16,6 +16,7 @@ import (
 	"github.com/tales-testing/tales/internal/diagnostic"
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/provider/artifacts"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
@@ -111,7 +112,7 @@ func New(opts ...Option) *Provider {
 		targetLocks:   map[string]*sync.Mutex{},
 		stepLocks:     map[string]*sync.Mutex{},
 		hierarchies:   map[string]*tree.ViewNode{},
-		artifactsBase: defaultArtifactsBase,
+		artifactsBase: artifacts.DefaultBase,
 		captureMode:   CaptureFailures,
 	}
 
@@ -1220,7 +1221,7 @@ func mobileActionCty(action provider.MobileActionExec) map[string]cty.Value {
 
 func stepName(input provider.Input) string {
 	if input.Step == nil {
-		return unnamedSegment
+		return artifacts.SafePathSegment("")
 	}
 
 	return input.Step.Name
