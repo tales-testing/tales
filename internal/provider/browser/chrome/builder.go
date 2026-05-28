@@ -3,10 +3,20 @@ package chrome
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/tales-testing/tales/internal/provider/browser"
 )
+
+func chromeDebugf(format string, args ...any) {
+	if os.Getenv("TALES_BROWSER_DEBUG") != "1" {
+		return
+	}
+
+	_, _ = fmt.Fprintf(os.Stderr, "[browser:chrome %s] %s\n", time.Now().Format("15:04:05.000"), fmt.Sprintf(format, args...))
+}
 
 // DefaultBuilder returns a SessionBuilder that drives Chrome via chromedp.
 // One Chrome subprocess is started per target; each scenario gets a fresh
@@ -29,11 +39,16 @@ func build(_ context.Context, target browser.Target) (*browser.Session, error) {
 	}, nil
 }
 
-func newScenarioContext(_ context.Context, sess *browser.Session, _ string) (*browser.ScenarioBrowserCtx, error) {
+func newScenarioContext(_ context.Context, sess *browser.Session, scenario string) (*browser.ScenarioBrowserCtx, error) {
 	execPath, err := Locate(sess.Target.Driver.Executable)
 	if err != nil {
 		return nil, fmt.Errorf("locate chrome: %w", err)
 	}
+
+	chromeDebugf("spawning chrome target=%q scenario=%q exec=%q headless=%v viewport=%dx%d args=%v",
+		sess.Target.Name, scenario, execPath, sess.Target.Driver.Headless,
+		sess.Target.Driver.Viewport.Width, sess.Target.Driver.Viewport.Height,
+		sess.Target.Driver.Args)
 
 	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	opts = append(opts,
@@ -50,15 +65,20 @@ func newScenarioContext(_ context.Context, sess *browser.Session, _ string) (*br
 	ctx, cancel := chromedp.NewContext(allocCtx)
 
 	cleanup := func() {
+		chromeDebugf("cleanup target=%q scenario=%q", sess.Target.Name, scenario)
 		cancel()
 		allocCancel()
 	}
+
+	chromeDebugf("calling chromedp.Run target=%q scenario=%q", sess.Target.Name, scenario)
 
 	if err := chromedp.Run(ctx); err != nil {
 		cleanup()
 
 		return nil, fmt.Errorf("start chrome: %w", err)
 	}
+
+	chromeDebugf("chrome ready target=%q scenario=%q", sess.Target.Name, scenario)
 
 	return &browser.ScenarioBrowserCtx{
 		Driver: NewDriver(ctx, cleanup),

@@ -291,6 +291,112 @@ e2e-failure: build
 	set -e; \
 	test $$exit_code -eq 1
 
+# Browser e2e targets. These require a Chrome / Chromium executable on the
+# host (or CHROME_PATH pointing at one). When Chrome is missing, the target
+# logs a clear message and exits 0 — normal CI without Chrome stays green.
+
+BROWSER_PASS_SUITE ?= ./e2e/browser
+BROWSER_FAIL_SUITE ?= ./e2e/browser-fail
+
+# detect-chrome shell snippet — sets $$chrome to a non-empty path when a
+# usable Chrome/Chromium is found, otherwise stays empty. Inlined into
+# every browser-e2e recipe so the sub-make hop is avoided.
+define detect-chrome
+chrome=""; \
+candidate="$${CHROME_PATH:-}"; \
+if [ -n "$$candidate" ] && [ -x "$$candidate" ]; then chrome="$$candidate"; fi; \
+if [ -z "$$chrome" ]; then \
+  for cmd in google-chrome google-chrome-stable chromium chromium-browser chrome; do \
+    if command -v $$cmd >/dev/null 2>&1; then chrome="$$(command -v $$cmd)"; break; fi; \
+  done; \
+fi; \
+if [ -z "$$chrome" ]; then \
+  for p in \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+    "/usr/bin/google-chrome" \
+    "/usr/bin/google-chrome-stable" \
+    "/usr/bin/chromium" \
+    "/usr/bin/chromium-browser"; do \
+    if [ -x "$$p" ]; then chrome="$$p"; break; fi; \
+  done; \
+fi
+endef
+
+.PHONY: check-chrome
+check-chrome:
+	@$(detect-chrome); \
+	if [ -z "$$chrome" ]; then \
+	  echo "Chrome/Chromium not available — skipping browser e2e (install Chrome or set CHROME_PATH)"; \
+	else \
+	  echo "chrome: $$chrome"; \
+	fi
+
+.PHONY: e2e-browser
+e2e-browser: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs $(BUILD_DIR)/artifacts/browser
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	$(detect-chrome); \
+	if [ -z "$$chrome" ]; then \
+	  echo "Chrome/Chromium not available — skipping browser e2e (install Chrome or set CHROME_PATH)"; \
+	  exit 0; \
+	fi; \
+	echo "chrome: $$chrome"; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 2 --verbose \
+	  --report-junit $(BUILD_DIR)/reports/e2e-browser.junit.xml \
+	  --report-jsonl $(BUILD_DIR)/reports/e2e-browser.jsonl \
+	  --report-html  $(BUILD_DIR)/reports/e2e-browser.html \
+	  --capture-screenshots actions \
+	  $(BROWSER_PASS_SUITE)
+
+.PHONY: e2e-browser-failure
+e2e-browser-failure: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs $(BUILD_DIR)/artifacts/browser
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	$(detect-chrome); \
+	if [ -z "$$chrome" ]; then \
+	  echo "Chrome/Chromium not available — skipping browser e2e-failure (install Chrome or set CHROME_PATH)"; \
+	  exit 0; \
+	fi; \
+	echo "chrome: $$chrome"; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	set +e; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 1 \
+	  --report-jsonl $(BUILD_DIR)/reports/e2e-browser-failure.jsonl \
+	  $(BROWSER_FAIL_SUITE); \
+	exit_code=$$?; \
+	set -e; \
+	test $$exit_code -eq 1
+
 .PHONY: release-check
 release-check:
 	@command -v goreleaser >/dev/null 2>&1 || { echo "goreleaser is required (https://goreleaser.com/install/)"; exit 1; }

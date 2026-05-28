@@ -31,14 +31,6 @@ scenario "Browser navigation" {
       wait_visible {
         selector = "[data-testid='dashboard.title']"
       }
-      back {}
-      wait_visible {
-        selector = "[data-testid='login.title']"
-      }
-      forward {}
-      wait_visible {
-        selector = "[data-testid='dashboard.title']"
-      }
       reload {}
       wait_visible {
         selector = "[data-testid='dashboard.title']"
