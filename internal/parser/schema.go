@@ -123,6 +123,16 @@ type expectBlock struct {
 	Attribute  []*attributeBlock `hcl:"attribute,block"`
 	URL        []*urlBlock       `hcl:"url,block"`
 	Title      []*titleBlock     `hcl:"title,block"`
+	WebPerf    []*webPerfBlock   `hcl:"web_perf,block"`
+}
+
+// webPerfBlock holds the per-metric assertions inside an
+// `expect { web_perf { ... } }` declaration. Attributes are decoded
+// dynamically by the browser parser so a single block carries any
+// supported metric alias (fcp, lcp, cls, load, dom_content_loaded,
+// resources_count, transfer_size, …).
+type webPerfBlock struct {
+	Body hcl.Body `hcl:",remain"`
 }
 
 // visibleBlock describes a visibility expectation. ID is used by the mobile

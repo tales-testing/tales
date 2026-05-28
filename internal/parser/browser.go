@@ -573,6 +573,8 @@ func decodeBrowserExpect(path string, expect *expectBlock, out *model.BrowserExp
 		})
 	}
 
+	diags = append(diags, decodeWebPerfBlocks(path, expect.WebPerf, out)...)
+
 	return diags
 }
 

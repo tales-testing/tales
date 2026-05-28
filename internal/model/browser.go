@@ -74,6 +74,18 @@ type BrowserExpect struct {
 	Attribute  []BrowserAttributeExpectation
 	URL        []BrowserURLExpectation
 	Title      []BrowserTitleExpectation
+	WebPerf    []BrowserWebPerfExpectation
+}
+
+// BrowserWebPerfExpectation asserts a single web performance metric
+// against an expected value (literal number / duration string or
+// matcher object). Metric is the canonical snake_case name from the
+// driver.PerformanceMetrics layer ("fcp_ms", "lcp_ms", "cls", …);
+// surface aliases are resolved by the parser before this struct is
+// built.
+type BrowserWebPerfExpectation struct {
+	Metric   string
+	Expected Expression
 }
 
 // BrowserVisibility is one element visibility expectation with optional
@@ -138,7 +150,7 @@ func (b *BrowserStep) HasContent() bool {
 		len(b.Expect.Text) > 0 || len(b.Expect.Value) > 0 ||
 		len(b.Expect.Enabled) > 0 || len(b.Expect.Disabled) > 0 ||
 		len(b.Expect.Attribute) > 0 || len(b.Expect.URL) > 0 ||
-		len(b.Expect.Title) > 0 {
+		len(b.Expect.Title) > 0 || len(b.Expect.WebPerf) > 0 {
 		return true
 	}
 
