@@ -67,3 +67,27 @@ release:
   # silently failed.
   draft: false
   prerelease: auto
+
+brews:
+  - name: tales
+    ids:
+      - default
+    repository:
+      owner: tales-testing
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://taleslabs.org"
+    description: "Declarative integration and e2e testing with .tales files"
+    license: "MIT"
+    # Skip pushing the formula for prereleases (rc / beta / alpha tags).
+    skip_upload: auto
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "chore: brew formula update for {{ .ProjectName }} {{ .Tag }}"
+    install: |
+      bin.install "tales"
+    test: |
+      assert_match "tales version: #{version}", shell_output("#{bin}/tales --version")
