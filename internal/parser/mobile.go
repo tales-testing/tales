@@ -72,27 +72,41 @@ func decodeMobileStep(path string, rs stepBlock) (*model.MobileStep, hcl.Diagnos
 	}
 
 	if expectBody != nil {
+		diags = append(diags, rejectBrowserExpectBlocks(expectBody)...)
+
 		for _, v := range expectBody.Visible {
+			diags = append(diags, rejectBrowserSelector(v.Selector, "visible")...)
+
 			ms.Expect.Visible = append(ms.Expect.Visible, mobileVisibilityFromBlock(path, v))
 		}
 
 		for _, v := range expectBody.NotVisible {
+			diags = append(diags, rejectBrowserSelector(v.Selector, "not_visible")...)
+
 			ms.Expect.NotVisible = append(ms.Expect.NotVisible, mobileVisibilityFromBlock(path, v))
 		}
 
 		for _, v := range expectBody.Text {
+			diags = append(diags, rejectBrowserSelector(v.Selector, "text")...)
+
 			ms.Expect.Text = append(ms.Expect.Text, mobileValueExpectationFromBlock(path, v))
 		}
 
 		for _, v := range expectBody.Value {
+			diags = append(diags, rejectBrowserSelector(v.Selector, "value")...)
+
 			ms.Expect.Value = append(ms.Expect.Value, mobileValueExpectationFromBlock(path, v))
 		}
 
 		for _, v := range expectBody.Enabled {
+			diags = append(diags, rejectBrowserSelector(v.Selector, "enabled")...)
+
 			ms.Expect.Enabled = append(ms.Expect.Enabled, mobileStateExpectationFromBlock(path, v))
 		}
 
 		for _, v := range expectBody.Disabled {
+			diags = append(diags, rejectBrowserSelector(v.Selector, "disabled")...)
+
 			ms.Expect.Disabled = append(ms.Expect.Disabled, mobileStateExpectationFromBlock(path, v))
 		}
 	}
@@ -100,34 +114,86 @@ func decodeMobileStep(path string, rs stepBlock) (*model.MobileStep, hcl.Diagnos
 	return ms, diags
 }
 
+// rejectBrowserSelector emits a diag when a mobile expect block uses the
+// browser-style "selector" attribute. Mobile locators are accessibility ids.
+func rejectBrowserSelector(selector hcl.Expression, blockName string) hcl.Diagnostics {
+	if !exprIsSet(selector) {
+		return nil
+	}
+
+	rng := selector.Range()
+
+	return hcl.Diagnostics{diagError(
+		"Unexpected selector attribute",
+		fmt.Sprintf("mobile %s block uses id (accessibility id), not selector. Did you mean to use provider \"browser\"?", blockName),
+		&rng,
+	)}
+}
+
+// rejectBrowserExpectBlocks emits diags when a mobile expect carries
+// browser-only blocks (attribute / url / title).
+func rejectBrowserExpectBlocks(expect *expectBlock) hcl.Diagnostics {
+	diags := make(hcl.Diagnostics, 0)
+
+	for _, b := range expect.Attribute {
+		if b == nil {
+			continue
+		}
+
+		rng := b.Selector.Range()
+		diags = append(diags, diagError(
+			"Unexpected attribute block",
+			"attribute expectation is browser-only; mobile steps do not support attribute matching.",
+			&rng,
+		))
+	}
+
+	for _, b := range expect.URL {
+		if b == nil {
+			continue
+		}
+
+		rng := b.Value.Range()
+		diags = append(diags, diagError(
+			"Unexpected url block",
+			"url expectation is browser-only; mobile steps do not support URL matching.",
+			&rng,
+		))
+	}
+
+	for _, b := range expect.Title {
+		if b == nil {
+			continue
+		}
+
+		rng := b.Value.Range()
+		diags = append(diags, diagError(
+			"Unexpected title block",
+			"title expectation is browser-only; mobile steps do not support title matching.",
+			&rng,
+		))
+	}
+
+	return diags
+}
+
+// looksLikeMobileStep checks for fields that only the mobile provider uses,
+// so the dispatcher can flag a misrouted step. target/actions/expect are
+// shared with the browser provider and intentionally NOT included here.
 func looksLikeMobileStep(rs stepBlock) bool {
 	if rs.Provider == mobileProviderType {
 		return true
 	}
 
-	if exprIsSet(rs.Platform) || exprIsSet(rs.Target) {
+	if exprIsSet(rs.Platform) {
 		return true
 	}
 
-	if rs.Launch != nil || rs.Terminate != nil || rs.Actions != nil || rs.Permissions != nil {
-		return true
-	}
-
-	if rs.Expect != nil && mobileExpectHasContent(rs.Expect) {
-		return true
-	}
-
-	if rs.Response != nil && mobileExpectHasContent(rs.Response) {
+	if rs.Launch != nil || rs.Terminate != nil || rs.Permissions != nil {
 		return true
 	}
 
 	return false
-}
-
-func mobileExpectHasContent(expect *expectBlock) bool {
-	return len(expect.Visible) > 0 || len(expect.NotVisible) > 0 ||
-		len(expect.Text) > 0 || len(expect.Value) > 0 ||
-		len(expect.Enabled) > 0 || len(expect.Disabled) > 0
 }
 
 // exprIsSet reports whether the user actually provided this optional HCL

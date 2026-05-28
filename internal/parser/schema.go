@@ -52,7 +52,7 @@ type stepBlock struct {
 	Target      hcl.Expression          `hcl:"target,optional"`
 	Launch      *mobileLaunchBlock      `hcl:"launch,block"`
 	Terminate   *mobileTerminateBlock   `hcl:"terminate,block"`
-	Actions     *mobileActionsBlock     `hcl:"actions,block"`
+	Actions     *actionsBlock           `hcl:"actions,block"`
 	Permissions *mobilePermissionsBlock `hcl:"permissions,block"`
 	Connection  hcl.Expression          `hcl:"connection,optional"`
 	Exec        *sqlOpBlock             `hcl:"exec,block"`
@@ -109,27 +109,35 @@ type basicAuthBlock struct {
 }
 
 type expectBlock struct {
-	Status     hcl.Expression  `hcl:"status,optional"`
-	Headers    hcl.Expression  `hcl:"headers,optional"`
-	JSON       hcl.Expression  `hcl:"json,optional"`
-	Body       hcl.Expression  `hcl:"body,optional"`
-	Strict     hcl.Expression  `hcl:"strict,optional"`
-	Visible    []*visibleBlock `hcl:"visible,block"`
-	NotVisible []*visibleBlock `hcl:"not_visible,block"`
-	Text       []*valueBlock   `hcl:"text,block"`
-	Value      []*valueBlock   `hcl:"value,block"`
-	Enabled    []*stateBlock   `hcl:"enabled,block"`
-	Disabled   []*stateBlock   `hcl:"disabled,block"`
+	Status     hcl.Expression    `hcl:"status,optional"`
+	Headers    hcl.Expression    `hcl:"headers,optional"`
+	JSON       hcl.Expression    `hcl:"json,optional"`
+	Body       hcl.Expression    `hcl:"body,optional"`
+	Strict     hcl.Expression    `hcl:"strict,optional"`
+	Visible    []*visibleBlock   `hcl:"visible,block"`
+	NotVisible []*visibleBlock   `hcl:"not_visible,block"`
+	Text       []*valueBlock     `hcl:"text,block"`
+	Value      []*valueBlock     `hcl:"value,block"`
+	Enabled    []*stateBlock     `hcl:"enabled,block"`
+	Disabled   []*stateBlock     `hcl:"disabled,block"`
+	Attribute  []*attributeBlock `hcl:"attribute,block"`
+	URL        []*urlBlock       `hcl:"url,block"`
+	Title      []*titleBlock     `hcl:"title,block"`
 }
 
+// visibleBlock describes a visibility expectation. ID is used by the mobile
+// provider; Selector is used by the browser provider. The decoder validates
+// that exactly the expected locator is set per provider.
 type visibleBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
+	Selector hcl.Expression `hcl:"selector,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
 	Interval hcl.Expression `hcl:"interval,optional"`
 }
 
 type valueBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
+	Selector hcl.Expression `hcl:"selector,optional"`
 	Value    hcl.Expression `hcl:"value,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
 	Interval hcl.Expression `hcl:"interval,optional"`
@@ -137,6 +145,31 @@ type valueBlock struct {
 
 type stateBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
+	Selector hcl.Expression `hcl:"selector,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
+	Interval hcl.Expression `hcl:"interval,optional"`
+}
+
+// attributeBlock is the browser-specific expect block matching an element's
+// DOM attribute value. Mobile rejects it at decode time.
+type attributeBlock struct {
+	Selector hcl.Expression `hcl:"selector,optional"`
+	Name     hcl.Expression `hcl:"name,optional"`
+	Value    hcl.Expression `hcl:"value,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
+	Interval hcl.Expression `hcl:"interval,optional"`
+}
+
+// urlBlock is the browser-specific expect block matching the document URL.
+type urlBlock struct {
+	Value    hcl.Expression `hcl:"value,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
+	Interval hcl.Expression `hcl:"interval,optional"`
+}
+
+// titleBlock is the browser-specific expect block matching the document title.
+type titleBlock struct {
+	Value    hcl.Expression `hcl:"value,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
 	Interval hcl.Expression `hcl:"interval,optional"`
 }
@@ -147,7 +180,10 @@ type mobileLaunchBlock struct {
 
 type mobileTerminateBlock struct{}
 
-type mobileActionsBlock struct {
+// actionsBlock holds the raw body of a step's `actions { ... }` block. The
+// provider-specific decoder (mobile / browser) walks the body in source order
+// to preserve declaration order across action kinds.
+type actionsBlock struct {
 	Body hcl.Body `hcl:",remain"`
 }
 

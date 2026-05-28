@@ -19,6 +19,7 @@ type Input struct {
 	Expect   map[string]cty.Value
 	Mobile   *MobileExecution
 	SQL      *SQLExecution
+	Browser  *BrowserExecution
 	Timeout  time.Duration
 }
 

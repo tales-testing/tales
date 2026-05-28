@@ -222,6 +222,13 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 			step.SQL = sqlStep
 		}
 
+		browserStep, browserDiags := decodeBrowserStepIfNeeded(path, rs, step.Name)
+		diags = append(diags, browserDiags...)
+
+		if browserStep != nil {
+			step.Browser = browserStep
+		}
+
 		if step.Provider == "" {
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,

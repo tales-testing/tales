@@ -17,6 +17,7 @@ type Step struct {
 	Keyword   *KeywordCall
 	Mobile    *MobileStep
 	SQL       *SQLCall
+	Browser   *BrowserStep
 	Retry     *Retry
 	SkipRules []SkipRule
 }
