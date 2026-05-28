@@ -91,6 +91,22 @@ func newScenarioContext(_ context.Context, sess *browser.Session, scenario strin
 		chromedp.WindowSize(sess.Target.Driver.Viewport.Width, sess.Target.Driver.Viewport.Height),
 	)
 
+	if sess.Target.Driver.Headless {
+		// Headless defaults that match what Puppeteer / Playwright ship
+		// for CI environments. Without --no-sandbox, Chrome hangs on
+		// startup inside GitHub Actions / most Docker images because
+		// the setuid sandbox cannot be created without CAP_SYS_ADMIN.
+		// --disable-dev-shm-usage avoids crashes on runners where /dev/shm
+		// is tiny (the default 64 MiB on many containers). --disable-gpu
+		// removes a warning + saves a few hundred ms of startup time in
+		// headless mode where GPU acceleration is irrelevant.
+		opts = append(opts,
+			chromedp.NoSandbox,
+			chromedp.Flag("disable-dev-shm-usage", true),
+			chromedp.Flag("disable-gpu", true),
+		)
+	}
+
 	for _, arg := range sess.Target.Driver.Args {
 		name, value := parseFlag(arg)
 		opts = append(opts, chromedp.Flag(name, value))
