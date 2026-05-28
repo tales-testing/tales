@@ -108,6 +108,7 @@ export default defineConfig({
 						{ label: 'HTTP', slug: 'docs/providers/http' },
 						{ label: 'SQL (Postgres / MySQL)', slug: 'docs/providers/sql' },
 						{ label: 'Mobile iOS', slug: 'docs/providers/mobile-ios' },
+						{ label: 'Browser (Chrome / Chromium)', slug: 'docs/providers/browser' },
 						{ label: 'Keyword', slug: 'docs/providers/keyword' },
 					],
 				},
