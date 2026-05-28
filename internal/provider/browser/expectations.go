@@ -83,7 +83,81 @@ func (p *Provider) handleExpect(ctx context.Context, drv driver.Driver, expect p
 		}
 	}
 
+	if len(expect.WebPerf) > 0 {
+		metrics, err := drv.Performance(ctx)
+		if err != nil {
+			return fmt.Errorf("expect.web_perf: collect performance: %w", err)
+		}
+
+		for _, v := range expect.WebPerf {
+			if err := matchWebPerf(metrics, v); err != nil {
+				return fmt.Errorf("expect.web_perf.%s: %w", v.Metric, err)
+			}
+		}
+	}
+
 	return nil
+}
+
+// matchWebPerf asserts a single performance metric against the
+// expected value. Observer-backed metrics (FCP / LCP / CLS) that the
+// browser did not surface are reported with a clear "not available"
+// error rather than silently passing or failing.
+func matchWebPerf(metrics *driver.PerformanceMetrics, exp provider.BrowserWebPerfExpectationExec) error {
+	if metrics == nil {
+		return fmt.Errorf("performance metrics unavailable")
+	}
+
+	value, ok := webPerfMetricValue(metrics, exp.Metric)
+	if !ok {
+		return fmt.Errorf("browser performance metric %q is not available", exp.Metric)
+	}
+
+	if err := assertion.MatchJSON(exp.Expected, value, false, exp.Metric); err != nil {
+		return fmt.Errorf("metric mismatch: %w", err)
+	}
+
+	return nil
+}
+
+// webPerfMetricValue resolves a canonical metric name to its current
+// cty value. ok=false when the metric is intrinsically optional and
+// the browser did not surface a value (pointer fields nil).
+func webPerfMetricValue(m *driver.PerformanceMetrics, metric string) (cty.Value, bool) {
+	switch metric {
+	case "dom_content_loaded_ms":
+		return cty.NumberFloatVal(m.DOMContentLoadedMS), true
+	case "load_event_ms":
+		return cty.NumberFloatVal(m.LoadEventMS), true
+	case "fcp_ms":
+		if m.FCPMS == nil {
+			return cty.NilVal, false
+		}
+
+		return cty.NumberFloatVal(*m.FCPMS), true
+	case "lcp_ms":
+		if m.LCPMS == nil {
+			return cty.NilVal, false
+		}
+
+		return cty.NumberFloatVal(*m.LCPMS), true
+	case "cls":
+		if m.CLS == nil {
+			return cty.NilVal, false
+		}
+
+		return cty.NumberFloatVal(*m.CLS), true
+	case "resources_count":
+		return cty.NumberIntVal(int64(m.ResourcesCount)), true
+	case "transfer_size_bytes":
+		return cty.NumberIntVal(m.TransferSizeBytes), true
+	case "encoded_body_size_bytes":
+		return cty.NumberIntVal(m.EncodedBodySizeBytes), true
+	case "decoded_body_size_bytes":
+		return cty.NumberIntVal(m.DecodedBodySizeBytes), true
+	}
+
+	return cty.NilVal, false
 }
 
 func matchText(ctx context.Context, drv driver.Driver, selector string, expected cty.Value, timeout, interval time.Duration) error {

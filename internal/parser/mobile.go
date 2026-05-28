@@ -174,6 +174,19 @@ func rejectBrowserExpectBlocks(expect *expectBlock) hcl.Diagnostics {
 		))
 	}
 
+	for _, b := range expect.WebPerf {
+		if b == nil {
+			continue
+		}
+
+		rng := b.Body.MissingItemRange()
+		diags = append(diags, diagError(
+			"Unexpected web_perf block",
+			"web_perf expectation is browser-only; mobile steps do not support web performance assertions.",
+			&rng,
+		))
+	}
+
 	return diags
 }
 

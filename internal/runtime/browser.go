@@ -346,6 +346,22 @@ func evalBrowserExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 		out.Title = append(out.Title, provider.BrowserTitleExpectationExec(exec))
 	}
 
+	for _, v := range step.Browser.Expect.WebPerf {
+		expected, err := evaluator.Eval(v.Expected, scope, lang.GenerateMeta{
+			Scenario: scenarioName,
+			Step:     step.Name,
+			ExprPath: fmt.Sprintf("browser.expect.web_perf.%s", v.Metric),
+		})
+		if err != nil {
+			return out, fmt.Errorf("browser.expect.web_perf.%s: %w", v.Metric, err)
+		}
+
+		out.WebPerf = append(out.WebPerf, provider.BrowserWebPerfExpectationExec{
+			Metric:   v.Metric,
+			Expected: expected,
+		})
+	}
+
 	return out, nil
 }
 

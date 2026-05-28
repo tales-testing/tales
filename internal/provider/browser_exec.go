@@ -43,6 +43,7 @@ type BrowserExpectExec struct {
 	Attribute  []BrowserAttributeExpectationExec
 	URL        []BrowserURLExpectationExec
 	Title      []BrowserTitleExpectationExec
+	WebPerf    []BrowserWebPerfExpectationExec
 }
 
 // HasAny reports whether any expectation kind carries at least one entry.
@@ -50,7 +51,17 @@ func (e BrowserExpectExec) HasAny() bool {
 	return len(e.Visible) > 0 || len(e.NotVisible) > 0 ||
 		len(e.Text) > 0 || len(e.Value) > 0 ||
 		len(e.Enabled) > 0 || len(e.Disabled) > 0 ||
-		len(e.Attribute) > 0 || len(e.URL) > 0 || len(e.Title) > 0
+		len(e.Attribute) > 0 || len(e.URL) > 0 || len(e.Title) > 0 ||
+		len(e.WebPerf) > 0
+}
+
+// BrowserWebPerfExpectationExec asserts one web performance metric
+// against an evaluated expected value (number, duration string, or
+// matcher object). Metric is the canonical driver field name
+// (e.g. "fcp_ms", "cls"); parser aliases have already been resolved.
+type BrowserWebPerfExpectationExec struct {
+	Metric   string
+	Expected cty.Value
 }
 
 // BrowserVisibilityExec is a resolved visible / not_visible expectation.
