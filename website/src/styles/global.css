@@ -48,3 +48,10 @@ kbd,
 samp {
 	font-family: var(--font-mono);
 }
+
+/* Astro's <Code> component renders <pre class="astro-code"> with no padding,
+ * leaving the highlighted tokens flush against the container border. */
+pre.astro-code {
+	padding: 1rem;
+	overflow-x: auto;
+}
