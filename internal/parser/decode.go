@@ -181,6 +181,12 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 				Body:    expr(path, expect.Body),
 				Strict:  expr(path, expect.Strict),
 			}
+
+			if rs.Provider == loadProviderType {
+				diags = append(diags, decodeLoadExpect(path, expect, step.Expect)...)
+			} else {
+				diags = append(diags, validateExpectExtras(expect)...)
+			}
 		}
 
 		if rs.Retry != nil {
@@ -227,6 +233,13 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 
 		if browserStep != nil {
 			step.Browser = browserStep
+		}
+
+		loadStep, loadDiags := decodeLoadStepIfNeeded(path, rs, step.Name)
+		diags = append(diags, loadDiags...)
+
+		if loadStep != nil {
+			step.Load = loadStep
 		}
 
 		if step.Provider == "" {

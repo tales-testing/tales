@@ -408,6 +408,10 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 		return r.executeBrowserStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
 	}
 
+	if step.Provider == loadProviderType {
+		return r.executeLoadStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
+	}
+
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
 
 	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {
@@ -853,6 +857,43 @@ func evaluateExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioNam
 
 	if err := assertExpectedBody(evaluator, scope, scenarioName, step, output); err != nil {
 		return err
+	}
+
+	if err := assertExpectedShortcuts(evaluator, scope, scenarioName, step, output); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// assertExpectedShortcuts evaluates each flat shortcut assertion (e.g.
+// `p95 = lt("200ms")`) against the matching key on output.Response.
+// Missing keys surface as null and fail the comparator with the usual
+// "value is not a number" message, which is the correct behavior for
+// the load provider's shortcut surface.
+func assertExpectedShortcuts(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, output *provider.Output) error {
+	for _, shortcut := range step.Expect.Shortcuts {
+		expected, err := evaluator.Eval(shortcut.Expected, scope, lang.GenerateMeta{
+			Scenario: scenarioName,
+			Step:     step.Name,
+			ExprPath: "expect." + shortcut.Name,
+		})
+		if err != nil {
+			return fmt.Errorf("expect.%s: %w", shortcut.Name, err)
+		}
+
+		if expected.IsNull() {
+			continue
+		}
+
+		actual, ok := output.Response[shortcut.Name]
+		if !ok {
+			actual = cty.NullVal(cty.Number)
+		}
+
+		if err := assertion.MatchJSON(expected, actual, false, shortcut.Name); err != nil {
+			return fmt.Errorf("assert %s: %w", shortcut.Name, err)
+		}
 	}
 
 	return nil

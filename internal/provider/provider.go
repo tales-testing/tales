@@ -20,7 +20,22 @@ type Input struct {
 	Mobile   *MobileExecution
 	SQL      *SQLExecution
 	Browser  *BrowserExecution
+	Load     *LoadExecution
 	Timeout  time.Duration
+}
+
+// LoadExecution carries the resolved execution parameters for a load
+// step. Mode is one of "duration" or "requests"; the field matching
+// the mode is populated, the other stays zero. Rate is requests per
+// second (0 = unlimited). Warmup is the duration spent priming the
+// transport before measurement begins.
+type LoadExecution struct {
+	Mode        string
+	Duration    time.Duration
+	Requests    int
+	Concurrency int
+	Rate        float64
+	Warmup      time.Duration
 }
 
 // SQLExecution carries the resolved data for one sql step ready to be
