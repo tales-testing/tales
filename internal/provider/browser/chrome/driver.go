@@ -199,10 +199,17 @@ func (d *chromedpDriver) ScrollBy(ctx context.Context, x, y int) error {
 	return d.run(ctx, chromedp.Evaluate(script, nil))
 }
 
-// Reload implements driver.Driver via JS so the navigation completes
-// reliably across chromedp versions.
+// Reload implements driver.Driver. Same protocol caveat as Back: a bare
+// window.location.reload() runs synchronously in the JS execution
+// context that is about to be destroyed by the navigation, and the CDP
+// reply never arrives — chromedp then hangs the next WaitVisible. We
+// defer the reload via setTimeout(0) so the eval returns BEFORE
+// navigation starts, then sleep briefly to let the new document settle.
 func (d *chromedpDriver) Reload(ctx context.Context) error {
-	return d.run(ctx, chromedp.Evaluate("window.location.reload()", nil))
+	return d.run(ctx, chromedp.Tasks{
+		chromedp.Evaluate(`setTimeout(function(){ window.location.reload(); }, 0)`, nil),
+		chromedp.Sleep(navigationSettleDelay),
+	})
 }
 
 // Back implements driver.Driver via window.history.back() dispatched

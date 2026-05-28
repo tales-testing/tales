@@ -357,7 +357,7 @@ e2e-browser: build
 	  sleep 0.2; \
 	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
 	done; \
-	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 2 --verbose \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 1 --verbose \
 	  --timeout 2m \
 	  --report-junit $(BUILD_DIR)/reports/e2e-browser.junit.xml \
 	  --report-jsonl $(BUILD_DIR)/reports/e2e-browser.jsonl \
