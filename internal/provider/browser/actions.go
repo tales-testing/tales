@@ -18,9 +18,13 @@ const (
 	actionStatusSkip = "skipped"
 )
 
-// actionDefaultTimeout is used when neither the per-action timeout nor the
-// target's configured timeout is set.
-const actionDefaultTimeout = 10 * time.Second
+// actionDefaultTimeout is the floor applied when neither the per-action
+// timeout nor the target's configured timeout is set (or both resolved
+// to zero). 30s matches the documented target default in
+// website/.../providers/browser.mdx so the four resolution layers
+// (per-expect → per-action → target → built-in) collapse to the same
+// number from the user's perspective.
+const actionDefaultTimeout = 30 * time.Second
 
 // runActions iterates over the prepared actions, executing each against
 // the driver. Failures stop the loop; subsequent actions are recorded as

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -91,7 +92,8 @@ func newScenarioContext(_ context.Context, sess *browser.Session, scenario strin
 	)
 
 	for _, arg := range sess.Target.Driver.Args {
-		opts = append(opts, chromedp.Flag(trimDash(arg), true))
+		name, value := parseFlag(arg)
+		opts = append(opts, chromedp.Flag(name, value))
 	}
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
@@ -146,14 +148,24 @@ func browserPID(ctx context.Context) int {
 	return c.Browser.Process().Pid
 }
 
-// trimDash strips leading "--" from a chromedp flag string. chromedp.Flag
-// expects bare names ("disable-gpu"), but users typically write
-// "--disable-gpu" in their config because that is what Chrome itself
-// accepts.
-func trimDash(s string) string {
+// parseFlag turns a user-supplied Chrome command-line flag string into
+// the (name, value) pair chromedp.Flag wants. Users typically write the
+// full `--name` or `--name=value` form they would pass to Chrome
+// directly; chromedp expects bare names and a value (bool for boolean
+// flags, string for valued flags). Examples:
+//
+//	"--disable-gpu"            → ("disable-gpu", true)
+//	"--proxy-server=http://p"  → ("proxy-server", "http://p")
+//	"user-agent=Tales/0.1"     → ("user-agent", "Tales/0.1")
+//	""                         → ("", true) — caller should filter empty entries
+func parseFlag(s string) (string, any) {
 	for len(s) > 0 && s[0] == '-' {
 		s = s[1:]
 	}
 
-	return s
+	if name, value, ok := strings.Cut(s, "="); ok {
+		return name, value
+	}
+
+	return s, true
 }

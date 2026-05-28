@@ -258,6 +258,20 @@ func (d *chromedpDriver) Text(ctx context.Context, selector string) (string, err
 	return out, nil
 }
 
+// InputValue implements driver.Driver via the chromedp.Value helper,
+// which reads the JS `.value` property — the right primitive for form
+// inputs / textareas / selects, whose current value is independent of
+// the rendered text content.
+func (d *chromedpDriver) InputValue(ctx context.Context, selector string) (string, error) {
+	var out string
+
+	if err := d.run(ctx, chromedp.Value(selector, &out, chromedp.ByQuery)); err != nil {
+		return "", err
+	}
+
+	return out, nil
+}
+
 // Attribute implements driver.Driver.
 func (d *chromedpDriver) Attribute(ctx context.Context, selector, name string) (string, bool, error) {
 	var (

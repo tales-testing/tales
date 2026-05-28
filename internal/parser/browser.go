@@ -79,14 +79,12 @@ func decodeBrowserStep(path string, rs stepBlock) (*model.BrowserStep, hcl.Diagn
 	diags := make(hcl.Diagnostics, 0)
 	bs := &model.BrowserStep{}
 
+	// target is optional at parse time: when omitted, ResolveTarget()
+	// uses the single-target shortcut (the sole entry in
+	// config.browser.targets). Missing config / ambiguous multi-target
+	// are reported at execution time with a precise message.
 	if exprIsSet(rs.Target) {
 		bs.Target = expr(path, rs.Target)
-	} else {
-		diags = append(diags, diagError(
-			"Missing browser target",
-			"browser step must declare target = \"<name>\" pointing at a config.browser.targets entry.",
-			nil,
-		))
 	}
 
 	if rs.Actions != nil {

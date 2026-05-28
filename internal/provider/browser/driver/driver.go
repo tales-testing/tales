@@ -49,6 +49,10 @@ type Driver interface {
 	Visible(ctx context.Context, selector string) (bool, error)
 	// Text returns the rendered text content of selector.
 	Text(ctx context.Context, selector string) (string, error)
+	// InputValue returns the JS .value of selector, used to match form
+	// inputs / textareas / selects whose current value is independent
+	// of the rendered text.
+	InputValue(ctx context.Context, selector string) (string, error)
 	// Attribute returns the value of an HTML attribute on selector.
 	Attribute(ctx context.Context, selector, name string) (string, bool, error)
 	// URL returns the current document URL.

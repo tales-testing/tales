@@ -67,7 +67,7 @@ func ResolveTarget(config map[string]cty.Value, name string) (Target, error) {
 
 	drv, err := resolveDriverConfig(resolved.value)
 	if err != nil {
-		return Target{}, fmt.Errorf("config.browser.targets.%s.driver: %w", resolved.name, err)
+		return Target{}, fmt.Errorf("config.browser.targets.%s: %w", resolved.name, err)
 	}
 
 	if drv.Browser != defaultBrowserName {
