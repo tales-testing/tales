@@ -266,6 +266,30 @@ e2e-ios-failure: tales-bin build-ios-demo
 	scripts/verify-ios-failure.sh "$(BUILD_DIR)/reports/e2e-ios-failure.jsonl" "$(BUILD_DIR)/artifacts/mobile" || { echo "iOS failure verification failed. Run \`make doctor-ios\` for diagnostics."; exit 1; }; \
 	scripts/verify-ios-visual.sh "$(BUILD_DIR)/reports/e2e-ios-failure.html" || { echo "visual report verification failed."; exit 1; }
 
+.PHONY: e2e-load
+e2e-load: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 1 \
+	  --report-junit $(BUILD_DIR)/reports/e2e-load.junit.xml \
+	  --report-jsonl $(BUILD_DIR)/reports/e2e-load.jsonl \
+	  ./e2e/load
+
 .PHONY: e2e-failure
 e2e-failure: build
 	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
