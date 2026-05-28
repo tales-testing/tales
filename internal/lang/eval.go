@@ -54,7 +54,12 @@ func (e *Evaluator) Eval(expression model.Expression, scope ScopeData, meta Gene
 // EvalWithExtras evaluates expression with the standard scope and an
 // additional, caller-provided set of functions merged into the EvalContext.
 // Caller-provided functions override any built-in of the same name.
-func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData, meta GenerateMeta, extras map[string]function.Function) (cty.Value, error) {
+//
+// extraVars (variadic, optional) are merged on top of the built-in scope
+// variables. Later maps override earlier ones; extras override built-ins of
+// the same name. This is how the browser provider exposes the `browser`
+// namespace (browser.url, browser.title) inside step-scoped capture eval.
+func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData, meta GenerateMeta, extras map[string]function.Function, extraVars ...map[string]cty.Value) (cty.Value, error) {
 	if expression.Empty() {
 		return cty.NullVal(cty.DynamicPseudoType), nil
 	}
@@ -64,16 +69,24 @@ func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData,
 		varsValue = cty.ObjectVal(scope.Vars)
 	}
 
+	variables := map[string]cty.Value{
+		"config":   cty.ObjectVal(scope.Config),
+		"result":   cty.ObjectVal(scope.Result),
+		"request":  cty.ObjectVal(scope.Request),
+		"response": cty.ObjectVal(scope.Response),
+		"input":    cty.ObjectVal(scope.Input),
+		"host":     hostObject(),
+		"vars":     varsValue,
+	}
+
+	for _, extra := range extraVars {
+		for name, value := range extra {
+			variables[name] = value
+		}
+	}
+
 	ctx := &hcl.EvalContext{
-		Variables: map[string]cty.Value{
-			"config":   cty.ObjectVal(scope.Config),
-			"result":   cty.ObjectVal(scope.Result),
-			"request":  cty.ObjectVal(scope.Request),
-			"response": cty.ObjectVal(scope.Response),
-			"input":    cty.ObjectVal(scope.Input),
-			"host":     hostObject(),
-			"vars":     varsValue,
-		},
+		Variables: variables,
 		Functions: map[string]function.Function{},
 	}
 

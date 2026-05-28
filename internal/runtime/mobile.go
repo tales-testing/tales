@@ -593,7 +593,7 @@ func mobileRequestSummary(exec *provider.MobileExecution) map[string]any {
 
 	summary := map[string]any{
 		"platform": exec.Platform,
-		"target":   exec.TargetName,
+		keyTarget:  exec.TargetName,
 	}
 
 	if exec.Launch != nil {
@@ -638,7 +638,7 @@ func mobileActionSummary(action provider.MobileActionExec) map[string]any {
 	}
 
 	if action.Secure {
-		entry[keyValue] = "***"
+		entry[keyValue] = keyMasked
 	} else {
 		entry[keyValue] = action.Value
 	}
@@ -847,7 +847,7 @@ func mobileCaptureFunctions(providerImpl provider.Provider, scenarioName, stepNa
 
 	return map[string]function.Function{
 		keyValue: valueFunction(hierarchy),
-		"text":   textFunction(hierarchy),
+		keyText:  textFunction(hierarchy),
 	}
 }
 

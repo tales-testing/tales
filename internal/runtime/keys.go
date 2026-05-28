@@ -19,6 +19,12 @@ const (
 	keyName     = "name"
 	keyPassword = "password"
 	keyValue    = "value"
+	keySelector = "selector"
+	keyTarget   = "target"
+	keyText     = "text"
+	keyTitle    = "title"
+	keyURL      = "url"
+	keyMasked   = "***"
 
 	kindRuntime = "runtime"
 )

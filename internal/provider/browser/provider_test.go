@@ -39,16 +39,8 @@ func TestProviderExecuteStubMissingBuilder(t *testing.T) {
 	}
 }
 
-func TestProviderExecuteStubNotImplemented(t *testing.T) {
-	t.Parallel()
-
-	p := New(WithSessionBuilder(SessionBuilderFunc{}))
-
-	_, err := p.Execute(context.Background(), provider.Input{Browser: &provider.BrowserExecution{}})
-	if err == nil || !strings.Contains(err.Error(), "not yet implemented") {
-		t.Fatalf("expected not-implemented error, got: %v", err)
-	}
-}
+// Real end-to-end behavior is covered by provider_exec_test.go via a fake
+// driver. The remaining stub tests here only guard input validation paths.
 
 func TestProviderCloseOnEmpty(t *testing.T) {
 	t.Parallel()
