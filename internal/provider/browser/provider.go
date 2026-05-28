@@ -98,25 +98,35 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 
 	start := time.Now()
 
+	debugf("execute", "scenario=%q step=%q phase=%q attempt=%d actions=%d", input.Scenario, stepName(input), input.Phase, input.Attempt, len(input.Browser.Actions))
+
 	target, err := ResolveTarget(input.Config, input.Browser.TargetName)
 	if err != nil {
 		return nil, fmt.Errorf("browser: %w", err)
 	}
+
+	debugf("execute", "resolved target=%q headless=%v viewport=%dx%d timeout=%s", target.Name, target.Driver.Headless, target.Driver.Viewport.Width, target.Driver.Viewport.Height, target.Driver.Timeout)
 
 	sess, err := p.acquireSession(ctx, target)
 	if err != nil {
 		return nil, fmt.Errorf("browser: %w", err)
 	}
 
+	debugf("execute", "session acquired target=%q", target.Name)
+
 	sc, err := p.acquireScenarioCtx(ctx, sess, input.Scenario)
 	if err != nil {
 		return nil, fmt.Errorf("browser: %w", err)
 	}
 
+	debugf("execute", "scenario ctx acquired scenario=%q", input.Scenario)
+
 	stepLock := p.stepLockFor(target.Name)
 	stepLock.Lock()
 
 	defer stepLock.Unlock()
+
+	debugf("execute", "step lock acquired target=%q", target.Name)
 
 	stepDir := stepArtifactDir(p.artifactsBase, fileForStep(input), input.Scenario, stepName(input), input.Phase, input.Attempt)
 	defaultURL := readConfigBaseURL(input.Config)

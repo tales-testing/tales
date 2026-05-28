@@ -3,10 +3,18 @@ package chrome
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/chromedp"
 )
+
+// navigationSettleDelay is the short pause between issuing a JS-based
+// history navigation (back / forward) and returning. The deferred
+// setTimeout runs after the eval response, so the page begins navigating
+// while we sleep; the new document is reliably ready by the time the
+// next action runs.
+const navigationSettleDelay = 200 * time.Millisecond
 
 // chromedpDriver is the production driver.Driver implementation backed by
 // chromedp. It is bound to a single browsing context — a chromedp.Context
@@ -24,17 +32,18 @@ func NewDriver(ctx context.Context, cancel context.CancelFunc) *chromedpDriver {
 	return &chromedpDriver{ctx: ctx, cancel: cancel}
 }
 
-// run executes one or more chromedp actions against the bound context. The
-// caller's ctx wins over the bound context (so per-action timeouts apply)
-// while still inheriting the chromedp browser context via the parent
-// chain — chromedp.Context is itself a context.Context, so the action is
-// associated with the right browser through the deadline-shadowing parent.
+// run executes one or more chromedp actions against the bound context.
+// The caller's ctx deadline is grafted onto d.ctx so the browser binding
+// is preserved AND per-action timeouts apply.
 func (d *chromedpDriver) run(ctx context.Context, actions ...chromedp.Action) error {
-	// chromedp.FromContext locates the browser context registered on d.ctx;
-	// it walks the parent chain, so wrapping the call site's ctx with d.ctx
-	// keeps both the per-action deadline and the browser binding.
-	cdpCtx, cancelMerge := mergeContext(ctx, d.ctx)
-	defer cancelMerge()
+	cdpCtx := d.ctx
+	cancel := func() {}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		cdpCtx, cancel = context.WithDeadline(d.ctx, deadline)
+	}
+
+	defer cancel()
 
 	return chromedp.Run(cdpCtx, actions...) //nolint:wrapcheck // chromedp.Run returns a CDP-specific error chain; the caller wraps with action context.
 }
@@ -52,21 +61,46 @@ func (d *chromedpDriver) Click(ctx context.Context, selector string) error {
 	)
 }
 
-// Fill implements driver.Driver.
+// Fill implements driver.Driver. The clear step uses an Evaluate-based
+// reset rather than chromedp.Clear because the latter trips over empty
+// textareas (no #text child node). After clearing we dispatch input/change
+// events so frontend frameworks see the new value, then send the keys so
+// IME and key handlers fire.
 func (d *chromedpDriver) Fill(ctx context.Context, selector, value string) error {
+	clearJS := fmt.Sprintf(`
+		(function(){
+			var el = document.querySelector(%q);
+			if (!el) throw new Error("element not found: " + %q);
+			el.focus();
+			if ("value" in el) { el.value = ""; }
+			el.dispatchEvent(new Event("input", {bubbles: true}));
+		})()
+	`, selector, selector)
+
 	return d.run(ctx,
 		chromedp.WaitVisible(selector, chromedp.ByQuery),
-		chromedp.Focus(selector, chromedp.ByQuery),
-		chromedp.Clear(selector, chromedp.ByQuery),
+		chromedp.Evaluate(clearJS, nil),
 		chromedp.SendKeys(selector, value, chromedp.ByQuery),
 	)
 }
 
-// Clear implements driver.Driver.
+// Clear implements driver.Driver via the same JS-based reset used by Fill
+// so it works for input, textarea, and contenteditable elements.
 func (d *chromedpDriver) Clear(ctx context.Context, selector string) error {
+	clearJS := fmt.Sprintf(`
+		(function(){
+			var el = document.querySelector(%q);
+			if (!el) throw new Error("element not found: " + %q);
+			el.focus();
+			if ("value" in el) { el.value = ""; }
+			el.dispatchEvent(new Event("input", {bubbles: true}));
+			el.dispatchEvent(new Event("change", {bubbles: true}));
+		})()
+	`, selector, selector)
+
 	return d.run(ctx,
 		chromedp.WaitVisible(selector, chromedp.ByQuery),
-		chromedp.Clear(selector, chromedp.ByQuery),
+		chromedp.Evaluate(clearJS, nil),
 	)
 }
 
@@ -165,19 +199,30 @@ func (d *chromedpDriver) ScrollBy(ctx context.Context, x, y int) error {
 	return d.run(ctx, chromedp.Evaluate(script, nil))
 }
 
-// Reload implements driver.Driver.
+// Reload implements driver.Driver via JS so the navigation completes
+// reliably across chromedp versions.
 func (d *chromedpDriver) Reload(ctx context.Context) error {
-	return d.run(ctx, chromedp.Reload())
+	return d.run(ctx, chromedp.Evaluate("window.location.reload()", nil))
 }
 
-// Back implements driver.Driver.
+// Back implements driver.Driver via window.history.back() dispatched
+// inside a setTimeout so the eval response returns before navigation
+// starts. chromedp.NavigateBack hangs indefinitely on the CDP layer
+// because the response is never delivered when the page tears down;
+// dispatching via a deferred JS task sidesteps that.
 func (d *chromedpDriver) Back(ctx context.Context) error {
-	return d.run(ctx, chromedp.NavigateBack())
+	return d.run(ctx, chromedp.Tasks{
+		chromedp.Evaluate(`setTimeout(function(){ window.history.back(); }, 0)`, nil),
+		chromedp.Sleep(navigationSettleDelay),
+	})
 }
 
-// Forward implements driver.Driver.
+// Forward implements driver.Driver. Same trick as Back.
 func (d *chromedpDriver) Forward(ctx context.Context) error {
-	return d.run(ctx, chromedp.NavigateForward())
+	return d.run(ctx, chromedp.Tasks{
+		chromedp.Evaluate(`setTimeout(function(){ window.history.forward(); }, 0)`, nil),
+		chromedp.Sleep(navigationSettleDelay),
+	})
 }
 
 // WaitVisible implements driver.Driver.

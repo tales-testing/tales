@@ -34,6 +34,8 @@ func (p *Provider) runActions(ctx context.Context, drv driver.Driver, sc *Scenar
 		started := time.Now()
 		result := newActionResult(i, action, started)
 
+		debugf("action", "[%d/%d] kind=%s selector=%q value=%q", i, len(actions), action.Kind, action.Selector, action.Value)
+
 		actionCtx, cancel := actionContext(ctx, action, target)
 
 		err := p.dispatchAction(actionCtx, drv, action, defaultURL)
@@ -43,6 +45,8 @@ func (p *Provider) runActions(ctx context.Context, drv driver.Driver, sc *Scenar
 		result.Duration = time.Since(started)
 
 		if err != nil {
+			debugf("action", "[%d/%d] FAILED in %s: %v", i, len(actions), result.Duration, err)
+
 			result.Status = actionStatusFail
 			result.Err = err
 			p.captureForAction(ctx, drv, stepDir, &result, true)
@@ -51,6 +55,8 @@ func (p *Provider) runActions(ctx context.Context, drv driver.Driver, sc *Scenar
 
 			return results, fmt.Errorf("action %d (%s): %w", i, action.Kind, err)
 		}
+
+		debugf("action", "[%d/%d] OK in %s", i, len(actions), result.Duration)
 
 		result.Status = actionStatusPass
 		p.captureForAction(ctx, drv, stepDir, &result, false)
