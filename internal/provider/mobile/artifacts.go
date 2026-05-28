@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 
+	"github.com/tales-testing/tales/internal/provider/artifacts"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
@@ -25,63 +23,16 @@ const artifactKindScreenshot = "screenshot"
 // artifactKindHierarchy identifies JSON hierarchy artifacts.
 const artifactKindHierarchy = "hierarchy"
 
-// defaultArtifactsBase is the prefix used when callers do not override it.
-const defaultArtifactsBase = "build/artifacts"
-
-const artifactDefaultPhase = "step"
-
-var unsafePath = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
-
-// unnamedSegment is the placeholder used when a scenario or step name is empty.
-const unnamedSegment = "unnamed"
-
-// safePathSegment turns a scenario / step name into a filesystem-safe segment.
+// safePathSegment delegates to the shared sanitizer; kept as a private alias
+// so the existing mobile call sites stay terse.
 func safePathSegment(in string) string {
-	s := strings.TrimSpace(in)
-	if s == "" {
-		return unnamedSegment
-	}
-
-	out := strings.Trim(unsafePath.ReplaceAllString(s, "_"), "_")
-	if out == "" {
-		return unnamedSegment
-	}
-
-	return out
+	return artifacts.SafePathSegment(in)
 }
 
-// artifactDir returns a stable, collision-resistant artifact directory.
+// artifactDir returns a stable, collision-resistant artifact directory for
+// the mobile provider via the shared artifacts helper.
 func artifactDir(base, file, scenario, step, phase string, attempt int) string {
-	if base == "" {
-		base = defaultArtifactsBase
-	}
-
-	if phase == "" {
-		phase = artifactDefaultPhase
-	}
-
-	if attempt <= 0 {
-		attempt = 1
-	}
-
-	return filepath.Join(
-		base,
-		"mobile",
-		fmt.Sprintf("%s-%s", safePathSegment(scenario), artifactHash(file, scenario)),
-		safePathSegment(step),
-		safePathSegment(phase),
-		fmt.Sprintf("attempt-%d", attempt),
-	)
-}
-
-func artifactHash(parts ...string) string {
-	h := fnv.New64a()
-	for _, part := range parts {
-		_, _ = h.Write([]byte{0})
-		_, _ = h.Write([]byte(part))
-	}
-
-	return fmt.Sprintf("%08x", h.Sum64())[:8]
+	return artifacts.Dir(base, "mobile", file, scenario, step, phase, attempt)
 }
 
 // actionArtifactDir returns the directory under stepDir where the artifacts

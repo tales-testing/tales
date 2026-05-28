@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tales-testing/tales/internal/provider/artifacts"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
 
@@ -29,7 +30,7 @@ func TestArtifactDirDefaultsAndSanitizesSegments(t *testing.T) {
 
 	dir := artifactDir("", "weird file.tales", " / Demo: iOS! ", " tap/register ", "teardown phase", 0)
 
-	if !strings.HasPrefix(dir, filepath.Join(defaultArtifactsBase, "mobile")) {
+	if !strings.HasPrefix(dir, filepath.Join(artifacts.DefaultBase, "mobile")) {
 		t.Fatalf("expected default artifacts base, got %q", dir)
 	}
 
