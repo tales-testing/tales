@@ -375,12 +375,10 @@ func TestLoadPathMobileRejectsMobileFieldsOnHTTPStep(t *testing.T) {
 
 scenario "wrong-provider" {
   step "http" "x" {
+    platform = "ios"
     request {
       method = "GET"
       url = "http://localhost"
-    }
-    actions {
-      tap { id = "a" }
     }
   }
 }
