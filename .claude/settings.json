@@ -12,7 +12,10 @@
       "Bash(git remote *)",
       "Bash(git push *)",
       "Bash(shasum -a 256 e2e/pass/avatar.txt)",
-      "Bash(./build/tales test *)"
+      "Bash(./build/tales test *)",
+      "Bash(bun --version)",
+      "Bash(bun add *)",
+      "Bash(bun run *)"
     ]
   }
 }
