@@ -48,7 +48,8 @@ Use this skill when asked to:
 - `scenario "..." { ... }`
 - `step "http" "name" { optional retry { ... } request { ... } expect { ... } capture { ... } }`
 - `step "sql" "name" { connection = "<name>"; exec { sql; args } | query { sql; args } }` — see the SQL provider section below.
-- `step "browser" "name" { target = "<name>"; actions { goto/click/fill/... } expect { visible/text/url/title/... } capture { ... } }` — see the Browser provider section below.
+- `step "browser" "name" { target = "<name>"; actions { goto/click/fill/... } expect { visible/text/url/title/web_perf/... } capture { ... } }` — see the Browser provider section below.
+- `step "load" "name" { http { method/url/headers/body/timeout } run { duration|requests, concurrency, rate, warmup } expect { p95/error_ratio/status_2xx_ratio/... } }` — see the Load provider section below.
 - optional `teardown { step ... }`
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
 - optional `skip_if { ... }` / `skip_unless { ... }` on a `scenario` or `step` to gate execution on `host.os` / `host.arch`, env vars, or any bool expression. Attribute set: `condition`, `reason`, `os`, `arch`, `env_set`, `env`. Skipped scenarios skip their steps and teardown; skipped steps cascade-skip their dependents. See [docs/skip.md](../../../docs/skip.md).
@@ -636,3 +637,104 @@ they are only available inside a `step "browser"` `capture` block.
   when reliability matters.
 - **Do not put real credentials in the .tales file.** Pipe them through
   `env(...)` or a previous step's `result.*`.
+
+### Web performance budgets
+
+Browser steps collect a post-action `browser.performance` snapshot. Assert
+it via `expect { web_perf { ... } }` with the numeric matchers, and
+optionally `capture { perf = browser.performance }` to surface the values
+in reports.
+
+Friendly aliases:
+- `fcp` → `fcp_ms`
+- `lcp` → `lcp_ms`
+- `cls` → `cls`
+- `load` / `load_event` → `load_event_ms`
+- `dom_ready` / `dom_content_loaded` → `dom_content_loaded_ms`
+- `resources_count` / `transfer_size` / `encoded_body_size` / `decoded_body_size`
+
+Example:
+
+```hcl
+expect {
+  web_perf {
+    fcp                = lt("1800ms")
+    lcp                = lt("2500ms")
+    cls                = lt(0.1)
+    load               = lt("3000ms")
+    dom_content_loaded = lt("1500ms")
+    resources_count    = gte(1)
+  }
+}
+
+capture {
+  perf = browser.performance
+}
+```
+
+LCP / CLS / FCP can be unavailable on simple pages or aborted navigations
+— they fail with `browser performance metric "lcp_ms" is not available`
+rather than passing silently. Web performance is **not** seed-deterministic;
+use generous thresholds in shared CI.
+
+## Load provider (V1)
+
+The load provider replays one HTTP request concurrently and reports
+latency percentiles, RPS, and error/status-class ratios. It is **not**
+a substitute for k6/Gatling; use it for smoke regression budgets only.
+
+Required surface:
+
+- `step "load" "name" { http { ... } run { ... } expect { ... } }`
+- `http` accepts the same fields as a normal HTTP `request` (method,
+  url, headers, body { json | form | raw }, query, auth, timeout).
+  **Multipart is rejected**.
+- `run` must declare exactly one of `duration = "<dur>"` or
+  `requests = N`, plus optional `concurrency` (default 1),
+  `rate` (RPS cap), and `warmup` (discarded samples).
+
+Expect supports flat shortcut attributes (preferred for readability):
+
+- Latency: `p50`, `p90`, `p95`, `p99`, `min`, `max`, `mean` (all in ms)
+- Throughput: `rps`, `requests`, `errors`, `duration_ms`
+- Ratios: `error_ratio`, `status_2xx_ratio`, `status_3xx_ratio`,
+  `status_4xx_ratio`, `status_5xx_ratio`
+
+The same data is also nested under `response.json.latency.*`, so
+`expect { json = { latency = { p95_ms = lt(200) } } }` works too.
+
+Example:
+
+```hcl
+step "load" "health" {
+  http {
+    method = "GET"
+    url    = "${config.base_url}/healthz"
+  }
+  run {
+    requests    = 50
+    concurrency = 5
+  }
+  expect {
+    status_2xx_ratio = gte(1.0)
+    error_ratio      = lte(0.0)
+    p95              = lt("1s")
+    rps              = gt(0)
+  }
+}
+```
+
+### Authoring rules (load)
+
+- **Keep thresholds permissive in shared-CI fixtures.** Tight budgets
+  belong in projects with controlled hardware. The Tales-internal
+  e2e suite uses `lt("1s")`, `gt(0)`, `gte(1.0)` on purpose.
+- **One endpoint per step.** Compose multiple load steps in a scenario
+  for traffic mixes.
+- **Always set `concurrency`** (default is 1 — rarely what you want).
+- **Pair `rate` with a sensible upper bound** so a misconfigured run
+  does not hammer the target. The rate limiter is a global token
+  bucket, not per-worker.
+- **Capture into `result.<step>.p95`** when later steps need the
+  percentile (the JSON tree is also available under
+  `result.<step>.response.json`).
