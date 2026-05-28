@@ -13,10 +13,14 @@ package browser
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/tales-testing/tales/internal/provider"
 	"github.com/tales-testing/tales/internal/provider/artifacts"
+	"github.com/tales-testing/tales/internal/provider/browser/driver"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Provider is the browser step provider implementation.
@@ -78,10 +82,12 @@ func New(opts ...Option) *Provider {
 // Type satisfies provider.Provider.
 func (p *Provider) Type() string { return "browser" }
 
-// Execute satisfies provider.Provider. The real implementation lands in a
-// later commit; until then the registry returns a clear error so users
-// know the provider is registered but not yet functional.
-func (p *Provider) Execute(_ context.Context, input provider.Input) (*provider.Output, error) {
+// Execute satisfies provider.Provider. It resolves the requested browser
+// target, acquires (or reuses) a Chrome subprocess for it, derives a
+// per-scenario browsing context off that allocator, runs the prepared
+// actions in order, then runs every declared expectation. The recorded
+// post-step snapshot backs the runtime's capture helpers.
+func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider.Output, error) {
 	if input.Browser == nil {
 		return nil, errors.New("browser: missing pre-evaluated step data")
 	}
@@ -90,7 +96,251 @@ func (p *Provider) Execute(_ context.Context, input provider.Input) (*provider.O
 		return nil, errors.New("browser: no session builder configured")
 	}
 
-	return nil, errors.New("browser: provider not yet implemented")
+	start := time.Now()
+
+	target, err := ResolveTarget(input.Config, input.Browser.TargetName)
+	if err != nil {
+		return nil, fmt.Errorf("browser: %w", err)
+	}
+
+	sess, err := p.acquireSession(ctx, target)
+	if err != nil {
+		return nil, fmt.Errorf("browser: %w", err)
+	}
+
+	sc, err := p.acquireScenarioCtx(ctx, sess, input.Scenario)
+	if err != nil {
+		return nil, fmt.Errorf("browser: %w", err)
+	}
+
+	stepLock := p.stepLockFor(target.Name)
+	stepLock.Lock()
+
+	defer stepLock.Unlock()
+
+	stepDir := stepArtifactDir(p.artifactsBase, fileForStep(input), input.Scenario, stepName(input), input.Phase, input.Attempt)
+	defaultURL := readConfigBaseURL(input.Config)
+
+	results, runErr := p.runActions(ctx, sc.Driver, sc, stepDir, defaultURL, target, input.Browser.Actions)
+
+	out := &provider.Output{
+		Request:       map[string]cty.Value{},
+		Response:      map[string]cty.Value{},
+		ActionResults: results,
+	}
+
+	if runErr != nil {
+		out.Duration = time.Since(start)
+		out.Response = browserResponseValues(target, sc.Driver, ctx, nil)
+		out.Response["artifacts"] = artifactsListValue(p.captureStepLevel(ctx, sc.Driver, stepDir, true))
+
+		return out, runErr
+	}
+
+	if input.Browser.Expect.HasAny() {
+		if err := p.handleExpect(ctx, sc.Driver, input.Browser.Expect); err != nil {
+			out.Duration = time.Since(start)
+			out.Response = browserResponseValues(target, sc.Driver, ctx, nil)
+			out.Response["artifacts"] = artifactsListValue(p.captureStepLevel(ctx, sc.Driver, stepDir, true))
+
+			return out, err
+		}
+	}
+
+	snap := p.recordSnapshot(ctx, sc.Driver, input.Scenario, stepName(input))
+
+	out.Response = browserResponseValues(target, sc.Driver, ctx, snap)
+
+	var stepArtifacts []Artifact
+	if p.captureMode == provider.CaptureSteps {
+		stepArtifacts = p.captureStepLevel(ctx, sc.Driver, stepDir, false)
+	}
+
+	if len(stepArtifacts) > 0 {
+		out.Response["artifacts"] = artifactsListValue(stepArtifacts)
+	} else {
+		out.Response["artifacts"] = emptyArtifactsList()
+	}
+
+	out.Duration = time.Since(start)
+
+	return out, nil
+}
+
+func (p *Provider) acquireSession(ctx context.Context, target Target) (*Session, error) {
+	lock := p.targetLockFor(target.Name)
+	lock.Lock()
+
+	defer lock.Unlock()
+
+	p.mu.Lock()
+
+	if sess, ok := p.sessions[target.Name]; ok {
+		p.mu.Unlock()
+
+		return sess, nil
+	}
+
+	p.mu.Unlock()
+
+	sess, err := p.builder.Build(ctx, target)
+	if err != nil {
+		return nil, fmt.Errorf("build session: %w", err)
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if existing, ok := p.sessions[target.Name]; ok {
+		sess.closeAll()
+
+		return existing, nil
+	}
+
+	p.sessions[target.Name] = sess
+
+	return sess, nil
+}
+
+func (p *Provider) acquireScenarioCtx(ctx context.Context, sess *Session, scenario string) (*ScenarioBrowserCtx, error) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	if sess.scenarios == nil {
+		sess.scenarios = map[string]*ScenarioBrowserCtx{}
+	}
+
+	if existing, ok := sess.scenarios[scenario]; ok {
+		return existing, nil
+	}
+
+	sc, err := p.builder.NewScenarioContext(ctx, sess, scenario)
+	if err != nil {
+		return nil, fmt.Errorf("new scenario context: %w", err)
+	}
+
+	sess.scenarios[scenario] = sc
+
+	return sc, nil
+}
+
+func (p *Provider) targetLockFor(name string) *sync.Mutex {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if existing, ok := p.targetLocks[name]; ok {
+		return existing
+	}
+
+	created := &sync.Mutex{}
+	p.targetLocks[name] = created
+
+	return created
+}
+
+func (p *Provider) stepLockFor(name string) *sync.Mutex {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if existing, ok := p.stepLocks[name]; ok {
+		return existing
+	}
+
+	created := &sync.Mutex{}
+	p.stepLocks[name] = created
+
+	return created
+}
+
+// recordSnapshot captures URL / title / outerHTML once after a successful
+// step so the runtime's capture helpers see a consistent state.
+func (p *Provider) recordSnapshot(ctx context.Context, drv driver.Driver, scenario, step string) *Snapshot {
+	url, _ := drv.URL(ctx)
+	title, _ := drv.Title(ctx)
+	dom, _ := drv.OuterHTML(ctx, "html")
+
+	snap := &Snapshot{URL: url, Title: title, DOM: dom}
+
+	p.snapshotsMu.Lock()
+	p.snapshots[snapshotKey(scenario, step)] = snap
+	p.snapshotsMu.Unlock()
+
+	return snap
+}
+
+func fileForStep(input provider.Input) string {
+	if input.Step != nil {
+		return input.Step.File
+	}
+
+	return ""
+}
+
+func stepName(input provider.Input) string {
+	if input.Step == nil {
+		return ""
+	}
+
+	return input.Step.Name
+}
+
+func readConfigBaseURL(config map[string]cty.Value) string {
+	v, ok := config["base_url"]
+	if !ok || v.IsNull() || v.Type() != cty.String {
+		return ""
+	}
+
+	return v.AsString()
+}
+
+func browserResponseValues(target Target, drv driver.Driver, ctx context.Context, snap *Snapshot) map[string]cty.Value {
+	out := map[string]cty.Value{
+		"target": cty.StringVal(target.Name),
+	}
+
+	if snap != nil {
+		out["url"] = cty.StringVal(snap.URL)
+		out["title"] = cty.StringVal(snap.Title)
+
+		return out
+	}
+
+	url, _ := drv.URL(ctx)
+	title, _ := drv.Title(ctx)
+	out["url"] = cty.StringVal(url)
+	out["title"] = cty.StringVal(title)
+
+	return out
+}
+
+// artifactType / artifactPath are the cty object attribute names used inside
+// artifactsListValue. Centralized to satisfy the goconst rule, kept private
+// because the visual-report layer consumes them through report.Artifact, not
+// these strings directly.
+const (
+	artifactType = "type"
+	artifactPath = "path"
+)
+
+func emptyArtifactsList() cty.Value {
+	return cty.ListValEmpty(cty.Object(map[string]cty.Type{artifactType: cty.String, artifactPath: cty.String}))
+}
+
+func artifactsListValue(in []Artifact) cty.Value {
+	if len(in) == 0 {
+		return emptyArtifactsList()
+	}
+
+	values := make([]cty.Value, 0, len(in))
+
+	for _, a := range in {
+		values = append(values, cty.ObjectVal(map[string]cty.Value{
+			artifactType: cty.StringVal(a.Type),
+			artifactPath: cty.StringVal(a.Path),
+		}))
+	}
+
+	return cty.ListVal(values)
 }
 
 // Close cancels every cached session, terminating Chrome subprocesses.
