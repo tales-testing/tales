@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	appledriver "github.com/tales-testing/tales/drivers/apple"
+	"github.com/tales-testing/tales/internal/provider/browser/chrome"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/tales-testing/tales/internal/version"
@@ -21,7 +22,7 @@ import (
 func NewDoctorCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "doctor",
-		Usage: "Inspect the embedded driver cache and host Xcode/simctl state",
+		Usage: "Inspect the embedded driver cache, host Xcode/simctl state, and browser availability",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:  "json",
@@ -40,6 +41,14 @@ type Snapshot struct {
 	Cache          CacheInfo    `json:"cache"`
 	Xcode          XcodeInfo    `json:"xcode"`
 	Simctl         SimctlInfo   `json:"simctl"`
+	Browser        BrowserInfo  `json:"browser"`
+}
+
+// BrowserInfo summarizes the host's Chrome / Chromium availability for
+// the browser provider. Path is empty when no executable was found.
+type BrowserInfo struct {
+	Path  string `json:"path"`
+	Error string `json:"error,omitempty"`
 }
 
 // TalesInfo describes the running tales binary.
@@ -151,8 +160,20 @@ func collectSnapshot(ctx context.Context) Snapshot {
 	}
 
 	snap.Simctl = collectSimctlInfo(ctx, runner)
+	snap.Browser = collectBrowserInfo()
 
 	return snap
+}
+
+// collectBrowserInfo probes for a usable Chrome / Chromium executable
+// via the same resolution path the browser provider uses at runtime.
+func collectBrowserInfo() BrowserInfo {
+	path, err := chrome.Locate("")
+	if err != nil {
+		return BrowserInfo{Error: err.Error()}
+	}
+
+	return BrowserInfo{Path: path}
 }
 
 func collectEmbeddedInfo() EmbeddedInfo {
@@ -283,6 +304,7 @@ func collectSimctlInfo(ctx context.Context, runner apple.Runner) SimctlInfo {
 	return info
 }
 
+//nolint:gocyclo // One block per snapshot section keeps the text formatter linear and trivially editable.
 func formatTextSnapshot(out io.Writer, snap Snapshot) error {
 	if _, err := fmt.Fprintln(out, "== Tales =="); err != nil {
 		return err //nolint:wrapcheck // direct passthrough of io.Writer error suffices.
@@ -389,6 +411,19 @@ func formatTextSnapshot(out io.Writer, snap Snapshot) error {
 			}
 
 			fmt.Fprintf(out, "  - %s %s — %s — %s\n", d.Name, shortUDID(d.UDID), d.State, shortRuntime(d.Runtime))
+		}
+	}
+
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "== Browser ==")
+
+	if snap.Browser.Path != "" {
+		writeKV(out, "chrome", snap.Browser.Path)
+	} else {
+		writeKV(out, "chrome", "not found")
+
+		if snap.Browser.Error != "" {
+			writeKV(out, "error", snap.Browser.Error)
 		}
 	}
 

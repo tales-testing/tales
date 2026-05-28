@@ -59,6 +59,7 @@ func TestDoctorTextOutputBasicSections(t *testing.T) {
 		"== Driver cache ==",
 		"== Xcode ==",
 		"== simctl ==",
+		"== Browser ==",
 		"== Hints ==",
 		"0.1.0+abcdef0",
 		"darwin/arm64",
@@ -69,6 +70,34 @@ func TestDoctorTextOutputBasicSections(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("expected output to contain %q, got:\n%s", want, out)
 		}
+	}
+}
+
+func TestDoctorTextOutputBrowserPathShown(t *testing.T) {
+	t.Parallel()
+
+	snap := baseSnapshot()
+	snap.Browser = BrowserInfo{Path: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
+
+	out := render(t, snap)
+	if !strings.Contains(out, "/Applications/Google Chrome.app") {
+		t.Fatalf("expected chrome path in output, got:\n%s", out)
+	}
+}
+
+func TestDoctorTextOutputBrowserMissing(t *testing.T) {
+	t.Parallel()
+
+	snap := baseSnapshot()
+	snap.Browser = BrowserInfo{Error: "chrome executable not found; install Chrome/Chromium or set CHROME_PATH"}
+
+	out := render(t, snap)
+	if !strings.Contains(out, "not found") {
+		t.Fatalf("expected 'not found' marker in output, got:\n%s", out)
+	}
+
+	if !strings.Contains(out, "install Chrome") {
+		t.Fatalf("expected install hint in output, got:\n%s", out)
 	}
 }
 
