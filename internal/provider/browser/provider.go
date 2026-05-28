@@ -275,8 +275,9 @@ func (p *Provider) recordSnapshot(ctx context.Context, drv driver.Driver, scenar
 	url, _ := drv.URL(ctx)
 	title, _ := drv.Title(ctx)
 	dom, _ := drv.OuterHTML(ctx, "html")
+	perf, _ := drv.Performance(ctx)
 
-	snap := &Snapshot{URL: url, Title: title, DOM: dom}
+	snap := &Snapshot{URL: url, Title: title, DOM: dom, Performance: perf}
 
 	p.snapshotsMu.Lock()
 	p.snapshots[snapshotKey(scenario, step)] = snap

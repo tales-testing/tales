@@ -84,5 +84,8 @@ func (NoopDriver) OuterHTML(_ context.Context, _ string) (string, error) { retur
 // Screenshot satisfies Driver.
 func (NoopDriver) Screenshot(_ context.Context) ([]byte, error) { return nil, nil }
 
+// Performance satisfies Driver.
+func (NoopDriver) Performance(_ context.Context) (*PerformanceMetrics, error) { return nil, nil }
+
 // Close satisfies Driver.
 func (NoopDriver) Close(_ context.Context) error { return nil }

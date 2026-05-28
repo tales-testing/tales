@@ -134,7 +134,7 @@ func newScenarioContext(_ context.Context, sess *browser.Session, scenario strin
 
 	chromeDebugf("calling chromedp.Run target=%q scenario=%q", sess.Target.Name, scenario)
 
-	if err := chromedp.Run(ctx); err != nil {
+	if err := chromedp.Run(ctx, installPerfObservers()); err != nil {
 		cleanup()
 
 		return nil, fmt.Errorf("start chrome: %w", err)

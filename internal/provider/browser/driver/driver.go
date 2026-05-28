@@ -63,6 +63,12 @@ type Driver interface {
 	OuterHTML(ctx context.Context, selector string) (string, error)
 	// Screenshot captures the viewport as PNG bytes.
 	Screenshot(ctx context.Context) ([]byte, error)
+	// Performance returns a snapshot of web performance metrics (FCP,
+	// LCP, CLS, navigation timings, resource summary) for the current
+	// document. The implementation may return (nil, nil) when no
+	// metrics are available — callers should treat that the same as a
+	// successful collect of an empty snapshot.
+	Performance(ctx context.Context) (*PerformanceMetrics, error)
 	// Close releases the browsing context's resources.
 	Close(ctx context.Context) error
 }
