@@ -3,11 +3,18 @@
 // .tales browser steps: navigate, click, fill, assert, capture.
 //
 // V1 targets Chrome/Chromium only. CSS selectors are the only locator
-// surface. The provider mirrors the mobile provider's architecture:
-//   - one allocator per target (Chrome subprocess) cached for the suite
-//   - one fresh browsing context per (target, scenario) for cookie isolation
-//   - per-target lock to serialize step starts on the same target
-//   - artifacts (screenshot, dom.html) written under build/artifacts/browser/
+// surface. Architecture:
+//   - one Chrome subprocess + chromedp allocator per (target, scenario)
+//     pair, spawned lazily on first use and cached for the rest of the
+//     scenario. This gives full cookie / storage isolation between
+//     scenarios at the cost of a per-scenario startup.
+//   - per-target locks serialize session creation and step starts so
+//     parallel scenarios on the same target do not race the allocator
+//     setup.
+//   - all sessions cancelled at suite end via io.Closer; every
+//     termination is PID-scoped through context cancellation.
+//   - artifacts (screenshot, dom.html) written under
+//     build/artifacts/browser/.
 package browser
 
 import (

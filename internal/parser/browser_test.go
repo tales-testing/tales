@@ -176,9 +176,12 @@ scenario "actions_smoke" {
 	}
 }
 
-func TestLoadPathBrowserMissingTarget(t *testing.T) {
+func TestLoadPathBrowserMissingTargetAcceptedAtParseTime(t *testing.T) {
 	t.Parallel()
 
+	// `target` is optional at parse time. ResolveTarget() applies the
+	// single-target shortcut (or surfaces a precise error) at execution
+	// time. The parser must not block this.
 	content := `version = 1
 
 scenario "missing_target" {
@@ -192,13 +195,18 @@ scenario "missing_target" {
 }
 `
 
-	_, diags := LoadPath(writeTales(t, content))
-	if !diags.HasErrors() {
-		t.Fatal("expected diagnostics for missing target")
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("did not expect diagnostics, got: %s", diags.Error())
 	}
 
-	if !strings.Contains(diags.Error(), "Missing browser target") {
-		t.Fatalf("expected 'Missing browser target' diag, got: %s", diags.Error())
+	step := suite.Scenarios[0].Steps[0]
+	if step.Browser == nil {
+		t.Fatal("expected step.Browser to be populated")
+	}
+
+	if !step.Browser.Target.Empty() {
+		t.Fatalf("expected empty target expression, got %+v", step.Browser.Target)
 	}
 }
 

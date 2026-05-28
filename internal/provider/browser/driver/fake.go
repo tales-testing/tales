@@ -20,7 +20,8 @@ type FakeDriver struct {
 
 	Calls           []Call
 	Visibility      map[string]bool   // selector -> visible
-	Texts           map[string]string // selector -> text
+	Texts           map[string]string // selector -> rendered text
+	InputValues     map[string]string // selector -> form .value
 	Attributes      map[string]map[string]string
 	OuterHTMLValue  string
 	URLValue        string
@@ -44,9 +45,10 @@ type Call struct {
 
 func newFake() *FakeDriver {
 	return &FakeDriver{
-		Visibility: map[string]bool{},
-		Texts:      map[string]string{},
-		Attributes: map[string]map[string]string{},
+		Visibility:  map[string]bool{},
+		Texts:       map[string]string{},
+		InputValues: map[string]string{},
+		Attributes:  map[string]map[string]string{},
 	}
 }
 
@@ -223,6 +225,13 @@ func (f *FakeDriver) Text(_ context.Context, selector string) (string, error) {
 	f.record(Call{Method: "Text", Selector: selector})
 
 	return f.Texts[selector], nil
+}
+
+// InputValue returns the configured form .value for selector, or "" if not set.
+func (f *FakeDriver) InputValue(_ context.Context, selector string) (string, error) {
+	f.record(Call{Method: "InputValue", Selector: selector})
+
+	return f.InputValues[selector], nil
 }
 
 // Attribute returns the named attribute on selector, or ("", false) when

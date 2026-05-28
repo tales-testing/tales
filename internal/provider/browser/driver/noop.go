@@ -64,6 +64,9 @@ func (NoopDriver) Visible(_ context.Context, _ string) (bool, error) { return fa
 // Text satisfies Driver.
 func (NoopDriver) Text(_ context.Context, _ string) (string, error) { return "", nil }
 
+// InputValue satisfies Driver.
+func (NoopDriver) InputValue(_ context.Context, _ string) (string, error) { return "", nil }
+
 // Attribute satisfies Driver.
 func (NoopDriver) Attribute(_ context.Context, _, _ string) (string, bool, error) {
 	return "", false, nil

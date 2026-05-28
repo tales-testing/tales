@@ -48,7 +48,7 @@ func (p *Provider) handleExpect(ctx context.Context, drv driver.Driver, expect p
 	}
 
 	for _, v := range expect.Value {
-		if err := matchText(ctx, drv, v.Selector, v.Expected, v.Timeout, v.Interval); err != nil {
+		if err := matchInputValue(ctx, drv, v.Selector, v.Expected, v.Timeout, v.Interval); err != nil {
 			return fmt.Errorf("expect.value %s: %w", v.Selector, err)
 		}
 	}
@@ -95,6 +95,24 @@ func matchText(ctx context.Context, drv driver.Driver, selector string, expected
 
 		if err := assertion.MatchJSON(expected, cty.StringVal(got), false, selector); err != nil {
 			return fmt.Errorf("text mismatch: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// matchInputValue reads the form `.value` property (input, textarea,
+// select) rather than the rendered text — that is what `expect.value` is
+// meant to assert against.
+func matchInputValue(ctx context.Context, drv driver.Driver, selector string, expected cty.Value, timeout, interval time.Duration) error {
+	return pollUntilMatch(ctx, timeout, interval, func(ctx context.Context) error {
+		got, err := drv.InputValue(ctx, selector)
+		if err != nil {
+			return fmt.Errorf("read value: %w", err)
+		}
+
+		if err := assertion.MatchJSON(expected, cty.StringVal(got), false, selector); err != nil {
+			return fmt.Errorf("value mismatch: %w", err)
 		}
 
 		return nil
@@ -152,13 +170,17 @@ func matchTitle(ctx context.Context, drv driver.Driver, expected cty.Value, time
 
 func matchEnabled(ctx context.Context, drv driver.Driver, selector string, wantEnabled bool, timeout, interval time.Duration) error {
 	return pollUntilMatch(ctx, timeout, interval, func(ctx context.Context) error {
-		got, ok, err := drv.Attribute(ctx, selector, "disabled")
+		_, ok, err := drv.Attribute(ctx, selector, "disabled")
 		if err != nil {
 			return fmt.Errorf("read disabled attribute: %w", err)
 		}
 
-		// Element has `disabled` attribute present == disabled, regardless of value.
-		isDisabled := ok && got != "false"
+		// HTML boolean-attribute semantics: the `disabled` attribute
+		// makes the element disabled if it is present at all,
+		// regardless of its value. `<input disabled>`, `<input
+		// disabled="">`, and `<input disabled="false">` are all
+		// disabled.
+		isDisabled := ok
 		if wantEnabled && isDisabled {
 			return errors.New("element is disabled")
 		}

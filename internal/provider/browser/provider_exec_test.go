@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
@@ -180,6 +181,86 @@ func TestProviderExecuteFailMidwayMarksRestSkipped(t *testing.T) {
 		if statuses[i] != w {
 			t.Errorf("status[%d] = %q, want %q", i, statuses[i], w)
 		}
+	}
+}
+
+func TestProviderExecuteExpectValueReadsInputValueNotText(t *testing.T) {
+	t.Parallel()
+
+	// Regression for the Copilot review on expect.value: the previous
+	// implementation read drv.Text() (innerText) which is empty for
+	// <input>. expect.value must read the form .value via drv.InputValue.
+	p, fake := buildFakeProvider(t, provider.CaptureNone, func(f *driver.FakeDriver) {
+		f.Texts["#email"] = ""
+		f.InputValues["#email"] = "test@example.com"
+	})
+	defer p.Close()
+
+	exec := &provider.BrowserExecution{
+		TargetName: "chrome",
+		Expect: provider.BrowserExpectExec{
+			Value: []provider.BrowserValueExpectationExec{
+				{Selector: "#email", Expected: cty.StringVal("test@example.com")},
+			},
+		},
+	}
+
+	if _, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     &model.Step{Name: "verify", File: "demo.tales"},
+		Phase:    "step",
+		Attempt:  1,
+		Config:   sampleConfig(),
+		Browser:  exec,
+	}); err != nil {
+		t.Fatalf("expect.value should pass against InputValue, got: %v", err)
+	}
+
+	// Confirm we hit InputValue, not Text.
+	saw := false
+
+	for _, c := range fake.Calls {
+		if c.Method == "InputValue" && c.Selector == "#email" {
+			saw = true
+
+			break
+		}
+	}
+
+	if !saw {
+		t.Fatalf("expected InputValue call, got methods: %v", fake.MethodsCalled())
+	}
+}
+
+func TestProviderExecuteExpectDisabledBooleanSemantics(t *testing.T) {
+	t.Parallel()
+
+	// Regression for the Copilot review on matchEnabled: HTML boolean
+	// attributes treat presence as true, regardless of the attribute
+	// value. `<input disabled="false">` is still disabled.
+	p, _ := buildFakeProvider(t, provider.CaptureNone, func(f *driver.FakeDriver) {
+		f.Attributes["#tos"] = map[string]string{"disabled": "false"}
+	})
+	defer p.Close()
+
+	exec := &provider.BrowserExecution{
+		TargetName: "chrome",
+		Expect: provider.BrowserExpectExec{
+			Disabled: []provider.BrowserStateExpectationExec{
+				{Selector: "#tos", Timeout: 100 * time.Millisecond},
+			},
+		},
+	}
+
+	if _, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     &model.Step{Name: "verify", File: "demo.tales"},
+		Phase:    "step",
+		Attempt:  1,
+		Config:   sampleConfig(),
+		Browser:  exec,
+	}); err != nil {
+		t.Fatalf("disabled=\"false\" must be treated as disabled per HTML semantics, got: %v", err)
 	}
 }
 
