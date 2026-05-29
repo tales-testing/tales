@@ -3,6 +3,7 @@ import strings from '../../i18n/en';
 import { Code } from 'astro:components';
 
 const u = strings.useCases;
+const slug = (tag: string) => tag.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 ---
 
 <section class="border-t border-[var(--color-border)] bg-[var(--color-surface-2)]">
@@ -12,19 +13,62 @@ const u = strings.useCases;
 			<p class="mt-4 text-lg text-[var(--color-text-muted)]">{u.subtitle}</p>
 		</div>
 
-		<div class="mt-14 grid gap-6 lg:grid-cols-3">
-			{u.items.map((item) => (
-				<div class="flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-					<span class="inline-block w-fit rounded-md bg-[var(--color-accent)]/15 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-[var(--color-accent-hover)] uppercase">
+		<div class="mx-auto mt-12 max-w-5xl" data-usecases>
+			<div role="tablist" aria-label="Use cases" class="flex flex-wrap justify-center gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1">
+				{u.items.map((item, i) => (
+					<button
+						type="button"
+						role="tab"
+						aria-selected={i === 0 ? 'true' : 'false'}
+						aria-controls={`uc-${slug(item.tag)}`}
+						data-tab={slug(item.tag)}
+						data-active={i === 0 ? 'true' : 'false'}
+						class="rounded-md px-4 py-2 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] data-[active=true]:bg-[var(--color-accent)] data-[active=true]:text-white"
+					>
 						{item.tag}
-					</span>
-					<h3 class="mt-3 text-xl font-semibold text-[var(--color-text)]">{item.title}</h3>
-					<p class="mt-2 text-[var(--color-text-muted)] leading-relaxed">{item.body}</p>
-					<div class="mt-5 overflow-hidden rounded-lg border border-[var(--color-border)] text-[12px]">
-						<Code code={item.snippet} lang="hcl" theme="github-dark-default" />
+					</button>
+				))}
+			</div>
+
+			<div class="mt-6">
+				{u.items.map((item, i) => (
+					<div id={`uc-${slug(item.tag)}`} role="tabpanel" data-panel={slug(item.tag)} hidden={i !== 0}>
+						<div class="grid gap-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 lg:grid-cols-2 lg:items-center lg:gap-10 lg:p-8">
+							<div>
+								<span class="inline-block w-fit rounded-md bg-[var(--color-accent)]/15 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-[var(--color-accent-hover)] uppercase">
+									{item.tag}
+								</span>
+								<h3 class="mt-3 text-2xl font-semibold text-[var(--color-text)]">{item.title}</h3>
+								<p class="mt-3 text-[var(--color-text-muted)] leading-relaxed">{item.body}</p>
+							</div>
+							<div class="overflow-hidden rounded-lg border border-[var(--color-border)] text-[12px]">
+								<Code code={item.snippet} lang="hcl" theme="github-dark-default" />
+							</div>
+						</div>
 					</div>
-				</div>
-			))}
+				))}
+			</div>
 		</div>
 	</div>
 </section>
+
+<script>
+	const root = document.querySelector<HTMLElement>('[data-usecases]');
+	if (root) {
+		const tabs = root.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+		const panels = root.querySelectorAll<HTMLElement>('[role="tabpanel"]');
+		tabs.forEach((tab) => {
+			tab.addEventListener('click', () => {
+				const target = tab.dataset.tab;
+				tabs.forEach((t) => {
+					const isActive = t === tab;
+					t.dataset.active = String(isActive);
+					t.setAttribute('aria-selected', String(isActive));
+				});
+				panels.forEach((p) => {
+					p.hidden = p.dataset.panel !== target;
+				});
+			});
+		});
+	}
+</script>
