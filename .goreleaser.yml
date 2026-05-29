@@ -68,7 +68,22 @@ release:
   draft: false
   prerelease: auto
 
-brews:
+# homebrew_casks replaces the deprecated `brews` section (soft-deprecated
+# since GoReleaser v2.10, hard at v2.16). Casks are the recommended way
+# to distribute pre-compiled binaries via Homebrew, including for Linux.
+# Migration notes:
+#   - `binary` (formula) becomes `binaries` (cask).
+#   - The explicit `install: bin.install ...` block goes away — the cask
+#     installs every entry in `binaries` automatically.
+#   - `test` is not used (casks don't run formula-style tests).
+#   - The binaries are not Apple-signed / notarized, so a post-install
+#     hook strips the macOS Gatekeeper quarantine attribute. Without it,
+#     `tales --version` on macOS triggers the "developer cannot be
+#     verified" prompt the first time it runs.
+#   - `url.verified` is required because the homepage domain
+#     (taleslabs.org) differs from the download domain (github.com);
+#     omitting it triggers a `homebrew audit` warning on the tap.
+homebrew_casks:
   - name: tales
     ids:
       - default
@@ -77,17 +92,19 @@ brews:
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
     homepage: "https://taleslabs.org"
     description: "Declarative integration and e2e testing with .tales files"
-    license: "MIT"
-    # Skip pushing the formula for prereleases (rc / beta / alpha tags).
+    url:
+      verified: "github.com/tales-testing/tales/"
+    # Skip pushing for prereleases (rc / beta / alpha tags).
     skip_upload: auto
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    commit_msg_template: "chore: brew formula update for {{ .ProjectName }} {{ .Tag }}"
-    install: |
-      bin.install "tales"
-    test: |
-      assert_match "tales version: #{version}", shell_output("#{bin}/tales --version")
+    commit_msg_template: "chore: brew cask update for {{ .ProjectName }} {{ .Tag }}"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tales"]
+          end
