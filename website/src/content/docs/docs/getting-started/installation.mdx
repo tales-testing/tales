@@ -110,60 +110,6 @@ For a one-shot install without a clone:
 go install github.com/tales-testing/tales/cmd/tales@latest
 ```
 
-## Homebrew tap layout
-
-If you maintain your own fork, the cask lives at `Casks/tales.rb` in [`tales-testing/homebrew-tap`](https://github.com/tales-testing/homebrew-tap) — this is what GoReleaser writes on every stable release:
-
-```ruby
-cask "tales" do
-  desc "Declarative integration and e2e testing with .tales files"
-  homepage "https://taleslabs.org"
-  version "0.1.0"
-
-  binary "tales"
-
-  on_macos do
-    on_intel do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_darwin_x86_64.tar.gz",
-        verified: "github.com/tales-testing/tales/"
-      sha256 "REPLACE_WITH_ACTUAL_SHA256"
-    end
-    on_arm do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_darwin_arm64.tar.gz",
-        verified: "github.com/tales-testing/tales/"
-      sha256 "REPLACE_WITH_ACTUAL_SHA256"
-    end
-  end
-
-  on_linux do
-    on_intel do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_linux_x86_64.tar.gz",
-        verified: "github.com/tales-testing/tales/"
-      sha256 "REPLACE_WITH_ACTUAL_SHA256"
-    end
-    on_arm do
-      url "https://github.com/tales-testing/tales/releases/download/v#{version}/tales_#{version}_linux_arm64.tar.gz",
-        verified: "github.com/tales-testing/tales/"
-      sha256 "REPLACE_WITH_ACTUAL_SHA256"
-    end
-  end
-
-  postflight do
-    if OS.mac?
-      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tales"]
-    end
-  end
-end
-```
-
-Notable bits:
-
-- `binary "tales"` makes the cask install the binary out of the unpacked archive directly into Homebrew's `bin` prefix; no `def install` block needed.
-- `url ... verified:` declares the trusted download domain, which `homebrew audit` requires when it differs from `homepage`.
-- The `postflight` hook strips the macOS Gatekeeper quarantine bit so the binary runs without user interaction on a fresh machine.
-
-GoReleaser writes this file automatically on every non-prerelease tag (`skip_upload: auto` on prereleases). Bumping `version` and the four `sha256`s by hand is only needed if you operate a separate fork without GoReleaser.
-
 ## Next steps
 
 <CardGrid>
