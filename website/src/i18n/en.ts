@@ -23,6 +23,7 @@ export default {
 			'Tales is the integration testing tool we wished existed. A modern alternative to Robot Framework, Karate, and Venom, without the Python toolchain to babysit, the JavaScript creep, or the YAML soup. One declarative HCL2 syntax, one seedable run, one tool for API, SQL, Browser, iOS, and HTTP load workflows. Android coming soon.',
 		ctaPrimary: 'Get started',
 		ctaSecondary: 'View on GitHub',
+		agentBadge: 'AI agent-ready: ships with a Claude Code skill that writes your tests',
 	},
 
 	terminal: {
@@ -323,6 +324,56 @@ step "sql" "insert_org" {
 }`,
 			},
 		],
+	},
+
+	agents: {
+		eyebrow: 'AI agent-ready',
+		title: 'Built for the way you code now: with an agent',
+		body: 'Tales is designed to be driven by AI coding agents, not just typed by hand. A declarative HCL2 surface, seedable deterministic runs, and structured failure output give an agent exactly what it needs to write a test, run it, read the result, and fix it on its own.',
+		bullets: [
+			{
+				title: 'A dedicated Claude Code skill',
+				body: 'Tales ships the `tales-test-generator` skill: it grounds the agent in the DSL source of truth, then generates valid, runnable `.tales` suites (scenarios, keywords, captures, teardown) instead of plausible-looking guesses.',
+			},
+			{
+				title: 'Deterministic, so agents self-correct',
+				body: 'Seeded faker plus JSONL output mean the agent gets the same data and the same diagnostics every run. It can reproduce a failure, reason about it, and verify its own fix.',
+			},
+			{
+				title: 'Declarative surface, small blast radius',
+				body: 'No glue code, no JavaScript escape hatch. The agent edits one contained HCL block, and what it writes is what runs: easier to generate, easier to review.',
+			},
+		],
+		install: {
+			label: 'Install the skill',
+			code: 'make install-skill',
+			note: 'Copies it to ~/.claude/skills/tales-test-generator.',
+		},
+		card: {
+			skill: 'tales-test-generator',
+			prompt: 'Write a Tales suite for the login + refresh-token flow.',
+			generated: 'generated .tales',
+			snippet: `scenario "Login then refresh" {
+  step "http" "login" {
+    request {
+      method = "POST"
+      url    = "\${config.base_url}/auth/login"
+      body { json = { email = config.user, password = config.pass } }
+    }
+    expect { status = 200 }
+    capture { token = response.json.access_token }
+  }
+
+  step "http" "refresh" {
+    request {
+      method  = "POST"
+      url     = "\${config.base_url}/auth/refresh"
+      headers = { Authorization = "Bearer \${result.login.token}" }
+    }
+    expect { status = 200 }
+  }
+}`,
+		},
 	},
 
 	determinism: {
