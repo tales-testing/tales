@@ -37,7 +37,7 @@ website/
 └── public/                    # favicon, OG image, static assets
 ```
 
-## i18n — adding a new translation
+## i18n: adding a new translation
 
 The site is English-only at launch but the routing is configured for future translations. The default locale (`en`) is unprefixed: `/docs/...`. Other languages are routed under `/<lang>/docs/...` (e.g. `/fr/docs/...`).
 
@@ -54,7 +54,7 @@ To add a translation (French in the example below):
 
 2. **Mirror the docs tree** under `src/content/docs/fr/docs/`. Every `.mdx` file in `src/content/docs/docs/` should have a translated counterpart under the `fr/docs/` subtree at the same relative path. Pages without a translation automatically fall back to the English version, so partial translations are safe.
 
-3. **Translate the landing strings** by copying `src/i18n/en.ts` to `src/i18n/fr.ts` and translating the values. The landing page consumes the dictionary statically; switching imports per locale is the next-step refactor (currently every visitor sees the English landing — the Starlight language switcher only affects `/docs/`).
+3. **Translate the landing strings** by copying `src/i18n/en.ts` to `src/i18n/fr.ts` and translating the values. The landing page consumes the dictionary statically; switching imports per locale is the next-step refactor (currently every visitor sees the English landing; the Starlight language switcher only affects `/docs/`).
 
 4. **Translate the sidebar labels** by either localising the `label:` fields in the sidebar config, or replacing the static array with Starlight's per-locale sidebar API. The first option is simplest for small translations.
 

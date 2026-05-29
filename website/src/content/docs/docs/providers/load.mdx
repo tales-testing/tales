@@ -50,14 +50,14 @@ step "load" "health" {
 
 The `http` block accepts the same surface as a standard HTTP step's `request` block: `method`, `url`, `headers`, `query`, `body { json | form | raw }`, `auth { basic { ... } }`, and a per-call `timeout`.
 
-Multipart bodies are intentionally rejected — the encoder boundary lives inside the `Content-Type` header and cannot be safely reused across concurrent workers in V1.
+Multipart bodies are intentionally rejected: the encoder boundary lives inside the `Content-Type` header and cannot be safely reused across concurrent workers in V1.
 
 ### `run { ... }`
 
 | Attribute      | Type     | Required                          | Default | Meaning                                      |
 | -------------- | -------- | --------------------------------- | ------- | -------------------------------------------- |
-| `duration`     | duration | one of `duration` / `requests`    | —       | wall-clock window for measurement            |
-| `requests`     | number   | one of `duration` / `requests`    | —       | total measured requests across all workers   |
+| `duration`     | duration | one of `duration` / `requests`    | unset   | wall-clock window for measurement            |
+| `requests`     | number   | one of `duration` / `requests`    | unset   | total measured requests across all workers   |
 | `concurrency`  | number   | optional                          | `1`     | number of worker goroutines                  |
 | `rate`         | number   | optional                          | unset   | global RPS cap (token bucket)                |
 | `warmup`       | duration | optional                          | unset   | initial round whose samples are discarded    |
@@ -171,7 +171,7 @@ The recap is missing if the step failed before any sample was collected.
 ## Validation commands
 
 ```bash
-make e2e-load   # local-only — runs the mockserver and exercises e2e/load/*.tales
+make e2e-load   # local-only: runs the mockserver and exercises e2e/load/*.tales
 ```
 
 `make e2e-load` is intentionally not part of `make e2e` to keep the normal CI suite fast and noise-free.

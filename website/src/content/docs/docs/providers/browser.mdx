@@ -19,7 +19,7 @@ Reach for the browser provider when you need to assert behaviour that only the r
 
 ```hcl
 step "browser" "<name>" {
-  target = "chrome"              // required — config.browser.targets key
+  target = "chrome"              // required: config.browser.targets key
 
   actions {                      // ordered list, runs sequentially
     goto         { url = "..." }
@@ -65,7 +65,7 @@ config {
           width  = 1440             // default 1440
           height = 1000             // default 1000
         }
-        timeout = "30s"             // default 30s — action / expect default
+        timeout = "30s"             // default 30s: action / expect default
         args = [
           "--disable-gpu",
         ]
@@ -81,11 +81,11 @@ If `target = "<name>"` is omitted on a step and exactly one target is declared, 
 
 When `headless = true` (the default), Tales adds three Chrome flags on top of the user-supplied `args` so the browser starts cleanly in CI / Docker environments:
 
-- `--no-sandbox` — required on GitHub Actions runners and most Docker images, where the setuid sandbox cannot be created without `CAP_SYS_ADMIN`. Without it Chrome hangs silently at startup before CDP is reachable.
-- `--disable-dev-shm-usage` — avoids crashes on runners where `/dev/shm` is too small (typical 64 MiB containers).
-- `--disable-gpu` — removes a startup warning + saves a few hundred milliseconds in headless mode where GPU acceleration is irrelevant.
+- `--no-sandbox`: required on GitHub Actions runners and most Docker images, where the setuid sandbox cannot be created without `CAP_SYS_ADMIN`. Without it Chrome hangs silently at startup before CDP is reachable.
+- `--disable-dev-shm-usage`: avoids crashes on runners where `/dev/shm` is too small (typical 64 MiB containers).
+- `--disable-gpu`: removes a startup warning + saves a few hundred milliseconds in headless mode where GPU acceleration is irrelevant.
 
-When `headless = false`, none of these flags are added — the local Chrome sandbox stays enabled and the GPU is used. To override a default in headless mode, pass the opposite flag in `args` (e.g. `--enable-gpu` if you really want it).
+When `headless = false`, none of these flags are added: the local Chrome sandbox stays enabled and the GPU is used. To override a default in headless mode, pass the opposite flag in `args` (e.g. `--enable-gpu` if you really want it).
 
 ### Chrome resolution
 
@@ -116,8 +116,8 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | `hover`              | `selector`                                                          | Dispatches a `mouseover` event |
 | `select`             | `selector`, `value`                                                 | Sets `<select>` value and fires `change` |
 | `check` / `uncheck`  | `selector`                                                          | Toggles a checkbox / radio input |
-| `reload`             | —                                                                   | Reloads the current page |
-| `back` / `forward`   | —                                                                   | Navigates the browser history. See limitations below |
+| `reload`             | none                                                                | Reloads the current page |
+| `back` / `forward`   | none                                                                | Navigates the browser history. See limitations below |
 
 All actions accept an optional `timeout = "<duration>"` and `interval = "<duration>"`.
 
@@ -189,7 +189,7 @@ These helpers are **only available inside a `browser` step's `capture` block**. 
 
 ## Sessions and isolation
 
-V1 spawns **one Chrome subprocess per (target, scenario) pair**. This gives each scenario a fresh BrowserContext with its own cookies, localStorage, and history — at the cost of a ~600ms startup per scenario. The Provider holds the per-target session map and closes everything via `io.Closer` at suite end, so no Chrome processes leak after `tales test` returns.
+V1 spawns **one Chrome subprocess per (target, scenario) pair**. This gives each scenario a fresh BrowserContext with its own cookies, localStorage, and history (at the cost of a ~600ms startup per scenario). The Provider holds the per-target session map and closes everything via `io.Closer` at suite end, so no Chrome processes leak after `tales test` returns.
 
 Inside one scenario, all steps on the same target share the browser context. Use that to carry login state across steps.
 
@@ -217,10 +217,10 @@ Artifact paths are surfaced on `StepResult.Artifacts` and per-action `ActionResu
 
 `--capture-screenshots <mode>` (or default driven by `--report-html`):
 
-- `none` — no captures at all
-- `failures` (default without `--report-html`) — one screenshot + dom.html at step level when the step fails
-- `steps` — one screenshot + dom.html at the end of each step (success or failure)
-- `actions` (default with `--report-html`) — per-action capture, plus a failure capture if any action fails
+- `none`: no captures at all
+- `failures` (default without `--report-html`): one screenshot + dom.html at step level when the step fails
+- `steps`: one screenshot + dom.html at the end of each step (success or failure)
+- `actions` (default with `--report-html`): per-action capture, plus a failure capture if any action fails
 
 ## Visual report integration
 
@@ -231,9 +231,9 @@ When `--report-html` is set, the browser provider populates the same `report.Act
 - Masked secure values
 - Per-action DOM snapshots (`dom.html`)
 
-There is no browser-specific renderer — the visual layout is shared with mobile.
+There is no browser-specific renderer: the visual layout is shared with mobile.
 
-To share the report, ship the `e2e-browser.html` file **together with the `build/artifacts/browser/` directory** — the HTML uses relative paths to load the PNG / DOM files. The CSS / JS template assets are baked into the HTML itself, so opening the report from any local folder that preserves the relative artifact layout works without a web server.
+To share the report, ship the `e2e-browser.html` file **together with the `build/artifacts/browser/` directory** (the HTML uses relative paths to load the PNG / DOM files). The CSS / JS template assets are baked into the HTML itself, so opening the report from any local folder that preserves the relative artifact layout works without a web server.
 
 ## Timeout layering
 
@@ -247,7 +247,7 @@ Tales applies timeouts in this precedence order (innermost first):
 
 ## Selectors
 
-CSS selectors only in V1. Recommended pattern: add `data-testid="..."` attributes to your application markup and select by those — they are stable across CSS / styling changes.
+CSS selectors only in V1. Recommended pattern: add `data-testid="..."` attributes to your application markup and select by those: they are stable across CSS / styling changes.
 
 ```hcl
 click { selector = "[data-testid='login.submit']" }
@@ -257,11 +257,11 @@ The provider also accepts any selector chromedp's `ByQuery` mode supports (tag, 
 
 ## Determinism caveat
 
-Browser steps are **not seed-deterministic**. Real-browser interaction depends on layout reflow timing, async script execution, and network latency — none of which the Tales seed mixer controls.
+Browser steps are **not seed-deterministic**. Real-browser interaction depends on layout reflow timing, async script execution, and network latency, none of which the Tales seed mixer controls.
 
 Pin flakiness with:
 
-- `expect.<kind> { timeout = "10s" interval = "100ms" }` — bounded polling
+- `expect.<kind> { timeout = "10s" interval = "100ms" }`: bounded polling
 - `retry { attempts = 3 interval = "1s" }` on the step
 - Synchronous waits (`wait_visible`) after navigations before asserting
 
@@ -307,7 +307,7 @@ step "browser" "dashboard_perf" {
 | `transfer_size_bytes`            | `transfer_size`                            | Resource Timing API                          |
 | `encoded_body_size_bytes`        | `encoded_body_size`                        | Resource Timing API                          |
 | `decoded_body_size_bytes`        | `decoded_body_size`                        | Resource Timing API                          |
-| `url`, `title`                   | —                                          | `location` / `document`                      |
+| `url`, `title`                   | n/a                                        | `location` / `document`                      |
 
 ### Implementation notes
 

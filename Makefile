@@ -317,12 +317,12 @@ e2e-failure: build
 
 # Browser e2e targets. These require a Chrome / Chromium executable on the
 # host (or CHROME_PATH pointing at one). When Chrome is missing, the target
-# logs a clear message and exits 0 — normal CI without Chrome stays green.
+# logs a clear message and exits 0; normal CI without Chrome stays green.
 
 BROWSER_PASS_SUITE ?= ./e2e/browser
 BROWSER_FAIL_SUITE ?= ./e2e/browser-fail
 
-# detect-chrome shell snippet — sets $$chrome to a non-empty path when a
+# detect-chrome shell snippet: sets $$chrome to a non-empty path when a
 # usable Chrome/Chromium is found, otherwise stays empty. Inlined into
 # every browser-e2e recipe so the sub-make hop is avoided.
 define detect-chrome
@@ -351,7 +351,7 @@ endef
 check-chrome:
 	@$(detect-chrome); \
 	if [ -z "$$chrome" ]; then \
-	  echo "Chrome/Chromium not available — skipping browser e2e (install Chrome or set CHROME_PATH)"; \
+	  echo "Chrome/Chromium not available: skipping browser e2e (install Chrome or set CHROME_PATH)"; \
 	else \
 	  echo "chrome: $$chrome"; \
 	fi
@@ -363,7 +363,7 @@ e2e-browser: build
 	@set -euo pipefail; \
 	$(detect-chrome); \
 	if [ -z "$$chrome" ]; then \
-	  echo "Chrome/Chromium not available — skipping browser e2e (install Chrome or set CHROME_PATH)"; \
+	  echo "Chrome/Chromium not available: skipping browser e2e (install Chrome or set CHROME_PATH)"; \
 	  exit 0; \
 	fi; \
 	echo "chrome: $$chrome"; \
@@ -396,7 +396,7 @@ e2e-browser-failure: build
 	@set -euo pipefail; \
 	$(detect-chrome); \
 	if [ -z "$$chrome" ]; then \
-	  echo "Chrome/Chromium not available — skipping browser e2e-failure (install Chrome or set CHROME_PATH)"; \
+	  echo "Chrome/Chromium not available: skipping browser e2e-failure (install Chrome or set CHROME_PATH)"; \
 	  exit 0; \
 	fi; \
 	echo "chrome: $$chrome"; \

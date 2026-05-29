@@ -306,7 +306,7 @@ step "sql" "insert_org" {
 			{
 				tag: 'Load',
 				title: 'HTTP smoke benchmarks',
-				body: 'Replay one HTTP request concurrently for a duration or a fixed request count and assert latency percentiles, RPS, and error/status ratios. Not a replacement for k6 or Gatling — a regression guard you keep next to your normal scenarios.',
+				body: 'Replay one HTTP request concurrently for a duration or a fixed request count and assert latency percentiles, RPS, and error/status ratios. Not a replacement for k6 or Gatling: a regression guard you keep next to your normal scenarios.',
 				snippet: `step "load" "health" {
   http {
     method = "GET"

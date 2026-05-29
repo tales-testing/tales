@@ -18,7 +18,7 @@ const BASE = process.env.BASE_PATH ?? '/';
 // still return a valid `() => (tree) => {}` plugin so remark accepts it.
 //
 // Note: when trailingSlash ever changes from 'always', revisit the
-// `url !== base` skip — today a bare `/tales` cannot appear in our content.
+// `url !== base` skip: today a bare `/tales` cannot appear in our content.
 function remarkAbsolutePathBasePrefix() {
 	const base = BASE.replace(/\/$/, '');
 	if (!base) {
@@ -49,7 +49,7 @@ export default defineConfig({
 		starlight({
 			title: 'Tales',
 			description:
-				'End-to-end tests, written once, replayable forever — in a single Go binary.',
+				'End-to-end tests, written once, replayable forever, in a single Go binary.',
 			logo: {
 				light: './src/assets/logo-light.svg',
 				dark: './src/assets/logo-dark.svg',

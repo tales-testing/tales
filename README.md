@@ -6,16 +6,16 @@ Tales is a single-binary integration and end-to-end testing tool. Scenarios are 
 
 ## Why Tales
 
-- **Single Go binary** — drop it in CI, no runtime, no plugins, no version manager.
-- **Declarative HCL2** — no JavaScript escape hatch, no glue code. What you write is what runs.
-- **Deterministic seeded data** — `--seed 1234` produces byte-identical generated values on every run.
+- **Single Go binary**: drop it in CI, no runtime, no plugins, no version manager.
+- **Declarative HCL2**: no JavaScript escape hatch, no glue code. What you write is what runs.
+- **Deterministic seeded data**: `--seed 1234` produces byte-identical generated values on every run.
 - **Scenarios in parallel, steps sequential in file order.** Chained captures stay deterministic.
 - **HTTP provider** including ConnectRPC JSON over HTTP and multipart uploads.
 - **SQL provider** (`step "sql"`) for PostgreSQL + MySQL preconditions and teardown. See [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/).
 - **Native iOS UI automation via XCUITest** (`step "mobile"`), no Appium / no Maestro. The XCUITest driver is **embedded** in the `tales` binary and built on first use into `~/Library/Caches/tales/apple-driver/`, so a released binary runs iOS tests on any macOS+Xcode host. `tales doctor` (`--json` for CI) inspects the cache, embedded source, Xcode, and simctl state in one place. See [docs/providers/mobile-ios/](https://taleslabs.org/docs/providers/mobile-ios/).
 - **Browser UI automation via Chrome DevTools Protocol** (`step "browser"`), no Puppeteer / no Playwright / no Selenium. Drives Chrome / Chromium through Go-native chromedp; ordered `actions` (goto/click/fill/…), polled `expect` (visible/text/url/title/attribute/…), Web performance budgets via `expect.web_perf { fcp = lt("1800ms") … }` and `browser.performance` capture (FCP/LCP/CLS/load/DOM/resources). Per-scenario browsing context for cookie isolation, full visual-report integration with masked secure values. See [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/).
 - **Load smoke benchmarks** (`step "load"`), Go-native concurrent HTTP replay with latency percentiles, RPS, error and status-class ratios, threshold matchers (`p95 = lt("200ms")`, `error_ratio = lte(0.01)`). Not a substitute for k6/Gatling; designed for regression smoke runs. See [docs/providers/load/](https://taleslabs.org/docs/providers/load/).
-- **Reports** — human-readable console output, JUnit XML for CI dashboards, JSONL event stream for log pipelines, single-file visual HTML report with action-by-action screenshot replay.
+- **Reports**: human-readable console output, JUnit XML for CI dashboards, JSONL event stream for log pipelines, single-file visual HTML report with action-by-action screenshot replay.
 
 ## Current Status
 
@@ -229,9 +229,9 @@ Flags:
 - `--report-jsonl <path>`: write JSONL events.
 - `--report-html <path>`: write a single-file visual HTML report (mobile screenshots replay).
 - `--capture-screenshots <mode>`: mobile screenshot capture mode. One of `none`, `failures`, `steps`, `actions`. Defaults to `failures`, or `actions` when `--report-html` is set.
-- `--timeout <duration>`: global wall-clock budget for the whole run (e.g. `30s`, `5m`, `1h`). When it fires, in-flight steps see a canceled context, are reported as failed, the CLI lists the scenarios that were still running, and the run exits with `1`. `0` (the default) disables the budget — Tales then waits indefinitely.
+- `--timeout <duration>`: global wall-clock budget for the whole run (e.g. `30s`, `5m`, `1h`). When it fires, in-flight steps see a canceled context, are reported as failed, the CLI lists the scenarios that were still running, and the run exits with `1`. `0` (the default) disables the budget: Tales then waits indefinitely.
 - `--verbose`: emit a heartbeat on stderr every 30s listing every scenario still in flight along with its elapsed time. Off by default.
-- `--no-progress`: silence two things — the streaming `scenario X starting / PASS / FAIL` lines emitted on stderr while the suite is running, AND the per-step progress counters that the final stdout report adds when stdout is a TTY. The scenario/step pass-fail summary itself is always rendered.
+- `--no-progress`: silence two things: the streaming `scenario X starting / PASS / FAIL` lines emitted on stderr while the suite is running, AND the per-step progress counters that the final stdout report adds when stdout is a TTY. The scenario/step pass-fail summary itself is always rendered.
 
 Examples:
 
@@ -255,9 +255,9 @@ Exit codes:
 - `scenario "..." { ... }`
 - `step "http" "name" { ... }`
 - `step "sql" "name" { connection = "<name>"; exec { ... } | query { ... } }`
-  — see [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/).
+  (see [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/)).
 - `step "browser" "name" { target = "..."; actions { goto/click/fill/… } expect { visible/text/url/title/… } }`
-  — see [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/).
+  (see [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/)).
 - `request.body { json = ... }` for JSON payloads.
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
@@ -268,7 +268,7 @@ Exit codes:
   boundary. See *Multipart file upload* below.
 - `request.auth.basic` for HTTP Basic Authentication.
 - `vars { ... }` to declare step-local variables evaluated once before the
-  provider runs — required for signing a request body (compute the body
+  provider runs: required for signing a request body (compute the body
   string and its HMAC once, send the same bytes). See *Step-local vars*
   below.
 - `expect` assertions for status/headers/json.
@@ -310,7 +310,7 @@ their bytes from `path` (a string resolved relative to the `.tales`
 file) or from an inline `content` expression. Tales always sets the
 request `Content-Type` to the encoder's value (including the
 boundary parameter generated by Go's `mime/multipart` package), even
-if the caller supplied one — otherwise a stale `Content-Type` would
+if the caller supplied one; otherwise a stale `Content-Type` would
 silently corrupt the boundary and break the request.
 
 Note that the multipart boundary is random per request, so the exact
@@ -362,7 +362,7 @@ Rules:
   name) and sniffs `content_type` from the extension or payload.
 - Each `field` block requires `name` and `value`.
 - The `multipart` block cannot be combined with `json`, `form`, or
-  `raw` — `body` must declare exactly one transport.
+  `raw`: `body` must declare exactly one transport.
 - Paths are resolved at runtime relative to the `.tales` file owning
   the step, so fixtures sit naturally next to the scenario.
 - Tales overwrites any user-set `Content-Type` for multipart bodies so
@@ -382,7 +382,7 @@ value is then visible to the step's `request`, `expect`, and `capture`
 expressions through the `vars` scope variable.
 
 Use it whenever a value must be stable across multiple interpolation sites
-in the same step — most commonly when signing a request: the timestamp,
+in the same step, most commonly when signing a request: the timestamp,
 the canonical JSON body, and the HMAC over both must be computed exactly
 once.
 
@@ -415,14 +415,14 @@ step "http" "send_webhook" {
 
 Rules:
 
-- vars are **step-local**. They are not visible to other steps — use
+- vars are **step-local**. They are not visible to other steps: use
   `capture` to share a value with later steps.
 - vars are **immutable** after evaluation.
 - A var can only reference vars declared **earlier in the same block**.
   Forward references and self-references are rejected at load time
   (exit code `2`).
 - `when` and `skip_if` / `skip_unless` are evaluated *before* the step
-  body, so they cannot reference `vars.<name>` — that is rejected at
+  body, so they cannot reference `vars.<name>`: that is rejected at
   load time with a clear error.
 - The same `vars.<name>` must hold the same value at every interpolation
   site. This is guaranteed precisely because `vars` are evaluated once.
@@ -434,7 +434,7 @@ Rules:
   in the `.tales` file. There is no implicit parallelism between steps.
 - A step may reference (`result.<step>`) or `depends_on` only steps defined
   **earlier** in the file. A forward reference or an unknown reference is
-  rejected at load time — `tales validate` catches it and the exit code is `2`.
+  rejected at load time: `tales validate` catches it and the exit code is `2`.
 - `depends_on` is **optional**: file order already determines execution order.
   Use it only as explicit documentation/validation of a relationship; it does
   not reorder steps.
@@ -450,35 +450,35 @@ General:
 - `env(name)`
 - `env(name, default)`
 - `generate(name)`
-- `jsonencode(value)` — serializes any value to a canonical JSON string.
+- `jsonencode(value)`: serializes any value to a canonical JSON string.
   Object keys are sorted alphabetically; sets are sorted by their JSON
   encoding; numbers preserve precision. The deterministic output is what
-  makes it safe to sign — two calls on the same value produce the same
+  makes it safe to sign: two calls on the same value produce the same
   bytes.
 - `url_encode(value)`
-- `now_unix()` — current Unix timestamp in seconds as a number. Uses the
+- `now_unix()`: current Unix timestamp in seconds as a number. Uses the
   wall clock (non-deterministic). Capture in a `vars { ts = now_unix() }`
   block to reuse the same value at every interpolation site.
-- `now_rfc3339()` — current UTC time formatted per RFC3339, e.g.
+- `now_rfc3339()`: current UTC time formatted per RFC3339, e.g.
   `"2026-05-26T15:42:31Z"`. Same caveats as `now_unix()`.
 - `sha1_hex(value)`, `sha224_hex(value)`, `sha256_hex(value)`,
   `sha384_hex(value)`, `sha512_hex(value)`, `sha512_224_hex(value)`,
-  `sha512_256_hex(value)` — single-argument hash functions returning the
+  `sha512_256_hex(value)`: single-argument hash functions returning the
   lowercase hex digest of the input string's UTF-8 bytes.
 - `hmac_sha1_hex(secret, message)`, `hmac_sha224_hex`, `hmac_sha256_hex`,
   `hmac_sha384_hex`, `hmac_sha512_hex`, `hmac_sha512_224_hex`,
-  `hmac_sha512_256_hex` — keyed HMAC variants matching the hash set.
+  `hmac_sha512_256_hex`: keyed HMAC variants matching the hash set.
   Lowercase hex output; secrets and messages never appear in errors.
   `hmac_sha256_hex` is the recommended default for new signing code;
   `hmac_sha1_hex` exists because RFC 6238 TOTP needs it.
-- `base64url_encode(value)` — RFC 4648 URL-safe Base64 of the input
+- `base64url_encode(value)`: RFC 4648 URL-safe Base64 of the input
   string's bytes, no padding. Note this encodes the *input string*, not
-  a hex digest — do not compose with `sha256_hex` to build a PKCE S256
+  a hex digest: do not compose with `sha256_hex` to build a PKCE S256
   challenge; use `pkce_challenge` instead.
-- `pkce_challenge(verifier, options?)` — RFC 7636 PKCE challenge from a
+- `pkce_challenge(verifier, options?)`: RFC 7636 PKCE challenge from a
   code verifier. Defaults to S256; supports `{method = "plain"}`.
   S256 encodes the raw 32 SHA-256 bytes, never the hex string.
-- `totp(secret_base32, options?)` — RFC 6238 TOTP code from a Base32
+- `totp(secret_base32, options?)`: RFC 6238 TOTP code from a Base32
   secret. `totp(secret)` uses the documented defaults (`period=30`,
   `digits=6`, `algorithm="SHA1"`, `timestamp=now_unix()`); pass an
   options object to override any of them. Capture `now_unix()` into a
@@ -486,10 +486,10 @@ General:
 
 Top-level expression variables:
 
-- `host.os` — `runtime.GOOS` (e.g. `"darwin"`, `"linux"`, `"windows"`)
-- `host.arch` — `runtime.GOARCH` (e.g. `"amd64"`, `"arm64"`)
+- `host.os`: `runtime.GOOS` (e.g. `"darwin"`, `"linux"`, `"windows"`)
+- `host.arch`: `runtime.GOARCH` (e.g. `"amd64"`, `"arm64"`)
 - `config.<key>`, `result.<step>.<field>`, plus `request`, `response`, `input` in step scope
-- `vars.<name>` — step-local variables declared in the step's `vars {}`
+- `vars.<name>`: step-local variables declared in the step's `vars {}`
   block. Only visible inside the step that declares them. See *Step-local
   vars* above.
 
@@ -506,13 +506,13 @@ Matchers:
 - `is_object()`
 - `one_of(values)`
 - `can(expression)`
-- `optional(value)` — field-level matcher: passes when the key is absent, or
+- `optional(value)`: field-level matcher that passes when the key is absent, or
   when present and the inner expectation matches.
-- `required(value)` — field-level matcher: explicit version of the default
+- `required(value)`: field-level matcher, the explicit version of the default
   behavior. Fails when the key is absent, otherwise delegates to the inner
   expectation. Useful for readability when paired with `optional(...)`.
-- `any()` — value matcher: matches any present value (`null`, string, number,
-  bool, array, object). Does **not** make the field optional by itself —
+- `any()`: value matcher that matches any present value (`null`, string, number,
+  bool, array, object). Does **not** make the field optional by itself;
   combine with `optional(any())` to also accept omitted keys.
 
 ### Optional fields (ConnectRPC / protobuf JSON)
@@ -591,14 +591,14 @@ When per-action recording is on (any `--capture-screenshots` other than `none`),
 
 ### Visual HTML
 
-Use `--report-html <path>` to produce a single offline HTML file that replays the mobile test action by action — screenshot on the left, vertical action timeline on the right with the active action highlighted, plus playback controls (Space, ←/→, speed selector). The file is self-contained: vanilla CSS + JS are inlined; screenshots are referenced by relative paths next to the report.
+Use `--report-html <path>` to produce a single offline HTML file that replays the mobile test action by action: screenshot on the left, vertical action timeline on the right with the active action highlighted, plus playback controls (Space, ←/→, speed selector). The file is self-contained: vanilla CSS + JS are inlined; screenshots are referenced by relative paths next to the report.
 
 Picking a capture mode:
 
-- `none` — no screenshots or hierarchy ever (failures included). `driver_log` artifact is still surfaced for non-starting drivers.
-- `failures` — default. Step-level screenshot + hierarchy only when a step fails (legacy behavior).
-- `steps` — one end-of-step screenshot per step.
-- `actions` — one screenshot per UI action. Required for a usable visual replay; selected automatically when `--report-html` is set.
+- `none`: no screenshots or hierarchy ever (failures included). `driver_log` artifact is still surfaced for non-starting drivers.
+- `failures`: default. Step-level screenshot + hierarchy only when a step fails (legacy behavior).
+- `steps`: one end-of-step screenshot per step.
+- `actions`: one screenshot per UI action. Required for a usable visual replay; selected automatically when `--report-html` is set.
 
 Per-action artifacts live under:
 
@@ -656,7 +656,7 @@ make e2e
 ## Current Limitations
 
 - No browser provider yet (iOS mobile is supported via XCUITest).
-- No external plugin system — providers are compiled in.
+- No external plugin system: providers are compiled in.
 - No dedicated ConnectRPC provider (Connect JSON works through HTTP).
 
 ## License
