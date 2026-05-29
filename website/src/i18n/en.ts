@@ -6,7 +6,7 @@ export default {
 	meta: {
 		title: 'Tales: declarative end-to-end testing in a single Go binary',
 		description:
-			'End-to-end tests, written once, replayable forever, in a single Go binary. An open-source alternative to Robot Framework, Karate, and Venom, with HCL2 syntax, deterministic faker, HTTP + SQL + iOS providers, and a visual HTML report.',
+			'End-to-end tests, written once, replayable forever, in a single Go binary. An open-source alternative to Robot Framework, Karate, and Venom, with HCL2 syntax, deterministic faker, HTTP + SQL + Browser + iOS + Load providers (Android soon), and a visual HTML report.',
 	},
 
 	nav: {
@@ -20,7 +20,7 @@ export default {
 		headline:
 			'End-to-end tests, written once, replayable forever, in a single Go binary.',
 		subhead:
-			'Tales is the integration testing tool we wished existed. A modern alternative to Robot Framework, Karate, and Venom, without the Python toolchain to babysit, the JavaScript creep, or the YAML soup. One declarative HCL2 syntax, one seedable run, one tool for API, SQL, and iOS workflows.',
+			'Tales is the integration testing tool we wished existed. A modern alternative to Robot Framework, Karate, and Venom, without the Python toolchain to babysit, the JavaScript creep, or the YAML soup. One declarative HCL2 syntax, one seedable run, one tool for API, SQL, Browser, iOS, and HTTP load workflows. Android coming soon.',
 		ctaPrimary: 'Get started',
 		ctaSecondary: 'View on GitHub',
 	},
@@ -62,8 +62,8 @@ export default {
 				body: 'Venom and similar YAML-driven runners get hard to read once scenarios chain captures and conditionals. HCL2 keeps the same declarative spirit, but with typed values, comments, and expressions that scale to real workflows.',
 			},
 			{
-				title: 'API, SQL, iOS in one runner',
-				body: 'Stop juggling separate tools for HTTP, database state, and mobile UI tests. Tales runs them in the same scenario file, with the same syntax, in the same report. Android and web browser providers are on the roadmap.',
+				title: 'API, SQL, Browser, iOS, Load in one runner',
+				body: 'Stop juggling separate tools for HTTP, database state, browser flows, mobile UI tests, and smoke load. Tales runs them in the same scenario file, with the same syntax, in the same report. Android support is on the roadmap.',
 			},
 		],
 	},
@@ -89,8 +89,8 @@ export default {
 				body: 'Reproduce a flaky CI failure locally with one flag. `--seed 1234` and your laptop replays exactly what the runner saw.',
 			},
 			{
-				title: 'HTTP / SQL / iOS providers',
-				body: 'Drive your API, set up database state (Postgres, MySQL), tap through a real iOS simulator: all from one tool. Android and web browser providers are on the roadmap.',
+				title: 'Five providers, one binary',
+				body: 'Drive your API, set up database state (Postgres, MySQL), drive Chrome via CDP with Web performance budgets, tap through an iOS simulator, replay HTTP at concurrent load. Android coming soon.',
 			},
 			{
 				title: 'Parallel by default',
@@ -252,8 +252,8 @@ step "sql" "insert_org" {
 			},
 			{
 				tag: 'Mobile',
-				title: 'iOS smoke tests',
-				body: 'Drive a real iOS simulator with an embedded XCUITest driver: zero Swift code to write, no test target to maintain. Visual report shows every tap. Android is on the roadmap.',
+				title: 'iOS smoke tests (Android soon)',
+				body: 'Drive a real iOS simulator with an embedded XCUITest driver: zero Swift code to write, no test target to maintain. Visual report shows every tap. Android coming soon.',
 				snippet: `step "mobile" "fill_login" {
   platform = "ios"
   target   = "iphone"
@@ -279,6 +279,49 @@ step "sql" "insert_org" {
   }
 }`,
 			},
+			{
+				tag: 'Browser',
+				title: 'Web flows + perf budgets',
+				body: 'Drive a real Chrome/Chromium session via the Chrome DevTools Protocol. Click, fill, submit, assert visible elements, URL, and title. Pin Web Performance budgets (FCP, LCP, CLS, load) with the same threshold matchers you use everywhere else.',
+				snippet: `step "browser" "dashboard_perf" {
+  target = "chrome"
+  actions {
+    goto {
+      url = "\${config.base_url}/web/dashboard"
+    }
+    wait_visible {
+      selector = "[data-testid='dashboard.title']"
+    }
+  }
+  expect {
+    web_perf {
+      fcp = lt("1800ms")
+      lcp = lt("2500ms")
+      cls = lt(0.1)
+    }
+  }
+}`,
+			},
+			{
+				tag: 'Load',
+				title: 'HTTP smoke benchmarks',
+				body: 'Replay one HTTP request concurrently for a duration or a fixed request count and assert latency percentiles, RPS, and error/status ratios. Not a replacement for k6 or Gatling — a regression guard you keep next to your normal scenarios.',
+				snippet: `step "load" "health" {
+  http {
+    method = "GET"
+    url    = "\${config.base_url}/healthz"
+  }
+  run {
+    requests    = 500
+    concurrency = 10
+  }
+  expect {
+    status_2xx_ratio = gte(0.99)
+    p95              = lt("200ms")
+    error_ratio      = lte(0.01)
+  }
+}`,
+			},
 		],
 	},
 
@@ -296,7 +339,7 @@ step "sql" "insert_org" {
 		homebrew: {
 			title: 'Homebrew (macOS / Linux)',
 			body: 'The fastest path on a laptop. Linux and macOS, amd64 and arm64.',
-			code: 'brew install tales-testing/tap/tales',
+			code: 'brew install --cask tales-testing/tap/tales',
 		},
 		fromRelease: {
 			title: 'Pre-built binary',

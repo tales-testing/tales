@@ -7,10 +7,6 @@ import { Aside, Card, CardGrid, Tabs, TabItem, Steps } from '@astrojs/starlight/
 
 Tales V1 supports iOS automation through Apple's official tooling and a repository-owned Swift/XCUITest HTTP driver. There is **no** Appium server, **no** Maestro runtime, **no** IDB requirement, and **no** external WebDriverAgent dependency.
 
-<Aside type="tip" title="Single-binary distribution">
-	The Swift driver source is embedded into the `tales` binary at build time via `go:embed`. On the first iOS test run, Tales extracts the driver to a per-user cache, builds it once with Xcode, and reuses the cached build on subsequent runs. A released `tales` binary therefore runs iOS tests on any macOS host with Xcode and a Simulator runtime installed, the Tales repository does not need to be checked out next to it.
-</Aside>
-
 ## Architecture
 
 ```text
