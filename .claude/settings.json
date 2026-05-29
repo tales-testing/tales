@@ -21,7 +21,11 @@
       "Bash(pkill -9 -f \"Google Chrome\")",
       "Bash(./build/mockserver)",
       "Bash(BASE_URL=http://localhost:1337 timeout 90 ./build/tales test --seed 1234 --parallel 1 --report-html /tmp/e2e-browser.html --report-jsonl /tmp/e2e-browser.jsonl --capture-screenshots actions ./e2e/browser)",
-      "Bash(pkill -f \"mockserver\")"
+      "Bash(pkill -f \"mockserver\")",
+      "Bash(rtk make *)",
+      "Bash(echo \"e2e: $?\")",
+      "Bash(echo \"e2e-failure: $?\")",
+      "Bash(echo \"e2e-load: $?\")"
     ]
   }
 }
