@@ -279,7 +279,10 @@ Exit codes:
 - `keyword \"...\" { ... }` for reusable flows.
 - `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/writing-scenarios/conditional-execution/](https://taleslabs.org/docs/writing-scenarios/conditional-execution/).
 
-Backward-compatible aliases currently accepted:
+Backward-compatible aliases currently accepted (now **deprecated**, they still
+work but loading a file that uses them prints a deprecation warning with the
+file, line, and migration message on stderr, see
+[docs/writing-scenarios/dsl-overview/#deprecation-warnings](https://taleslabs.org/docs/writing-scenarios/dsl-overview/#deprecation-warnings)):
 
 - `case` as alias for `step`
 - `response` as alias for `expect`
