@@ -7,6 +7,10 @@ vendor/
 build/
 dist/
 
+# Stray mockserver binary built at repo root (source lives in e2e/mockserver/).
+# Anchored to root so the e2e/mockserver/ source directory is not ignored.
+/mockserver
+
 .build-ready
 
 # Local reference checkout of Maestro for driver parity work (not committed).
