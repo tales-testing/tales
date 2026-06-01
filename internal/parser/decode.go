@@ -26,6 +26,10 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 	// no-op (.tales files are always HCL native syntax).
 	syntaxBody, _ := body.(*hclsyntax.Body)
 
+	// Surface deprecated blocks/attributes as warnings (never errors) so the
+	// file keeps loading while users are nudged to migrate.
+	diags = append(diags, collectDeprecations(body)...)
+
 	suite := &model.Suite{
 		Version:    raw.Version,
 		Files:      []string{path},

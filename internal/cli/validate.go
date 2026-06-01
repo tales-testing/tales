@@ -28,6 +28,8 @@ func NewValidateCommand() *cli.Command {
 				return cli.Exit("validation failed", 2)
 			}
 
+			printDeprecationWarnings(os.Stderr, diags)
+
 			_, _ = fmt.Fprintf(os.Stdout, "Validation OK\n")
 
 			return nil

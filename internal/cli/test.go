@@ -153,6 +153,8 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("parse failed", 2)
 	}
 
+	printDeprecationWarnings(os.Stderr, diags)
+
 	seed := cmd.Int64("seed")
 	if seed == 0 {
 		seed = time.Now().UnixNano()

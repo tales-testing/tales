@@ -56,7 +56,7 @@ func sourceOrder(body *hclsyntax.Body) []sourceStep {
 	order := make([]sourceStep, 0, len(body.Blocks))
 
 	for _, block := range body.Blocks {
-		if block.Type != "step" && block.Type != "case" {
+		if block.Type != stepBlockType && block.Type != caseBlockType {
 			continue
 		}
 

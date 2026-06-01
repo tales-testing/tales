@@ -1,0 +1,27 @@
+version = 1
+
+# Exercises the deprecated backward-compatible aliases "case" (alias for
+# "step") and "response" (alias for "expect"). The suite still passes, but
+# loading it emits deprecation warnings on stderr so users know to migrate.
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "deprecated aliases still run" {
+  tags = ["http", "deprecation"]
+
+  case "http" "healthz" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    response {
+      status = 200
+
+      json = {
+        ok = true
+      }
+    }
+  }
+}
