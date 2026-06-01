@@ -25,7 +25,8 @@
       "Bash(rtk make *)",
       "Bash(echo \"e2e: $?\")",
       "Bash(echo \"e2e-failure: $?\")",
-      "Bash(echo \"e2e-load: $?\")"
+      "Bash(echo \"e2e-load: $?\")",
+      "Bash(gh issue *)"
     ]
   }
 }
