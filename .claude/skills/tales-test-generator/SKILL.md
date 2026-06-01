@@ -57,6 +57,7 @@ Use this skill when asked to:
 3. Enforce reliability conventions:
 - One business action per step.
 - Stable step names in `snake_case`.
+- Always use `step` and `expect`. The aliases `case` (for `step`) and `response` (for `expect`) are **deprecated**: they still load but emit a deprecation warning (file, line, migration message) on stderr and will be removed. Never generate them; rewrite any you encounter.
 - Always assert at least `expect.status`.
 - Prefer robust assertions (`contains`, `is_string`, `one_of`) over brittle full payload equality unless strict matching is explicitly required.
 - Capture only reusable values needed by later steps/teardown.

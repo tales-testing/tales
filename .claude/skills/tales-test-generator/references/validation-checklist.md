@@ -9,6 +9,7 @@ Run this checklist before considering a `.tales` suite done.
 - Every scenario has unique name
 - Step names are unique across main steps + teardown steps
 - Every step has a provider and name labels
+- Uses `step` / `expect`, not the deprecated aliases `case` / `response` (they load but warn on stderr and will be removed)
 
 ## 2) Runtime safety
 

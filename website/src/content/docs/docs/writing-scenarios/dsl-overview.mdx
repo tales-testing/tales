@@ -60,6 +60,27 @@ scenario "<name>" {
 
 A `case` block is a backward-compatible alias for `step`, same decoding, same behaviour. A `response` block is a backward-compatible alias for `expect`, both names are accepted and `response` + `expect` may coexist on the same step.
 
+<Aside type="caution" title="case and response are deprecated">
+	Both aliases still work, but loading a file that uses them now prints a deprecation warning (file, line, and migration message) on stderr. They will be removed in a future release, rename `case` to `step` and `response` to `expect`. See [Deprecation warnings](#deprecation-warnings).
+</Aside>
+
+## Deprecation warnings
+
+Tales flags DSL blocks and attributes that are slated for removal. When you load a suite (`tales test` or `tales validate`) that uses a deprecated element, Tales prints one warning per occurrence on stderr:
+
+```text
+tales: 2 deprecation warnings:
+  e2e/pass/deprecated_aliases.tales:13: The "case" block is a deprecated alias for "step" and will be removed in a future release. Rename it to "step".
+  e2e/pass/deprecated_aliases.tales:19: The "response" block is a deprecated alias for "expect" and will be removed in a future release. Rename it to "expect".
+```
+
+Warnings never change the exit code, deprecated elements keep working until they are actually removed, so existing suites are not broken. They exist to give you a migration window. Currently deprecated:
+
+| Element            | Replacement | Notes                                |
+| ------------------ | ----------- | ------------------------------------ |
+| `case` block       | `step`      | Same labels, decoding, and behaviour. |
+| `response` block   | `expect`    | Same attributes and matchers.         |
+
 ## Execution model
 
 - **Scenarios run in parallel** with a configurable concurrency cap (`--parallel`, defaults to `runtime.NumCPU()`).
