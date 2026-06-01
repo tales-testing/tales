@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/tales-testing/tales/internal/model"
 	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
 )
@@ -107,5 +108,45 @@ func TestPrintPreflight_TimeoutSetShowsDuration(t *testing.T) {
 
 	if strings.Contains(out, "disabled") {
 		t.Errorf("must not show 'disabled' when --timeout > 0: %q", out)
+	}
+}
+
+func TestPrintDeprecationWarnings_ListsEachWithLocation(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	diags := hcl.Diagnostics{
+		{Severity: hcl.DiagError, Summary: "ignored error"},
+		{
+			Severity: hcl.DiagWarning,
+			Detail:   `The "case" block is a deprecated alias for "step".`,
+			Subject:  &hcl.Range{Filename: "demo.tales", Start: hcl.Pos{Line: 4}},
+		},
+	}
+
+	printDeprecationWarnings(&buf, diags)
+
+	out := buf.String()
+	for _, want := range []string{"1 deprecation warning:", "demo.tales:4:", `deprecated alias for "step"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("warning output %q missing %q", out, want)
+		}
+	}
+
+	if strings.Contains(out, "ignored error") {
+		t.Errorf("errors must not be printed as deprecation warnings: %q", out)
+	}
+}
+
+func TestPrintDeprecationWarnings_QuietWhenNone(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	printDeprecationWarnings(&buf, hcl.Diagnostics{{Severity: hcl.DiagError, Summary: "boom"}})
+
+	if buf.Len() != 0 {
+		t.Errorf("no warnings means no output, got %q", buf.String())
 	}
 }
