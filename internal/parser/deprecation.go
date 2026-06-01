@@ -193,9 +193,9 @@ func FormatDeprecation(diag *hcl.Diagnostic) string {
 	return fmt.Sprintf("%s%s", location, diag.Detail)
 }
 
-// Warnings returns the non-error diagnostics from a diagnostics set, preserving
-// order. It lets callers surface deprecation warnings without re-implementing
-// the severity filter.
+// Warnings returns the warning-severity diagnostics from a diagnostics set,
+// preserving order. It lets callers surface deprecation warnings without
+// re-implementing the severity filter.
 func Warnings(diags hcl.Diagnostics) hcl.Diagnostics {
 	warnings := make(hcl.Diagnostics, 0, len(diags))
 
