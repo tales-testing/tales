@@ -278,10 +278,8 @@ func printStep(out io.Writer, label string, width int, step *StepResult, painter
 		}
 	}
 
-	if step.Provider == "load" {
-		if err := printLoadSummary(out, step); err != nil {
-			return err
-		}
+	if err := printProviderSummary(out, step); err != nil {
+		return err
 	}
 
 	if step.Failure == nil {
