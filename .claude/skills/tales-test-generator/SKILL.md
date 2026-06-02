@@ -102,11 +102,12 @@ Use this skill when asked to:
 - Do not combine `headers.Authorization` with `auth.basic`; Tales rejects that conflict.
 - Prefer `generator "password"` + `generate("...")` over hard-coded reusable passwords when creating users.
 - Password generator options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
-- Faker-backed generators currently available: `email`, `password`, `timezone`, `locale`, `person`, `mac_address`, and `bytes`.
+- Faker-backed generators currently available: `email`, `password`, `timezone`, `locale`, `person`, `mac_address`, `bytes`, `date`, `datetime`, and `unix_time`.
 - Locale generator options are `language`, `country`, and `separator`.
 - Person generator option is `gender` (`any`, `male`, or `female`) and it returns an object with `first_name`, `last_name`, `gender`, and `name`.
 - MAC address generator options are `prefix`, `separator`, `lowercase`, and `uppercase`.
 - Bytes generator options are `length` and `encoding` (`hex` or `base64`).
+- Date, datetime, and unix_time generators require `from` and `to` (inclusive, UTC). `date` bounds are `YYYY-MM-DD` and it returns a `YYYY-MM-DD` string; `datetime` bounds are RFC3339 and it returns an RFC3339 UTC string (`Z`); `unix_time` bounds are RFC3339 and it returns a number (int64 seconds). Prefer these over `now_unix()` / `now_rfc3339()` when you need replayable fake timestamps; use `now_*` only for live protocol values (request signatures, TOTP).
 - `expect.body` can be used for raw response-body assertions, including matchers such as `contains(...)`.
 - HTTP response shape: `response.status` (number), `response.json` (decoded JSON or null), `response.body` (raw string), `response.headers` (map of `list(string)`, every value preserved in wire order and keyed by the canonical MIME name; single-valued headers are always one-element lists, so write `response.headers["Content-Type"][0]` for the common case and `response.headers["Set-Cookie"]` for the full list), `response.cookies` (map of parsed cookie objects with `name`, `value`, `raw`, `path`, `domain`, `expires`, `max_age`, `secure`, `http_only`, `same_site`; duplicate cookie names use the last-seen value). Cookie names that are not HCL identifiers (e.g. `ia-session`) require index syntax: `response.cookies["ia-session"].value`.
 - `retry.attempts` must be `>= 1`.

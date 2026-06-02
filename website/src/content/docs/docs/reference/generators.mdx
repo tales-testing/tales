@@ -1,6 +1,6 @@
 ---
 title: Generators
-description: The seven built-in generator types, declaration syntax, options, and determinism rules.
+description: The ten built-in generator types, declaration syntax, options, and determinism rules.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -13,7 +13,7 @@ generator "<type>" "<name>" {
 }
 ```
 
-The first label is the generator *type* (one of seven built-ins). The second is the *name* you reference from `generate(...)`.
+The first label is the generator *type* (one of ten built-ins). The second is the *name* you reference from `generate(...)`.
 
 ## Available types
 
@@ -26,6 +26,9 @@ The first label is the generator *type* (one of seven built-ins). The second is 
 | `person`      | object                   | First name, last name, gender, full name     |
 | `mac_address` | string                   | MAC addresses                                |
 | `bytes`       | string (hex / base64)    | Random byte payloads                         |
+| `date`        | string (`YYYY-MM-DD`)    | Replayable calendar dates (birth, contract)  |
+| `datetime`    | string (RFC3339 UTC)     | Replayable timestamps (publication, events)  |
+| `unix_time`   | number (int64 seconds)   | Replayable Unix timestamps                   |
 
 ## `email`
 
@@ -149,6 +152,68 @@ generator "bytes" "trace_id" {
 generate("trace_id")   // "7f3a4c91" (length=4 hex)
 ```
 
+## `date`
+
+Replayable calendar dates, formatted as `YYYY-MM-DD`. Both bounds are **required** and **inclusive**; they are normalized to whole UTC days (any clock component is ignored). `from == to` always returns that exact date.
+
+```hcl
+generator "date" "birth_date" {
+  from = "1980-01-01"   // required, YYYY-MM-DD
+  to   = "2006-12-31"   // required, YYYY-MM-DD
+}
+```
+
+| Attribute | Type   | Default | Notes                                   |
+| --------- | ------ | ------- | --------------------------------------- |
+| `from`    | string | —       | Required. Inclusive lower bound (UTC).  |
+| `to`      | string | —       | Required. Inclusive upper bound (UTC).  |
+
+```hcl
+generate("birth_date")   // "1994-07-18"
+```
+
+## `datetime`
+
+Replayable timestamps as **RFC3339 UTC** strings (always `Z`). Both bounds are **required** and **inclusive**, compared at second granularity. Inputs are RFC3339 (with a timezone offset) and converted to UTC; the output is always UTC.
+
+```hcl
+generator "datetime" "published_at" {
+  from = "2024-01-01T00:00:00Z"   // required, RFC3339
+  to   = "2024-12-31T23:59:59Z"   // required, RFC3339
+}
+```
+
+| Attribute | Type   | Default | Notes                                    |
+| --------- | ------ | ------- | ---------------------------------------- |
+| `from`    | string | —       | Required. Inclusive lower bound (RFC3339). |
+| `to`      | string | —       | Required. Inclusive upper bound (RFC3339). |
+
+```hcl
+generate("published_at")   // "2024-07-18T12:34:56Z"
+```
+
+## `unix_time`
+
+Replayable Unix timestamps as a **number** (int64 seconds), not a string, handy for APIs that expect an epoch. Both bounds are **required**, **inclusive**, RFC3339, compared at second granularity in UTC.
+
+```hcl
+generator "unix_time" "event_ts" {
+  from = "2024-01-01T00:00:00Z"   // required, RFC3339
+  to   = "2024-12-31T23:59:59Z"   // required, RFC3339
+}
+```
+
+| Attribute | Type   | Default | Notes                                    |
+| --------- | ------ | ------- | ---------------------------------------- |
+| `from`    | string | —       | Required. Inclusive lower bound (RFC3339). |
+| `to`      | string | —       | Required. Inclusive upper bound (RFC3339). |
+
+```hcl
+json = {
+  created_at = generate("event_ts")   // 1721306096 (number)
+}
+```
+
 ## Determinism
 
 Every `generate(...)` call mixes:
@@ -182,4 +247,6 @@ Identical runs produce identical values regardless of `--parallel`, regardless o
 
 <Aside type="caution" title="Wall-clock time is intentionally non-deterministic">
 	`now_unix()` and `now_rfc3339()` are *not* generators, they read the wall clock and return a different value every call. When you need a stable timestamp inside a step, capture it once in a `vars` block: `vars { ts = now_unix() }`.
+
+	Use `now_unix()` / `now_rfc3339()` for **live** protocol values that must reflect real time (request signatures, TOTP windows). Use the `date` / `datetime` / `unix_time` generators when you want **replayable** fake timestamps that stay stable for a given `--seed`.
 </Aside>
