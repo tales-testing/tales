@@ -1,0 +1,37 @@
+version = 1
+
+config {
+  mail = {
+    targets = {
+      smtp_inbound = {
+        protocol = "smtp"
+        host     = "127.0.0.1"
+        port     = 2525
+      }
+    }
+  }
+}
+
+# Intentionally failing: the server rejects this sender at MAIL FROM, but the
+# scenario asserts accepted = true. That is an assertion mismatch (not a
+# transport error), so the step FAILS and the run exits with code 1 — proving a
+# rejection is not silently swallowed when acceptance was expected.
+scenario "rejection expected as acceptance fails" {
+  tags = ["mail", "negative"]
+
+  step "mail" "send_invalid_sender" {
+    target = "smtp_inbound"
+
+    message {
+      from = "attacker@invalid-sender.test"
+      to   = ["archive@example.test"]
+      text = "the server will reject this"
+    }
+
+    expect {
+      json = {
+        accepted = true
+      }
+    }
+  }
+}

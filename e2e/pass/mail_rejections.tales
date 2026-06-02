@@ -1,0 +1,150 @@
+version = 1
+
+# These scenarios assert that an SMTP/LMTP *rejection* is the expected outcome:
+# the server refuses the message at the protocol level and the step PASSES
+# because the assertion matches the rejection. Transport failures (not exercised
+# here) would still fail the step.
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+
+  mail = {
+    targets = {
+      smtp_inbound = {
+        protocol = "smtp"
+        host     = "127.0.0.1"
+        port     = 2525
+        tls      = false
+      }
+
+      lmtp_inbound = {
+        protocol = "lmtp"
+        network  = "tcp"
+        address  = "127.0.0.1:2424"
+      }
+    }
+  }
+}
+
+scenario "SMTP rejects invalid sender domain" {
+  tags = ["mail", "smtp", "negative"]
+
+  step "mail" "send_invalid_sender" {
+    target = "smtp_inbound"
+
+    message {
+      from    = "attacker@invalid-sender.test"
+      to      = ["archive@example.test"]
+      subject = "Invalid sender"
+      text    = "Expected MAIL FROM rejection"
+    }
+
+    expect {
+      json = {
+        accepted             = false
+        rejected             = true
+        stage                = "mail_from"
+        status_code          = 550
+        enhanced_status_code = "5.7.1"
+        message              = contains("sender domain rejected")
+      }
+    }
+  }
+}
+
+scenario "SMTP rejects invalid recipient" {
+  tags = ["mail", "smtp", "negative"]
+
+  step "mail" "send_invalid_recipient" {
+    target = "smtp_inbound"
+
+    message {
+      from    = "sender@example.com"
+      to      = ["reject@example.test"]
+      subject = "Invalid recipient"
+      text    = "Expected RCPT rejection"
+    }
+
+    expect {
+      json = {
+        accepted = false
+        rejected = true
+        stage    = "rcpt"
+        recipients = {
+          accepted = []
+          rejected = [
+            {
+              address              = "reject@example.test"
+              stage                = "rcpt"
+              status_code          = 550
+              enhanced_status_code = "5.1.1"
+            },
+          ]
+        }
+      }
+    }
+  }
+}
+
+scenario "SMTP rejects message by policy" {
+  tags = ["mail", "smtp", "policy", "negative"]
+
+  step "mail" "send_policy_rejected" {
+    target = "smtp_inbound"
+
+    message {
+      from    = "sender@example.com"
+      to      = ["archive@example.test"]
+      subject = "Policy rejection"
+      text    = "Expected DATA rejection"
+
+      headers = {
+        "X-Reject-Message" = "dmarc"
+      }
+    }
+
+    expect {
+      json = {
+        accepted             = false
+        rejected             = true
+        stage                = "message"
+        status_code          = 554
+        enhanced_status_code = "5.7.1"
+        message              = matches("(?i)dmarc")
+      }
+    }
+  }
+}
+
+scenario "LMTP partial recipient rejection" {
+  tags = ["mail", "lmtp", "negative"]
+
+  step "mail" "send_partial_lmtp" {
+    target = "lmtp_inbound"
+
+    message {
+      from    = "sender@example.com"
+      to      = ["ok@example.test", "bad@example.test"]
+      subject = "Partial LMTP"
+      text    = "One recipient accepted, one rejected"
+    }
+
+    expect {
+      json = {
+        accepted = true
+        rejected = true
+        recipients = {
+          accepted = ["ok@example.test"]
+          rejected = [
+            {
+              address              = "bad@example.test"
+              stage                = "message"
+              status_code          = 550
+              enhanced_status_code = "5.1.1"
+            },
+          ]
+        }
+      }
+    }
+  }
+}
