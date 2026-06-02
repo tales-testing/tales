@@ -84,6 +84,11 @@ func TestResolveTargetErrors(t *testing.T) {
 			cfg:     mailConfig("inbound", map[string]cty.Value{"protocol": cty.StringVal("smtp"), "host": cty.StringVal("h")}),
 			wantSub: `mail target "inbound" has empty SMTP port`,
 		},
+		"non-integer smtp port": {
+			name:    "inbound",
+			cfg:     mailConfig("inbound", map[string]cty.Value{"protocol": cty.StringVal("smtp"), "host": cty.StringVal("h"), "port": cty.NumberFloatVal(2525.9)}),
+			wantSub: `mail target "inbound" has empty SMTP port`,
+		},
 		"unsupported lmtp network": {
 			name:    "ingest",
 			cfg:     mailConfig("ingest", map[string]cty.Value{"protocol": cty.StringVal("lmtp"), "network": cty.StringVal("udp"), "address": cty.StringVal("a")}),

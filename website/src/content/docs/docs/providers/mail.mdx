@@ -39,7 +39,7 @@ config {
         host     = "127.0.0.1"
         port     = 2525
         tls      = false      # implicit TLS
-        starttls = false      # upgrade an plaintext connection
+        starttls = false      # upgrade a plaintext connection
         auth = {
           username = env("SMTP_USERNAME", "")
           password = env("SMTP_PASSWORD", "")
