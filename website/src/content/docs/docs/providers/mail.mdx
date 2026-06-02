@@ -1,0 +1,253 @@
+---
+title: Mail (SMTP / LMTP)
+description: The Tales mail provider injects an email over SMTP or LMTP so you can test an application's mail-ingestion path end to end. Target config, message DSL, attachments, response shape, and masking.
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="An ingestion tool, not a mailbox client.">
+  The `mail` provider **sends** a message into the application under test over SMTP or LMTP. It does **not** read mailboxes (no IMAP / POP3), sign messages (no DKIM), or validate SPF / DMARC. Inject the message, then assert the resulting behaviour through the HTTP / SQL / browser / mobile providers, the same way a real inbound email would be processed.
+</Aside>
+
+Some applications ingest data through **SMTP or LMTP** instead of HTTP: a ticketing system that opens a case from an inbound email, an archival service fed over LMTP, a parser that extracts an attachment. The `mail` provider lets a scenario deliver such a message, then verify the downstream effect through the regular API surface.
+
+## When to use it
+
+<CardGrid>
+	<Card title="Use it for" icon="approve-check">
+		- Driving an SMTP / LMTP ingestion endpoint so the next HTTP / SQL step can observe the parsed result.
+		- Delivering a message with a specific subject, header, or attachment to exercise a parsing rule.
+		- Smoke-testing that the mail entry point accepts a well-formed message at all.
+	</Card>
+	<Card title="Don't use it for" icon="error">
+		- Reading or polling a mailbox. Assert the *effect* of the message through HTTP / SQL / UI instead.
+		- A full email client (threads, folders, search). The provider only sends.
+		- Production mail delivery, DKIM signing, or deliverability testing.
+	</Card>
+</CardGrid>
+
+## Target config
+
+Targets live under `config.mail.targets.<name>`. A target is either SMTP or LMTP.
+
+```hcl
+config {
+  mail = {
+    targets = {
+      smtp_inbound = {
+        protocol = "smtp"
+        host     = "127.0.0.1"
+        port     = 2525
+        tls      = false      # implicit TLS
+        starttls = false      # upgrade an plaintext connection
+        auth = {
+          username = env("SMTP_USERNAME", "")
+          password = env("SMTP_PASSWORD", "")
+        }
+      }
+
+      lmtp_inbound = {
+        protocol = "lmtp"
+        network  = "tcp"            # tcp | unix
+        address  = "127.0.0.1:2424"
+      }
+
+      lmtp_socket = {
+        protocol = "lmtp"
+        network  = "unix"
+        address  = "/tmp/tales-ingest.sock"
+      }
+    }
+  }
+}
+```
+
+| Field                  | Protocol | Default | Notes                                                              |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------------ |
+| `protocol`             | both     | —       | `smtp` or `lmtp`; anything else is rejected.                       |
+| `host` / `port`        | smtp     | —       | Required for SMTP.                                                  |
+| `tls`                  | smtp     | `false` | Connect with implicit TLS.                                         |
+| `starttls`             | smtp     | `false` | Upgrade a plaintext connection. Mutually exclusive with `tls`.     |
+| `auth.username/password` | smtp   | empty   | AUTH PLAIN. Omit for no auth.                                       |
+| `insecure_skip_verify` | smtp     | `false` | Accept a self-signed server certificate (test servers only).       |
+| `network`              | lmtp     | —       | `tcp` or `unix`.                                                    |
+| `address`              | lmtp     | —       | `host:port` for tcp, socket path for unix. LMTP has no TLS / auth. |
+| `timeout`              | both     | `10s`   | Bounds the whole exchange (connect + send).                        |
+
+Validation errors are explicit and never echo the password, for example:
+
+```
+mail target "inbound" not found
+unsupported mail protocol "imap"; supported protocols: smtp, lmtp
+mail target "inbound" has empty SMTP host
+mail target "ingest" has unsupported LMTP network "udp"
+```
+
+## Sending a message
+
+```hcl
+step "mail" "send_inbound_email" {
+  target = "smtp_inbound"
+
+  message {
+    from    = "sender@example.com"
+    to      = ["archive@example.test"]
+    cc      = ["cc@example.test"]
+    bcc     = ["audit@example.test"]
+    subject = "Contract signature"
+    text    = "Hello from Tales"
+
+    headers = {
+      "X-Test-ID" = result.create_case.id
+    }
+  }
+
+  expect {
+    json = {
+      accepted = true
+      recipients = {
+        rejected = []
+      }
+    }
+  }
+
+  capture {
+    message_id = response.json.message_id
+  }
+}
+```
+
+### Message fields
+
+| Field     | Required | Notes                                                                   |
+| --------- | -------- | ----------------------------------------------------------------------- |
+| `from`    | yes      | A single envelope sender.                                               |
+| `to` / `cc` / `bcc` | at least one | Recipient lists. The envelope is `to ∪ cc ∪ bcc`, deduped. |
+| `subject` | no       | Q-encoded automatically when it contains non-ASCII.                     |
+| `text`    | no\*     | Plain-text body (`text/plain`).                                         |
+| `html`    | no\*     | HTML body (`text/html`). With `text`, produces `multipart/alternative`. |
+| `headers` | no       | Arbitrary headers (string / number / bool values).                      |
+| `attachment` | no\*  | Repeatable; see below.                                                  |
+
+\* At least one of `text`, `html`, or `attachment` must be present.
+
+<Aside type="note" title="Bcc and protected headers">
+  `Bcc` recipients receive the message (they are in the envelope) but **never** appear in the message headers. `From` / `To` / `Subject` are rendered from the explicit fields; if you also set them in `headers`, the explicit field wins and the duplicate is dropped.
+</Aside>
+
+### Message-ID and Date
+
+If you do not supply a `Message-ID` header, Tales generates one as `<hex@tales.local>`, derived **deterministically from the run seed** (so identical runs produce identical ids). A supplied `Message-ID` header is used verbatim. The generated value is always exposed as `response.json.message_id`. If `Date` is missing it is set to the current time (non-deterministic, like `now_unix`).
+
+### HTML email
+
+```hcl
+message {
+  from    = "sender@example.com"
+  to      = ["archive@example.test"]
+  subject = "HTML test"
+  text    = "Plain fallback"
+  html    = "<p>Hello <strong>Tales</strong></p>"
+}
+```
+
+### Attachments
+
+Each `attachment` block sets `filename` and **exactly one** of `path` or `content`:
+
+```hcl
+# from a file, resolved relative to the .tales file
+attachment {
+  filename     = "contract.pdf"
+  content_type = "application/pdf"
+  path         = "./fixtures/contract.pdf"
+}
+
+# from an evaluated string
+attachment {
+  filename     = "proof.json"
+  content_type = "application/json"
+  content      = jsonencode({ proof_id = result.create_proof.id })
+}
+```
+
+`content_type` is optional; it is inferred from the filename extension when omitted, defaulting to `application/octet-stream`. Attachments produce a `multipart/mixed` message with base64-encoded parts.
+
+## Response shape
+
+The provider exposes its result under `response.json`:
+
+```json
+{
+  "accepted": true,
+  "message_id": "<abc@tales.local>",
+  "recipients": {
+    "accepted": ["archive@example.test"],
+    "rejected": []
+  },
+  "protocol": "smtp"
+}
+```
+
+A partially rejected delivery lists each refusal:
+
+```json
+{
+  "accepted": true,
+  "recipients": {
+    "accepted": ["ok@example.test"],
+    "rejected": [
+      { "address": "bad@example.test", "status": 550, "message": "no such user" }
+    ]
+  },
+  "protocol": "lmtp"
+}
+```
+
+When **no** recipient is accepted, the step fails (the provider returns an error) rather than reporting `accepted = false`.
+
+## End-to-end ingestion
+
+Send the message, capture its id, then verify the application processed it:
+
+```hcl
+step "mail" "send_email" {
+  target = "smtp_inbound"
+  message {
+    from    = "sender@example.com"
+    to      = ["archive@example.test"]
+    subject = "SMTP ingestion test"
+    text    = "Hello from Tales"
+  }
+  capture {
+    message_id = response.json.message_id
+  }
+}
+
+step "http" "assert_ingested" {
+  request {
+    method = "GET"
+    url    = "${config.base_url}/cases?message_id=${url_encode(result.send_email.message_id)}"
+  }
+  expect {
+    status = 200
+    json = {
+      subject = "SMTP ingestion test"
+    }
+  }
+}
+```
+
+## Security and masking
+
+- The SMTP password lives in config; it is never copied into reports or error messages.
+- The report request map carries only metadata (protocol, target, addresses, subject, message-id, masked headers, attachment filename / content-type / size) — **never the message body or attachment bytes**.
+- Sensitive headers (`Authorization`, `Cookie`, `Set-Cookie`, `*signature*`) are masked through the shared header-masking helper.
+
+## Limitations (V1)
+
+- No IMAP / POP3 reading, no DKIM signing, no SPF / DMARC validation, no MTA / mailbox storage.
+- SMTP AUTH is PLAIN-only (single-line RFC 4954 form). LMTP has no TLS or auth.
+- A fresh connection is opened per step.
+- The `Date` header and network timing are non-deterministic.
+- On total delivery failure the rejection detail is in the error message only (not capturable).
