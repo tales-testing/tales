@@ -71,7 +71,22 @@ When the suite contains `step "sql"` blocks:
 - `last_insert_id` is `null` on PostgreSQL — use `RETURNING` + a follow-up `query` step
 - SQL setup is **paired** with an HTTP / UI assertion that observes the user-visible effect
 
-## 6) Mobile (iOS) specifics
+## 6) Mail (SMTP / LMTP) specifics
+
+When the suite contains `step "mail"` blocks:
+
+- `config.mail.targets.<name>` is defined; `protocol` is `smtp` or `lmtp`
+- SMTP targets set `host` + `port`; LMTP targets set `network` (`tcp` | `unix`) + `address`
+- `tls` and `starttls` are not both `true`; secrets come from `env(...)`, never inline
+- Each mail step sets `target` and a `message` block with a single `from`
+- At least one recipient appears in `to` / `cc` / `bcc`; `bcc` is delivered but never rendered in headers
+- At least one of `text` / `html` / `attachment` is present
+- Each `attachment` sets `filename` and exactly one of `path` or `content`
+- The send is **paired** with a downstream HTTP / SQL / UI assertion (the mail step alone is not proof of behaviour)
+- `capture { message_id = response.json.message_id }`; a follow-up lookup `url_encode`s the id (it has `<>` / `@`)
+- `expect { json = { accepted = true } }` (optionally `recipients = { rejected = [] }`)
+
+## 7) Mobile (iOS) specifics
 
 When the suite contains `step "mobile"` blocks:
 
@@ -86,7 +101,7 @@ When the suite contains `step "mobile"` blocks:
 - `text` / `value` expectations use literals or matchers (`contains`, `matches`), not over-specified equality
 - `tales test ./suite --seed 1234 --parallel 1` is the safe default; only raise `--parallel` when targets are distinct
 
-## 7) Command validation
+## 8) Command validation
 
 ```bash
 tales validate <path>

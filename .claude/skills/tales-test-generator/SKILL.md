@@ -31,11 +31,14 @@ Use this skill when asked to:
 - `internal/runtime/runner.go`
 - `internal/runtime/mobile.go` (mobile execution + capture functions)
 - `internal/runtime/sql.go` (sql execution: expression evaluation + provider dispatch)
+- `internal/runtime/mail.go` (mail execution: message evaluation + Message-ID derivation + provider dispatch)
 - `internal/runtime/browser.go` (browser execution + capture functions)
 - `internal/provider/sql/` (sql provider package: drivers, config resolver, args/row conversion)
+- `internal/provider/mail/` (mail provider package: target config, MIME builder, SMTP/LMTP senders)
 - `internal/provider/browser/` (browser provider package: chromedp driver, Chrome locator, session lifecycle)
 - `website/src/content/docs/docs/providers/mobile-ios.mdx` (mobile architecture and config)
 - `website/src/content/docs/docs/providers/sql.mdx` (sql provider reference)
+- `website/src/content/docs/docs/providers/mail.mdx` (mail provider reference)
 - `website/src/content/docs/docs/providers/browser.mdx` (browser provider reference)
 - `e2e/pass/*.tales` (HTTP and SQL examples; `e2e/pass/sql.tales` is the canonical SQL scenario)
 - `e2e/ios/pass/*.tales` (mobile examples)
@@ -50,6 +53,7 @@ Use this skill when asked to:
 - `step "sql" "name" { connection = "<name>"; exec { sql; args } | query { sql; args } }` — see the SQL provider section below.
 - `step "browser" "name" { target = "<name>"; actions { goto/click/fill/... } expect { visible/text/url/title/web_perf/... } capture { ... } }` — see the Browser provider section below.
 - `step "load" "name" { http { method/url/headers/body/timeout } run { duration|requests, concurrency, rate, warmup } expect { p95/error_ratio/status_2xx_ratio/... } }` — see the Load provider section below.
+- `step "mail" "name" { target = "<name>"; message { from; to/cc/bcc; subject; text/html; headers; attachment { ... } } expect { json = { accepted = true } } capture { ... } }` — see the Mail provider section below.
 - optional `teardown { step ... }`
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
 - optional `skip_if { ... }` / `skip_unless { ... }` on a `scenario` or `step` to gate execution on `host.os` / `host.arch`, env vars, or any bool expression. Attribute set: `condition`, `reason`, `os`, `arch`, `env_set`, `env`. Skipped scenarios skip their steps and teardown; skipped steps cascade-skip their dependents. See [docs/skip.md](../../../docs/skip.md).
@@ -739,3 +743,119 @@ step "load" "health" {
 - **Capture into `result.<step>.p95`** when later steps need the
   percentile (the JSON tree is also available under
   `result.<step>.response.json`).
+
+## Mail provider (V1)
+
+The mail provider **injects** an email over SMTP or LMTP so you can test an
+application's mail-ingestion path. It is not a mailbox client: send the
+message, then assert the downstream effect through HTTP / SQL / UI. Full
+reference: [docs/providers/mail.md](../../../website/src/content/docs/docs/providers/mail.mdx).
+
+### Targets configuration
+
+Targets live under `config.mail.targets.<name>`. Pull secrets from `env(...)`.
+
+```hcl
+config {
+  mail = {
+    targets = {
+      smtp_inbound = {
+        protocol = "smtp"
+        host     = "127.0.0.1"
+        port     = 2525
+        tls      = false      # implicit TLS; mutually exclusive with starttls
+        starttls = false
+        auth = {
+          username = env("SMTP_USERNAME", "")
+          password = env("SMTP_PASSWORD", "")
+        }
+      }
+
+      lmtp_inbound = {
+        protocol = "lmtp"
+        network  = "tcp"            # tcp | unix
+        address  = "127.0.0.1:2424" # host:port (tcp) or socket path (unix)
+      }
+    }
+  }
+}
+```
+
+Common optional field: `timeout = "10s"` (bounds the whole exchange).
+SMTP-only `insecure_skip_verify = true` accepts a self-signed test cert.
+LMTP has no TLS or auth.
+
+### Step shape
+
+A mail step declares `target` and a `message` block. `from` is required and
+must be a single address; at least one recipient must appear in `to` / `cc` /
+`bcc`; and at least one of `text` / `html` / `attachment` must be present.
+
+```hcl
+step "mail" "send_email" {
+  target = "smtp_inbound"
+
+  message {
+    from    = "sender@example.com"
+    to      = ["archive@example.test"]
+    cc      = ["cc@example.test"]
+    bcc     = ["audit@example.test"]   # delivered, never shown in headers
+    subject = "Contract signature"
+    text    = "Plain body"
+    html    = "<p>HTML body</p>"        # text+html => multipart/alternative
+
+    headers = {
+      "X-Test-ID" = result.create_case.id
+    }
+
+    attachment {
+      filename     = "proof.json"
+      content_type = "application/json"  # optional; inferred from filename
+      content      = jsonencode({ proof_id = result.create_proof.id })
+    }
+    # or: attachment { filename = "c.pdf" path = "./fixtures/c.pdf" }
+  }
+
+  expect {
+    json = {
+      accepted = true
+      recipients = { rejected = [] }
+    }
+  }
+
+  capture {
+    message_id = response.json.message_id
+  }
+}
+```
+
+### Response shape
+
+`response.json` exposes:
+
+- `accepted` — bool, true when at least one recipient was accepted.
+- `message_id` — the `<...@tales.local>` id (generated deterministically
+  from the seed unless you set a `Message-ID` header).
+- `recipients.accepted` — list of accepted addresses.
+- `recipients.rejected` — list of `{ address, status, message }`.
+- `protocol` — `"smtp"` or `"lmtp"`.
+
+When **no** recipient is accepted the step fails (the provider errors), so a
+green step already means at least one recipient took the message.
+
+### Authoring rules (mail)
+
+- **Always pair the send with a downstream assertion.** Capture
+  `message_id`, then verify the application processed the message through an
+  HTTP / SQL / UI step. The mail step alone only proves the server accepted
+  the bytes.
+- **Each `attachment` sets exactly one of `path` or `content`** and a
+  `filename`. `path` is resolved relative to the `.tales` file.
+- **Do not put `Message-ID` / `Date` / `From` / `To` / `Subject` in
+  `headers`** — use the dedicated fields; explicit fields win and the
+  duplicate header is dropped.
+- **Bodies and attachment bytes never appear in reports** — only metadata
+  (addresses, subject, message-id, masked headers, attachment filename /
+  content-type / size). Sensitive headers are masked.
+- **The generated Message-ID is seed-deterministic**, so the same suite +
+  seed always captures the same id.

@@ -14,6 +14,7 @@ Tales is a single-binary integration and end-to-end testing tool. Scenarios are 
 - **SQL provider** (`step "sql"`) for PostgreSQL + MySQL preconditions and teardown. See [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/).
 - **Native iOS UI automation via XCUITest** (`step "mobile"`), no Appium / no Maestro. The XCUITest driver is **embedded** in the `tales` binary and built on first use into `~/Library/Caches/tales/apple-driver/`, so a released binary runs iOS tests on any macOS+Xcode host. `tales doctor` (`--json` for CI) inspects the cache, embedded source, Xcode, and simctl state in one place. See [docs/providers/mobile-ios/](https://taleslabs.org/docs/providers/mobile-ios/).
 - **Browser UI automation via Chrome DevTools Protocol** (`step "browser"`), no Puppeteer / no Playwright / no Selenium. Drives Chrome / Chromium through Go-native chromedp; ordered `actions` (goto/click/fill/…), polled `expect` (visible/text/url/title/attribute/…), Web performance budgets via `expect.web_perf { fcp = lt("1800ms") … }` and `browser.performance` capture (FCP/LCP/CLS/load/DOM/resources). Per-scenario browsing context for cookie isolation, full visual-report integration with masked secure values. See [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/).
+- **Mail provider** (`step "mail"`), inject an email over SMTP or LMTP to test an application's mail-ingestion path end to end, then assert the result through HTTP/SQL/UI. Go-native (no external mail binary), with `text`/`html`/`multipart` bodies, attachments, custom headers, a deterministic Message-ID, SMTP TLS/STARTTLS/AUTH PLAIN, and LMTP over tcp or unix socket. Not a mailbox client. See [docs/providers/mail/](https://taleslabs.org/docs/providers/mail/).
 - **Load smoke benchmarks** (`step "load"`), Go-native concurrent HTTP replay with latency percentiles, RPS, error and status-class ratios, threshold matchers (`p95 = lt("200ms")`, `error_ratio = lte(0.01)`). Not a substitute for k6/Gatling; designed for regression smoke runs. See [docs/providers/load/](https://taleslabs.org/docs/providers/load/).
 - **Reports**: human-readable console output, JUnit XML for CI dashboards, JSONL event stream for log pipelines, single-file visual HTML report with action-by-action screenshot replay.
 
@@ -258,6 +259,8 @@ Exit codes:
   (see [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/)).
 - `step "browser" "name" { target = "..."; actions { goto/click/fill/… } expect { visible/text/url/title/… } }`
   (see [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/)).
+- `step "mail" "name" { target = "..."; message { from; to/cc/bcc; subject; text/html; headers; attachment { ... } } }`
+  (see [docs/providers/mail/](https://taleslabs.org/docs/providers/mail/)).
 - `request.body { json = ... }` for JSON payloads.
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
