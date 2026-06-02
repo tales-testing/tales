@@ -456,3 +456,75 @@ scenario "retry" {
 		t.Fatalf("expected diagnostics")
 	}
 }
+
+// TestLoadPathDateTimeGenerators asserts the new date/datetime/unix_time
+// generator blocks decode into model.Generator with the right Type/Name/Params.
+// All value/format/range validation happens at runtime (in the generator
+// functions), so the parser only proves the block shape here.
+func TestLoadPathDateTimeGenerators(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	content := `version = 1
+
+generator "date" "birth_date" {
+  from = "1990-01-01"
+  to   = "2005-12-31"
+}
+
+generator "datetime" "created_at" {
+  from = "2024-01-01T00:00:00Z"
+  to   = "2024-12-31T23:59:59Z"
+}
+
+generator "unix_time" "event_ts" {
+  from = "2024-01-01T00:00:00Z"
+  to   = "2024-12-31T23:59:59Z"
+}
+`
+	path := filepath.Join(dir, "generators.tales")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	suite, diags := LoadPath(dir)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	cases := []struct {
+		name string
+		typ  string
+	}{
+		{name: "birth_date", typ: "date"},
+		{name: "created_at", typ: "datetime"},
+		{name: "event_ts", typ: "unix_time"},
+	}
+
+	for _, tc := range cases {
+		gen, ok := suite.Generators[tc.name]
+		if !ok {
+			t.Fatalf("generator %q was not decoded", tc.name)
+		}
+
+		if gen.Type != tc.typ {
+			t.Fatalf("generator %q has type %q, want %q", tc.name, gen.Type, tc.typ)
+		}
+
+		if gen.Name != tc.name {
+			t.Fatalf("generator name is %q, want %q", gen.Name, tc.name)
+		}
+
+		if _, ok := gen.Params["from"]; !ok {
+			t.Fatalf("generator %q is missing the from param", tc.name)
+		}
+
+		if _, ok := gen.Params["to"]; !ok {
+			t.Fatalf("generator %q is missing the to param", tc.name)
+		}
+
+		if len(gen.Params) != 2 {
+			t.Fatalf("generator %q has %d params, want 2", tc.name, len(gen.Params))
+		}
+	}
+}
