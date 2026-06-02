@@ -16,6 +16,7 @@ import (
 	httpprovider "github.com/tales-testing/tales/internal/provider/http"
 	keywordprovider "github.com/tales-testing/tales/internal/provider/keyword"
 	loadprovider "github.com/tales-testing/tales/internal/provider/load"
+	mailprovider "github.com/tales-testing/tales/internal/provider/mail"
 	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
 	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
 	"github.com/tales-testing/tales/internal/report"
@@ -182,6 +183,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		keywordprovider.New(),
 		mobileprovider.NewApple(mobileprovider.WithCaptureMode(captureMode)),
 		sqlprovider.New(),
+		mailprovider.New(),
 		chromebrowser.New(browserprovider.WithCaptureMode(captureMode)),
 		loadprovider.New(),
 	))

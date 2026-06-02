@@ -38,12 +38,33 @@ type attachmentPayload struct {
 	Data        []byte
 }
 
+// Lower-case field names shared between the reserved-header set and the report
+// metadata, plus content/header constants used across the MIME builder.
+const (
+	fieldFrom    = "from"
+	fieldBcc     = "bcc"
+	fieldSubject = "subject"
+	fieldDate    = "date"
+
+	headerContentType = "Content-Type"
+	headerCTE         = "Content-Transfer-Encoding"
+
+	ctTextPlainUTF8 = "text/plain; charset=utf-8"
+	ctTextHTMLUTF8  = "text/html; charset=utf-8"
+
+	cteQuotedPrintable = "quoted-printable"
+	cteBase64          = "base64"
+
+	boundaryAlt   = "alt"
+	boundaryMixed = "mixed"
+)
+
 // reservedHeaders are generated from explicit fields and must not be duplicated
 // from the user headers map. Date is handled separately (user may override it).
 var reservedHeaders = map[string]struct{}{
-	"from": {}, "to": {}, "cc": {}, "bcc": {}, "subject": {},
+	fieldFrom: {}, "to": {}, "cc": {}, fieldBcc: {}, fieldSubject: {},
 	"mime-version": {}, "content-type": {}, "content-transfer-encoding": {},
-	"message-id": {}, "date": {},
+	"message-id": {}, fieldDate: {},
 }
 
 // buildMessage assembles a valid MIME message with CRLF line endings. now feeds
@@ -103,37 +124,47 @@ func buildBody(spec messageSpec) ([]headerField, []byte, error) {
 		case hasHTML:
 			cte, body := encodeText(spec.HTML)
 
-			return textHeaders("text/html; charset=utf-8", cte), body, nil
+			return textHeaders(ctTextHTMLUTF8, cte), body, nil
 		default:
 			cte, body := encodeText(spec.Text)
 
-			return textHeaders("text/plain; charset=utf-8", cte), body, nil
+			return textHeaders(ctTextPlainUTF8, cte), body, nil
 		}
 	}
 
 	return mixedBody(spec)
 }
 
-// alternativeBody builds a multipart/alternative body (text/plain then
-// text/html).
-func alternativeBody(spec messageSpec) ([]headerField, []byte, error) {
-	boundary := deriveBoundary(spec.MessageID, "alt")
+// alternativeContent builds the multipart/alternative content type and body
+// (text/plain then text/html), shared by the standalone and nested forms.
+func alternativeContent(spec messageSpec) (string, []byte, error) {
+	boundary := deriveBoundary(spec.MessageID, boundaryAlt)
 
 	body, err := renderMultipart(boundary, []partSpec{
-		textPart("text/plain; charset=utf-8", spec.Text),
-		textPart("text/html; charset=utf-8", spec.HTML),
+		textPart(ctTextPlainUTF8, spec.Text),
+		textPart(ctTextHTMLUTF8, spec.HTML),
 	})
+	if err != nil {
+		return "", nil, err
+	}
+
+	return fmt.Sprintf("multipart/alternative; boundary=%q", boundary), body, nil
+}
+
+// alternativeBody builds a standalone multipart/alternative body.
+func alternativeBody(spec messageSpec) ([]headerField, []byte, error) {
+	contentType, body, err := alternativeContent(spec)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return []headerField{{"Content-Type", fmt.Sprintf("multipart/alternative; boundary=%q", boundary)}}, body, nil
+	return []headerField{{headerContentType, contentType}}, body, nil
 }
 
 // mixedBody builds a multipart/mixed body: an optional body part (text / html /
 // alternative) followed by every attachment.
 func mixedBody(spec messageSpec) ([]headerField, []byte, error) {
-	boundary := deriveBoundary(spec.MessageID, "mixed")
+	boundary := deriveBoundary(spec.MessageID, boundaryMixed)
 
 	parts := make([]partSpec, 0, len(spec.Attachments)+1)
 
@@ -152,7 +183,7 @@ func mixedBody(spec messageSpec) ([]headerField, []byte, error) {
 		return nil, nil, err
 	}
 
-	return []headerField{{"Content-Type", fmt.Sprintf("multipart/mixed; boundary=%q", boundary)}}, body, nil
+	return []headerField{{headerContentType, fmt.Sprintf("multipart/mixed; boundary=%q", boundary)}}, body, nil
 }
 
 // bodyAsPart renders the message body as a single multipart part for inclusion
@@ -163,23 +194,16 @@ func bodyAsPart(spec messageSpec) (partSpec, bool, error) {
 
 	switch {
 	case hasText && hasHTML:
-		boundary := deriveBoundary(spec.MessageID, "alt")
-
-		body, err := renderMultipart(boundary, []partSpec{
-			textPart("text/plain; charset=utf-8", spec.Text),
-			textPart("text/html; charset=utf-8", spec.HTML),
-		})
+		contentType, body, err := alternativeContent(spec)
 		if err != nil {
 			return partSpec{}, false, err
 		}
 
-		header := textproto.MIMEHeader{"Content-Type": {fmt.Sprintf("multipart/alternative; boundary=%q", boundary)}}
-
-		return partSpec{header: header, body: body}, true, nil
+		return partSpec{header: textproto.MIMEHeader{headerContentType: {contentType}}, body: body}, true, nil
 	case hasHTML:
-		return textPart("text/html; charset=utf-8", spec.HTML), true, nil
+		return textPart(ctTextHTMLUTF8, spec.HTML), true, nil
 	case hasText:
-		return textPart("text/plain; charset=utf-8", spec.Text), true, nil
+		return textPart(ctTextPlainUTF8, spec.Text), true, nil
 	default:
 		return partSpec{}, false, nil
 	}
@@ -195,9 +219,9 @@ type partSpec struct {
 func textPart(contentType, body string) partSpec {
 	cte, encoded := encodeText(body)
 
-	header := textproto.MIMEHeader{"Content-Type": {contentType}}
+	header := textproto.MIMEHeader{headerContentType: {contentType}}
 	if cte != "" {
-		header.Set("Content-Transfer-Encoding", cte)
+		header.Set(headerCTE, cte)
 	}
 
 	return partSpec{header: header, body: encoded}
@@ -207,9 +231,9 @@ func textPart(contentType, body string) partSpec {
 // Content-Disposition.
 func attachmentPart(att attachmentPayload) partSpec {
 	header := textproto.MIMEHeader{
-		"Content-Type":              {fmt.Sprintf("%s; name=%q", att.ContentType, att.Filename)},
-		"Content-Transfer-Encoding": {"base64"},
-		"Content-Disposition":       {fmt.Sprintf("attachment; filename=%q", att.Filename)},
+		headerContentType:     {fmt.Sprintf("%s; name=%q", att.ContentType, att.Filename)},
+		headerCTE:             {cteBase64},
+		"Content-Disposition": {fmt.Sprintf("attachment; filename=%q", att.Filename)},
 	}
 
 	return partSpec{header: header, body: base64Wrap(att.Data)}
@@ -265,7 +289,7 @@ func encodeText(body string) (string, []byte) {
 	_, _ = qw.Write([]byte(normalizeCRLF(body)))
 	_ = qw.Close()
 
-	return "quoted-printable", buf.Bytes()
+	return cteQuotedPrintable, buf.Bytes()
 }
 
 // base64Wrap base64-encodes data with 76-column CRLF line wrapping.
@@ -319,7 +343,7 @@ func writeCustomHeaders(buf *bytes.Buffer, headers map[string]string) error {
 // generated one.
 func resolveDate(headers map[string]string, now time.Time) string {
 	for key, value := range headers {
-		if strings.EqualFold(key, "date") {
+		if strings.EqualFold(key, fieldDate) {
 			return value
 		}
 	}
