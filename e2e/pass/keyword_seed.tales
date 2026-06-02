@@ -1,0 +1,64 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# Generator invoked from inside a keyword. The same keyword is called twice
+# below; each call site must produce a distinct email. The /signup endpoint
+# rejects a duplicate email with 409, so if the seeds collided the second
+# call would fail the expect { status = 201 } check.
+generator "email" "signup_email" {
+  prefix = "signup-"
+  domain = "example.com"
+}
+
+keyword "register_user" {
+  step "http" "register" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/signup"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      body {
+        json = {
+          email    = generate("signup_email")
+          password = "Passw0rd!"
+        }
+      }
+    }
+
+    expect {
+      status = 201
+
+      headers = {
+        Content-Type = contains("application/json")
+      }
+
+      json = {
+        id    = is_string()
+        email = is_string()
+      }
+    }
+  }
+
+  outputs {
+    email = result.register.response.json.email
+  }
+}
+
+scenario "Keyword generators are distinct per call site" {
+  tags = ["keyword", "determinism"]
+
+  step "keyword" "signup_first" {
+    name = "register_user"
+  }
+
+  step "keyword" "signup_second" {
+    name = "register_user"
+  }
+}

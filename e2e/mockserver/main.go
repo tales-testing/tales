@@ -57,6 +57,7 @@ type serverState struct {
 	verificationCodes map[string]string
 	mailPolls         map[string]int
 	markers           map[string]map[string]interface{}
+	signupEmails      map[string]struct{}
 	mail              *mailStore
 }
 
@@ -70,6 +71,7 @@ func newState() *serverState {
 		verificationCodes: map[string]string{},
 		mailPolls:         map[string]int{},
 		markers:           map[string]map[string]interface{}{},
+		signupEmails:      map[string]struct{}{},
 		mail:              newMailStore(),
 	}
 }
@@ -93,6 +95,7 @@ func main() {
 	}).Methods(http.MethodGet)
 
 	r.HandleFunc("/users", state.createUser).Methods(http.MethodPost)
+	r.HandleFunc("/signup", state.signup).Methods(http.MethodPost)
 	r.HandleFunc("/users/{id}", state.deleteUser).Methods(http.MethodDelete)
 	r.HandleFunc("/auth", state.auth).Methods(http.MethodPost)
 	r.HandleFunc("/basic-auth", state.basicAuth).Methods(http.MethodGet)
@@ -154,6 +157,37 @@ func (s *serverState) createUser(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":         id,
 		"email":      usr.email,
+		"created_at": "2026-01-01T00:00:00Z",
+	})
+}
+
+// signup creates a user but, unlike /users, rejects an email that was already
+// registered with 409. It backs the keyword-seed e2e fixture: two invocations
+// of the same keyword must generate distinct emails, otherwise the second call
+// collides here ("user already exists"), reproducing the original bug.
+func (s *serverState) signup(w http.ResponseWriter, req *http.Request) {
+	payload, err := decodeCredentialPayload(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.signupEmails[payload.email]; exists {
+		writeJSON(w, http.StatusConflict, map[string]interface{}{"error": "user already exists"})
+
+		return
+	}
+
+	s.signupEmails[payload.email] = struct{}{}
+	id := strconv.Itoa(s.nextUserID)
+	s.nextUserID++
+	writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"id":         id,
+		"email":      payload.email,
 		"created_at": "2026-01-01T00:00:00Z",
 	})
 }
