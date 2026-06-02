@@ -17,6 +17,7 @@ type Step struct {
 	Keyword   *KeywordCall
 	Mobile    *MobileStep
 	SQL       *SQLCall
+	Mail      *MailCall
 	Browser   *BrowserStep
 	Load      *LoadCall
 	Retry     *Retry

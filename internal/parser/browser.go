@@ -36,6 +36,12 @@ func decodeBrowserStepIfNeeded(path string, rs stepBlock, stepName string) (*mod
 		return nil, nil
 	}
 
+	// A mail step also carries `target`; defer to the mail dispatcher so the
+	// user gets a mail-specific diagnostic instead of a browser one.
+	if looksLikeMailStep(rs) {
+		return nil, nil
+	}
+
 	if !looksLikeBrowserStep(rs) {
 		return nil, nil
 	}
