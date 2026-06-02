@@ -1,6 +1,8 @@
 package mail
 
 import (
+	"strings"
+
 	"github.com/tales-testing/tales/internal/provider"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -73,9 +75,30 @@ func buildRequestMeta(target Target, exec *provider.MailExecution, spec messageS
 		fieldBcc:       stringList(exec.Bcc),
 		fieldSubject:   cty.StringVal(exec.Subject),
 		fieldMessageID: cty.StringVal(exec.MessageID),
-		"headers":      stringMap(exec.Headers),
+		"headers":      stringMap(nonReservedHeaders(exec.Headers)),
 		"attachments":  attachmentsList,
 	}
+}
+
+// nonReservedHeaders drops the headers that the MIME builder generates from
+// explicit fields (From/To/Subject/Message-ID/...), so the report metadata
+// matches the headers actually put on the wire rather than the user's raw map.
+func nonReservedHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return headers
+	}
+
+	filtered := make(map[string]string, len(headers))
+
+	for key, value := range headers {
+		if _, reserved := reservedHeaders[strings.ToLower(key)]; reserved {
+			continue
+		}
+
+		filtered[key] = value
+	}
+
+	return filtered
 }
 
 func stringList(values []string) cty.Value {

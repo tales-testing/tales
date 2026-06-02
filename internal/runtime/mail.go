@@ -307,7 +307,7 @@ func evalMailStringList(evaluator *lang.Evaluator, scope lang.ScopeData, scenari
 	out := make([]string, 0, value.LengthInt())
 
 	for _, item := range value.AsValueSlice() {
-		if item.IsNull() || item.Type() != cty.String {
+		if item.IsNull() || !item.IsKnown() || item.Type() != cty.String {
 			return nil, fmt.Errorf("%s must be a list of strings", path)
 		}
 
