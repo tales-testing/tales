@@ -185,6 +185,7 @@ func (s *serverState) signup(w http.ResponseWriter, req *http.Request) {
 	s.signupEmails[payload.email] = struct{}{}
 	id := strconv.Itoa(s.nextUserID)
 	s.nextUserID++
+
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
 		"id":         id,
 		"email":      payload.email,
