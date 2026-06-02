@@ -110,9 +110,17 @@ func printMailRecipients(out io.Writer, payload map[string]interface{}) error {
 
 		address, _ := entry["address"].(string)
 		message, _ := entry["message"].(string)
-		status, _ := numericField(entry, "status_code")
 
-		if _, err := fmt.Fprintf(out, "      rejected %s: %s %s\n", address, formatInt(status), message); err != nil {
+		line := fmt.Sprintf("      rejected %s:", address)
+		if status, ok := numericField(entry, "status_code"); ok {
+			line += " " + formatInt(status)
+		}
+
+		if message != "" {
+			line += " " + message
+		}
+
+		if _, err := fmt.Fprintf(out, "%s\n", line); err != nil {
 			return fmt.Errorf("print mail recipient rejection: %w", err)
 		}
 	}
