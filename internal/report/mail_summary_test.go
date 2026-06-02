@@ -103,6 +103,42 @@ func TestPrintMailSummaryRecipientRejection(t *testing.T) {
 	}
 }
 
+func TestPrintMailSummaryRecipientRejectionWithoutStatus(t *testing.T) {
+	t.Parallel()
+
+	// A rejected recipient entry without a status_code must not print a
+	// misleading "0".
+	step := &StepResult{
+		Provider: "mail",
+		Response: map[string]interface{}{
+			"json": map[string]interface{}{
+				"protocol": "lmtp",
+				"rejected": true,
+				"recipients": map[string]interface{}{
+					"accepted": []interface{}{},
+					"rejected": []interface{}{
+						map[string]interface{}{"address": "bad@example.test", "message": "deferred"},
+					},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := printMailSummary(&buf, step); err != nil {
+		t.Fatalf("printMailSummary: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "rejected bad@example.test: deferred") {
+		t.Errorf("expected status-less rejection line, got:\n%s", out)
+	}
+
+	if strings.Contains(out, "rejected bad@example.test: 0") {
+		t.Errorf("must not print a misleading 0 status, got:\n%s", out)
+	}
+}
+
 func TestPrintMailSummaryNoResponse(t *testing.T) {
 	t.Parallel()
 
