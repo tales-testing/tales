@@ -1,0 +1,163 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+
+  mail = {
+    targets = {
+      smtp_inbound = {
+        protocol = "smtp"
+        host     = "127.0.0.1"
+        port     = 2525
+        tls      = false
+      }
+
+      lmtp_inbound = {
+        protocol = "lmtp"
+        network  = "tcp"
+        address  = "127.0.0.1:2424"
+      }
+    }
+  }
+}
+
+scenario "SMTP email ingestion" {
+  tags = ["mail", "smtp"]
+
+  step "mail" "send_email" {
+    target = "smtp_inbound"
+
+    message {
+      from    = "sender@example.com"
+      to      = ["archive@example.test"]
+      subject = "SMTP ingestion test"
+      text    = "Hello from Tales SMTP"
+
+      headers = {
+        "X-Test-ID" = "smtp-001"
+      }
+    }
+
+    expect {
+      json = {
+        accepted = true
+        recipients = {
+          rejected = []
+        }
+      }
+    }
+
+    capture {
+      message_id = response.json.message_id
+    }
+  }
+
+  step "http" "assert_received" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/mail/messages?id=${url_encode(result.send_email.message_id)}"
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        subject = "SMTP ingestion test"
+        from    = "sender@example.com"
+        test_id = "smtp-001"
+      }
+    }
+  }
+}
+
+scenario "LMTP email ingestion" {
+  tags = ["mail", "lmtp"]
+
+  step "mail" "send_email" {
+    target = "lmtp_inbound"
+
+    message {
+      from    = "sender@example.com"
+      to      = ["archive@example.test"]
+      subject = "LMTP ingestion test"
+      text    = "Hello from Tales LMTP"
+
+      headers = {
+        "X-Test-ID" = "lmtp-001"
+      }
+    }
+
+    expect {
+      json = {
+        accepted = true
+      }
+    }
+
+    capture {
+      message_id = response.json.message_id
+    }
+  }
+
+  step "http" "assert_received" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/mail/messages?id=${url_encode(result.send_email.message_id)}"
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        subject = "LMTP ingestion test"
+        from    = "sender@example.com"
+      }
+    }
+  }
+}
+
+scenario "SMTP email with attachment" {
+  tags = ["mail", "smtp", "attachment"]
+
+  step "mail" "send_email" {
+    target = "smtp_inbound"
+
+    message {
+      from    = "sender@example.com"
+      to      = ["archive@example.test"]
+      subject = "Attachment ingestion test"
+      text    = "See the attached proof"
+
+      attachment {
+        filename     = "proof.json"
+        content_type = "application/json"
+        content      = jsonencode({ proof_id = "p-123" })
+      }
+    }
+
+    expect {
+      json = {
+        accepted = true
+      }
+    }
+
+    capture {
+      message_id = response.json.message_id
+    }
+  }
+
+  step "http" "assert_received" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/mail/messages?id=${url_encode(result.send_email.message_id)}"
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        subject = "Attachment ingestion test"
+        raw     = contains("filename=\"proof.json\"")
+      }
+    }
+  }
+}

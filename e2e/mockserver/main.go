@@ -57,6 +57,7 @@ type serverState struct {
 	verificationCodes map[string]string
 	mailPolls         map[string]int
 	markers           map[string]map[string]interface{}
+	mail              *mailStore
 }
 
 func newState() *serverState {
@@ -69,6 +70,7 @@ func newState() *serverState {
 		verificationCodes: map[string]string{},
 		mailPolls:         map[string]int{},
 		markers:           map[string]map[string]interface{}{},
+		mail:              newMailStore(),
 	}
 }
 
@@ -79,6 +81,11 @@ func main() {
 	}
 
 	state := newState()
+
+	// Bind the SMTP / LMTP listeners before the HTTP server so the mail ports
+	// are ready by the time /healthz answers (the e2e readiness probe).
+	startMailListeners(state.mail)
+
 	r := mux.NewRouter()
 
 	r.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
@@ -91,6 +98,7 @@ func main() {
 	r.HandleFunc("/basic-auth", state.basicAuth).Methods(http.MethodGet)
 	r.HandleFunc("/form-echo", state.formEcho).Methods(http.MethodPost)
 	r.HandleFunc("/mail/messages", state.mailMessages).Methods(http.MethodGet)
+	r.HandleFunc("/mail/messages", state.deleteMail).Methods(http.MethodDelete)
 	r.HandleFunc("/verify-email", state.verifyEmail).Methods(http.MethodPost)
 	r.HandleFunc("/markers", state.createMarker).Methods(http.MethodPost)
 	r.HandleFunc("/markers/{id}", state.getMarker).Methods(http.MethodGet)
@@ -228,6 +236,12 @@ func (s *serverState) formEcho(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *serverState) mailMessages(w http.ResponseWriter, req *http.Request) {
+	// SMTP/LMTP inbox lookup (by Message-ID or X-Test-ID) takes precedence;
+	// the legacy ?to= polling branch below is untouched.
+	if s.mailMessageByID(w, req) {
+		return
+	}
+
 	email := req.URL.Query().Get("to")
 	if email == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "missing to"})
