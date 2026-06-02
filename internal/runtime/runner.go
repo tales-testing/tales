@@ -193,7 +193,15 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 			return cty.NilVal, err
 		}
 
-		return runGenerator(gen.Type, params, newGeneratorRandom(seed, scenario.Name, meta.Step, name, meta.ExprPath))
+		parts := []string{scenario.Name}
+
+		if scope := evaluator.SeedScope(); scope != "" {
+			parts = append(parts, scope)
+		}
+
+		parts = append(parts, meta.Step, name, meta.ExprPath)
+
+		return runGenerator(gen.Type, params, newGeneratorRandom(seed, parts...))
 	})
 
 	if handled := applyScenarioSkip(evaluator, scenario, sResult, state, config, start); handled {
@@ -1187,6 +1195,13 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 	}
 
 	externalDeps := toKeySet(outerResults)
+
+	// Namespace deterministic generation by the calling step so the same keyword
+	// invoked from different steps produces distinct values. The scope covers
+	// the internal steps and the outputs (both may call generate()); nested
+	// keywords stack onto it. Restored on every return path.
+	restoreSeedScope := evaluator.PushSeedScope(step.Name)
+	defer restoreSeedScope()
 
 	if err := r.executeKeywordSteps(ctx, evaluator, suite, scenarioName, config, keywordState, callInputs, keyword, externalDeps); err != nil {
 		stepReport.Status = report.StatusFail

@@ -36,14 +36,43 @@ type ScopeData struct {
 }
 
 // Evaluator evaluates HCL expressions for runtime.
+//
+// seedScope carries the keyword call stack (calling step names joined by NUL)
+// for the generation currently in flight. It lets the runtime mix the call
+// site into the deterministic seed so the same keyword invoked from different
+// steps produces distinct generated values. It is mutated single-threaded: one
+// Evaluator is created per scenario and steps (including nested keywords) run
+// sequentially, so no lock is needed.
 type Evaluator struct {
 	baseFunctions map[string]function.Function
 	generate      GenerateFunc
+	seedScope     string
 }
 
 // NewEvaluator creates evaluator with built-in functions.
 func NewEvaluator(generate GenerateFunc) *Evaluator {
 	return &Evaluator{baseFunctions: baseFunctions(), generate: generate}
+}
+
+// SeedScope returns the current keyword call-stack scope used for deterministic
+// seed derivation. It is empty at scenario level.
+func (e *Evaluator) SeedScope() string {
+	return e.seedScope
+}
+
+// PushSeedScope appends part to the seed scope and returns a function that
+// restores the previous scope. Callers wrap keyword execution with it so
+// generations inside the keyword are namespaced by the calling step.
+func (e *Evaluator) PushSeedScope(part string) func() {
+	previous := e.seedScope
+
+	if e.seedScope == "" {
+		e.seedScope = part
+	} else {
+		e.seedScope = e.seedScope + "\x00" + part
+	}
+
+	return func() { e.seedScope = previous }
 }
 
 // Eval evaluates expression using scope data.
