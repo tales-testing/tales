@@ -36,11 +36,12 @@ Each call to `generate(name)` mixes the following inputs:
 
 1. The global `--seed` value.
 2. The scenario name.
-3. The step name.
-4. The generator name.
-5. The **expression path**, *where* in the step the call appears.
+3. The **keyword call path** (the chain of calling step names) when the call happens inside a keyword, empty otherwise.
+4. The step name.
+5. The generator name.
+6. The **expression path**, *where* in the step the call appears.
 
-The hash of those five inputs seeds a deterministic generator just for that call. The implementation lives in `internal/runtime/seed.go`.
+The hash of those inputs seeds a deterministic generator just for that call. The implementation lives in `internal/runtime/seed.go`.
 
 ### Why expression path matters
 
@@ -77,6 +78,28 @@ step "http" "create_two_users" {
   }
 }
 ```
+
+### Why the same keyword called twice gets distinct values
+
+When a generator runs **inside a keyword**, the call path (the calling step name, plus the outer call sites for nested keywords) is part of the seed. So calling the same keyword from two different steps produces **different** values, not duplicates:
+
+```hcl
+keyword "register_user" {
+  step "http" "register" {
+    request {
+      body { json = { email = generate("user_email") } }
+    }
+    expect { status = 201 }
+  }
+}
+
+scenario "two distinct signups" {
+  step "keyword" "signup_first"  { name = "register_user" }  // email A
+  step "keyword" "signup_second" { name = "register_user" }  // email B (different)
+}
+```
+
+This is what lets a `register_user` keyword be reused across a suite without the second registration colliding with the first (for example, a backend rejecting a duplicate email). A single keyword invocation still produces the same value on every run for the same seed.
 
 ### Why parallelism doesn't break determinism
 

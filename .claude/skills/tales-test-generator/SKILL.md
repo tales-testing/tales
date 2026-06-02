@@ -94,6 +94,7 @@ Use this skill when asked to:
 - Avoid step name collisions:
   - unique names across scenario steps and teardown steps
   - keyword internal step names must not collide with outer scenario step names
+- A keyword can be invoked multiple times in one scenario: `generate(...)` calls inside it are seeded per call site (the calling step name is mixed in), so each invocation yields distinct values. Prefer reusing a `register_user`-style keyword over duplicating steps when you need several distinct entities.
 - Use `request.body { json = ... }`, `request.body { form = ... }`, `request.body { raw = ... }`, or `request.body { multipart { ... } }` for request bodies. The four modes are mutually exclusive.
 - Use `request.body.form` for `application/x-www-form-urlencoded` payloads; Tales URL-encodes form values and sets `Content-Type` when it is absent.
 - Use `request.body { multipart { file { ... } field { ... } } }` for `multipart/form-data` file uploads. Each `file` block declares exactly one of `path` (resolved relative to the `.tales` file) or `content` (any string expression, including `generate("bytes")`), plus optional `filename` and `content_type`. Each `field` block requires `name` and `value`. Part order is preserved on the wire; `Content-Type` is set automatically with the boundary. See [e2e/pass/file_upload.tales](../../../e2e/pass/file_upload.tales) for a worked example using both a disk-loaded fixture and a generated blob.
