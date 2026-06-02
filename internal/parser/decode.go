@@ -221,6 +221,13 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 			step.SQL = sqlStep
 		}
 
+		mailStep, mailDiags := decodeMailStepIfNeeded(path, rs, step.Name)
+		diags = append(diags, mailDiags...)
+
+		if mailStep != nil {
+			step.Mail = mailStep
+		}
+
 		browserStep, browserDiags := decodeBrowserStepIfNeeded(path, rs, step.Name)
 		diags = append(diags, browserDiags...)
 

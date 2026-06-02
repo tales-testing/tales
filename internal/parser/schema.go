@@ -57,6 +57,7 @@ type stepBlock struct {
 	Connection  hcl.Expression          `hcl:"connection,optional"`
 	Exec        *sqlOpBlock             `hcl:"exec,block"`
 	Query       *sqlOpBlock             `hcl:"query,block"`
+	Message     *messageBlock           `hcl:"message,block"`
 	HTTPReq     *requestBlock           `hcl:"http,block"`
 	Run         *runBlock               `hcl:"run,block"`
 	SkipIf      []skipBlock             `hcl:"skip_if,block"`
@@ -76,6 +77,29 @@ type runBlock struct {
 type sqlOpBlock struct {
 	SQL  hcl.Expression `hcl:"sql,optional"`
 	Args hcl.Expression `hcl:"args,optional"`
+}
+
+// messageBlock is the message body of a mail step. Repeated same-type
+// attachment blocks decode into the slice in declaration order (gohcl), so no
+// hclsyntax walk is needed to preserve attachment ordering.
+type messageBlock struct {
+	From    hcl.Expression `hcl:"from,optional"`
+	To      hcl.Expression `hcl:"to,optional"`
+	Cc      hcl.Expression `hcl:"cc,optional"`
+	Bcc     hcl.Expression `hcl:"bcc,optional"`
+	Subject hcl.Expression `hcl:"subject,optional"`
+	Headers hcl.Expression `hcl:"headers,optional"`
+	Text    hcl.Expression `hcl:"text,optional"`
+	HTML    hcl.Expression `hcl:"html,optional"`
+
+	Attachments []attachmentBlock `hcl:"attachment,block"`
+}
+
+type attachmentBlock struct {
+	Filename    hcl.Expression `hcl:"filename,optional"`
+	ContentType hcl.Expression `hcl:"content_type,optional"`
+	Path        hcl.Expression `hcl:"path,optional"`
+	Content     hcl.Expression `hcl:"content,optional"`
 }
 
 type retryBlock struct {
