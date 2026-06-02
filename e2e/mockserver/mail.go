@@ -140,6 +140,16 @@ func decodeHeader(decoder *mime.WordDecoder, value string) string {
 	return decoded
 }
 
+// Deterministic rejection triggers used by the mail-rejection e2e scenarios.
+// They are scoped to magic addresses/domains/headers so the normal ingestion
+// scenarios (sender@example.com / archive@example.test) are never affected.
+const (
+	rejectSenderDomain = "invalid-sender.test" // MAIL FROM rejection
+	rejectRecipient    = "reject@example.test" // RCPT rejection
+	rejectDataHeader   = "X-Reject-Message"    // DATA/message rejection trigger
+	lmtpRejectAddress  = "bad@example.test"    // LMTP per-recipient message rejection
+)
+
 // mailBackend is the go-smtp backend that records every received message.
 type mailBackend struct {
 	store *mailStore
@@ -159,12 +169,20 @@ func (s *mailSession) Reset()        { s.from = ""; s.rcpts = nil }
 func (s *mailSession) Logout() error { return nil }
 
 func (s *mailSession) Mail(from string, _ *smtp.MailOptions) error {
+	if strings.HasSuffix(strings.ToLower(from), "@"+rejectSenderDomain) {
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "sender domain rejected"}
+	}
+
 	s.from = from
 
 	return nil
 }
 
 func (s *mailSession) Rcpt(to string, _ *smtp.RcptOptions) error {
+	if strings.EqualFold(to, rejectRecipient) {
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "user unknown"}
+	}
+
 	s.rcpts = append(s.rcpts, to)
 
 	return nil
@@ -176,13 +194,18 @@ func (s *mailSession) Data(r io.Reader) error {
 		return fmt.Errorf("read message data: %w", err)
 	}
 
+	if reason := dataRejectReason(data); reason != "" {
+		return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: reason}
+	}
+
 	s.store.add(s.from, s.rcpts, data)
 
 	return nil
 }
 
-// LMTPData stores the message, then reports success for every recipient so the
-// client reads one 250 per accepted recipient.
+// LMTPData stores the message and reports a per-recipient final status: the
+// magic LMTP reject address is refused at the message stage, everyone else is
+// accepted.
 func (s *mailSession) LMTPData(r io.Reader, status smtp.StatusCollector) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -192,10 +215,32 @@ func (s *mailSession) LMTPData(r io.Reader, status smtp.StatusCollector) error {
 	s.store.add(s.from, s.rcpts, data)
 
 	for _, rcpt := range s.rcpts {
+		if strings.EqualFold(rcpt, lmtpRejectAddress) {
+			status.SetStatus(rcpt, &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "user unknown"})
+
+			continue
+		}
+
 		status.SetStatus(rcpt, nil)
 	}
 
 	return nil
+}
+
+// dataRejectReason returns a rejection reason when the message carries the
+// X-Reject-Message trigger header, otherwise an empty string.
+func dataRejectReason(data []byte) string {
+	parsed, err := mail.ReadMessage(strings.NewReader(string(data)))
+	if err != nil {
+		return ""
+	}
+
+	policy := parsed.Header.Get(rejectDataHeader)
+	if policy == "" {
+		return ""
+	}
+
+	return "message rejected due to " + strings.ToUpper(policy) + " policy"
 }
 
 // startMailListeners binds the SMTP and LMTP listeners. Bind failures are
