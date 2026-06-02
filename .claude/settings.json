@@ -26,7 +26,10 @@
       "Bash(echo \"e2e: $?\")",
       "Bash(echo \"e2e-failure: $?\")",
       "Bash(echo \"e2e-load: $?\")",
-      "Bash(gh issue *)"
+      "Bash(gh issue *)",
+      "Bash(gh run *)",
+      "Bash(echo \"make lint exit=$?\")",
+      "Bash(echo \"make test exit=$?\")"
     ]
   }
 }
