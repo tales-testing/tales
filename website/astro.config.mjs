@@ -56,6 +56,10 @@ export default defineConfig({
 				replacesTitle: true,
 			},
 			favicon: '/favicon.svg',
+			// We ship a custom landing-styled 404 at src/pages/404.astro, so opt
+			// out of Starlight's injected 404 route to avoid a duplicate-route
+			// collision (a hard error in upcoming Astro versions).
+			disable404Route: true,
 			// global.css is imported by LandingLayout for the marketing pages.
 			// Loading it inside Starlight breaks docs pages: its unlayered body
 			// rule pins the background to the dark Tailwind token even when
