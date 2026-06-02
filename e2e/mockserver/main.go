@@ -97,6 +97,7 @@ func main() {
 	r.HandleFunc("/auth", state.auth).Methods(http.MethodPost)
 	r.HandleFunc("/basic-auth", state.basicAuth).Methods(http.MethodGet)
 	r.HandleFunc("/form-echo", state.formEcho).Methods(http.MethodPost)
+	r.HandleFunc("/echo", state.echo).Methods(http.MethodPost)
 	r.HandleFunc("/mail/messages", state.mailMessages).Methods(http.MethodGet)
 	r.HandleFunc("/mail/messages", state.deleteMail).Methods(http.MethodDelete)
 	r.HandleFunc("/verify-email", state.verifyEmail).Methods(http.MethodPost)
@@ -233,6 +234,20 @@ func (s *serverState) formEcho(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"form": form})
+}
+
+// echo decodes a JSON request body and writes it back unchanged with 200. It
+// backs the date/time generator e2e scenario, which posts generated values and
+// asserts on the echoed JSON.
+func (s *serverState) echo(w http.ResponseWriter, req *http.Request) {
+	body := map[string]interface{}{}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *serverState) mailMessages(w http.ResponseWriter, req *http.Request) {
