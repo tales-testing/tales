@@ -159,6 +159,48 @@ func TestDateTimeGeneratorRangeBoundsUTC(t *testing.T) {
 	}
 }
 
+// TestDateTimeGeneratorOffsetBoundsConvertToUTC pins that RFC3339 bounds with a
+// non-UTC timezone offset are converted to UTC: the generated value stays UTC
+// (Z) and lands within the UTC-converted range, independent of the input offset.
+func TestDateTimeGeneratorOffsetBoundsConvertToUTC(t *testing.T) {
+	t.Parallel()
+
+	from, err := time.Parse(time.RFC3339, "2024-06-01T00:00:00+02:00")
+	if err != nil {
+		t.Fatalf("parse from bound: %v", err)
+	}
+
+	to, err := time.Parse(time.RFC3339, "2024-06-02T00:00:00+02:00")
+	if err != nil {
+		t.Fatalf("parse to bound: %v", err)
+	}
+
+	params := map[string]cty.Value{
+		"from": cty.StringVal("2024-06-01T00:00:00+02:00"),
+		"to":   cty.StringVal("2024-06-02T00:00:00+02:00"),
+	}
+
+	for i := range 50 {
+		value, err := runGenerator("datetime", params, newGeneratorRandom(int64(i), "scenario", "step", "request.body.json", "created_at"))
+		if err != nil {
+			t.Fatalf("generate datetime: %v", err)
+		}
+
+		if !strings.HasSuffix(value.AsString(), "Z") {
+			t.Fatalf("offset bounds should still yield UTC output (Z): %q", value.AsString())
+		}
+
+		parsed, err := time.Parse(time.RFC3339, value.AsString())
+		if err != nil {
+			t.Fatalf("generated datetime is not parseable: %q", value.AsString())
+		}
+
+		if parsed.Before(from) || parsed.After(to) {
+			t.Fatalf("generated datetime %q outside UTC-converted [%s, %s]", value.AsString(), from.UTC(), to.UTC())
+		}
+	}
+}
+
 func TestUnixTimeGeneratorReturnsNumber(t *testing.T) {
 	t.Parallel()
 

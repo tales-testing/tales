@@ -263,6 +263,9 @@ func runUnixTimeGenerator(params map[string]cty.Value, rnd generatorRandom) (int
 // dateRangeFromParams reads the required from/to attributes, parses them with
 // the given layout and validates that from is on or before to. Parse errors are
 // reported with a clean, user-facing message instead of leaking the Go layout.
+// RFC3339 inputs may carry a timezone offset; the bounds are normalized to UTC
+// so generation is independent of the input offset (and the faker output stays
+// UTC), matching the documented contract.
 func dateRangeFromParams(params map[string]cty.Value, generatorType string, layout string) (time.Time, time.Time, error) {
 	fromStr, err := requiredGeneratorStringParam(params, generatorType, "from")
 	if err != nil {
@@ -283,6 +286,9 @@ func dateRangeFromParams(params map[string]cty.Value, generatorType string, layo
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("%s generator to must be a valid %s value", generatorType, layoutName(layout))
 	}
+
+	from = from.UTC()
+	to = to.UTC()
 
 	if from.After(to) {
 		return time.Time{}, time.Time{}, fmt.Errorf("%s generator from must be on or before to", generatorType)
