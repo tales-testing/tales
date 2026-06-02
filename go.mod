@@ -7,6 +7,8 @@ require (
 	github.com/andybalholm/cascadia v1.3.3
 	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
 	github.com/chromedp/chromedp v0.15.1
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
+	github.com/emersion/go-smtp v0.24.0
 	github.com/euskadi31/go-faker v0.0.0-20260511152406-a1e9cfca0915
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/gorilla/mux v1.8.0
