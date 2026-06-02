@@ -180,31 +180,112 @@ The provider exposes its result under `response.json`:
 ```json
 {
   "accepted": true,
+  "rejected": false,
   "message_id": "<abc@tales.local>",
+  "protocol": "smtp",
+  "stage": "accepted",
+  "status_code": null,
+  "enhanced_status_code": "",
+  "message": "",
   "recipients": {
     "accepted": ["archive@example.test"],
     "rejected": []
-  },
-  "protocol": "smtp"
+  }
 }
 ```
 
-A partially rejected delivery lists each refusal:
+| Field                  | Type          | Meaning                                                                 |
+| ---------------------- | ------------- | ----------------------------------------------------------------------- |
+| `accepted`             | bool          | At least one recipient accepted and the message was delivered to it.    |
+| `rejected`             | bool          | A negative reply occurred at any stage.                                 |
+| `stage`                | string        | `accepted` \| `mail_from` \| `rcpt` \| `data` \| `message`.             |
+| `status_code`          | number\|null  | The SMTP/LMTP status (e.g. `550`); `null` when accepted.                |
+| `enhanced_status_code` | string        | e.g. `"5.7.1"`; `""` when absent.                                       |
+| `message`              | string        | The sanitized server reply text.                                        |
+| `recipients.accepted`  | list(string)  | Delivered recipients.                                                   |
+| `recipients.rejected`  | list(object)  | `{ address, stage, status_code, enhanced_status_code, message }`.       |
+
+## Testing expected SMTP/LMTP rejections
+
+A rejection is **not** a Tales failure — it is a valid protocol response. The provider distinguishes:
+
+- **Transport / runtime errors** (cannot connect, timeout, TLS handshake, broken session, MIME build, invalid config) → the step **fails** immediately.
+- **Protocol negative replies** (4xx/5xx at MAIL FROM, RCPT, DATA, or the final response) → captured in `response.json` and **assertable** with `expect`.
+
+So `expect` decides PASS/FAIL: a rejection that matches your assertion is a **PASS**; a rejection when you asserted `accepted = true` is an assertion failure (the step fails).
+
+<Aside type="caution" title="Without an expect, a rejection passes">
+  A rejected send with **no** `expect` block is a PASS (it is a valid protocol response). Always assert `accepted` / `rejected` — `accepted = true` for a positive ingestion test, `rejected = true` for a negative one.
+</Aside>
+
+Assert a rejected sender domain:
+
+```hcl
+step "mail" "send_invalid_sender" {
+  target = "smtp_inbound"
+  message {
+    from = "attacker@invalid.example"
+    to   = ["ingest@example.test"]
+    text = "should be rejected"
+  }
+  expect {
+    json = {
+      accepted    = false
+      rejected    = true
+      stage       = one_of(["mail_from", "rcpt", "data", "message"])
+      status_code = one_of([450, 451, 550, 554])
+    }
+  }
+}
+```
+
+Assert a recipient rejected at RCPT (the step still passes):
+
+```hcl
+expect {
+  json = {
+    accepted = false
+    rejected = true
+    stage    = "rcpt"
+    recipients = {
+      accepted = []
+      rejected = [
+        { address = "does-not-exist@example.test", status_code = one_of([550, 551, 553]) },
+      ]
+    }
+  }
+}
+```
+
+Assert a DMARC/DKIM-style policy rejection after DATA:
+
+```hcl
+expect {
+  json = {
+    accepted    = false
+    rejected    = true
+    status_code = one_of([550, 554])
+    message     = matches("(?i)(dmarc|dkim|policy|reject|signature)")
+  }
+}
+```
+
+LMTP reports per-recipient final responses, so one accepted and one rejected recipient yields `accepted = true, rejected = true`:
 
 ```json
 {
   "accepted": true,
+  "rejected": true,
+  "protocol": "lmtp",
+  "stage": "message",
   "recipients": {
     "accepted": ["ok@example.test"],
     "rejected": [
-      { "address": "bad@example.test", "status": 550, "message": "no such user" }
+      { "address": "bad@example.test", "stage": "message", "status_code": 550, "enhanced_status_code": "5.1.1", "message": "user unknown" }
     ]
-  },
-  "protocol": "lmtp"
+  }
 }
 ```
-
-When **no** recipient is accepted, the step fails (the provider returns an error) rather than reporting `accepted = false`.
 
 ## End-to-end ingestion
 
@@ -246,8 +327,9 @@ step "http" "assert_ingested" {
 
 ## Limitations (V1)
 
-- No IMAP / POP3 reading, no DKIM signing, no SPF / DMARC validation, no MTA / mailbox storage.
+- No IMAP / POP3 reading, no DKIM signing, no SPF / DMARC validation, no MTA / mailbox storage. (The provider can *assert* a server's DMARC/policy rejection, but it does not validate DMARC itself.)
 - SMTP AUTH is PLAIN-only (single-line RFC 4954 form). LMTP has no TLS or auth.
 - A fresh connection is opened per step.
 - The `Date` header and network timing are non-deterministic.
-- On total delivery failure the rejection detail is in the error message only (not capturable).
+- Session-setup failures (connect / greeting / EHLO / LHLO / AUTH) stay fatal — only MAIL FROM / RCPT / DATA / final-response rejections are assertable.
+- For an SMTP message-final rejection the single reply applies to the whole transaction (`recipients.accepted` is empty and the detail is the top-level `stage = "message"`); LMTP reports it per recipient.

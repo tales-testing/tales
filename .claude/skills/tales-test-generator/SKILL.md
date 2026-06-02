@@ -834,15 +834,41 @@ step "mail" "send_email" {
 
 `response.json` exposes:
 
-- `accepted` — bool, true when at least one recipient was accepted.
-- `message_id` — the `<...@tales.local>` id (generated deterministically
-  from the seed unless you set a `Message-ID` header).
+- `accepted` — bool, true when at least one recipient was accepted and delivered.
+- `rejected` — bool, true when a negative reply occurred at any stage.
+- `stage` — `accepted` | `mail_from` | `rcpt` | `data` | `message`.
+- `status_code` — number or `null` (when accepted).
+- `enhanced_status_code` — string (e.g. `"5.7.1"`), `""` when absent.
+- `message` — the sanitized server reply text.
+- `message_id` — the `<...@tales.local>` id (seed-deterministic unless a
+  `Message-ID` header is set).
 - `recipients.accepted` — list of accepted addresses.
-- `recipients.rejected` — list of `{ address, status, message }`.
+- `recipients.rejected` — list of
+  `{ address, stage, status_code, enhanced_status_code, message }`.
 - `protocol` — `"smtp"` or `"lmtp"`.
 
-When **no** recipient is accepted the step fails (the provider errors), so a
-green step already means at least one recipient took the message.
+### Asserting expected rejections
+
+A protocol-level SMTP/LMTP rejection (4xx/5xx at MAIL FROM / RCPT / DATA / the
+final response) is a **valid assertable result**, not a step failure — only
+transport errors (connect, timeout, TLS, broken session, invalid config) fail
+the step. Use `expect` to decide PASS/FAIL:
+
+```hcl
+expect {
+  json = {
+    accepted    = false
+    rejected    = true
+    stage       = one_of(["mail_from", "rcpt", "data", "message"])
+    status_code = one_of([450, 451, 550, 554])
+    message     = matches("(?i)(dmarc|policy|reject)")
+  }
+}
+```
+
+LMTP reports per-recipient final responses, so one accepted + one rejected
+recipient yields `accepted = true, rejected = true`. **A rejection with no
+`expect` block is a PASS** — always assert `accepted` / `rejected`.
 
 ### Authoring rules (mail)
 
