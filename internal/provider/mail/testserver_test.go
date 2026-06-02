@@ -41,13 +41,17 @@ func (m recordedMessage) header(name string) string {
 }
 
 // recordingBackend is a go-smtp backend that stores received messages and can
-// be configured to reject specific recipients or require AUTH.
+// be configured to reject at any protocol stage (with a full *smtp.SMTPError so
+// tests can assert the enhanced code) or to require AUTH.
 type recordingBackend struct {
-	mu         sync.Mutex
-	messages   []recordedMessage
-	rejectRcpt map[string]int // address -> SMTP status code
-	username   string
-	password   string
+	mu             sync.Mutex
+	messages       []recordedMessage
+	rejectMailFrom *smtp.SMTPError            // reject MAIL FROM
+	rejectRcpt     map[string]*smtp.SMTPError // reject specific RCPT TO
+	rejectData     *smtp.SMTPError            // reject the SMTP DATA final response
+	rejectLMTPData map[string]*smtp.SMTPError // reject a recipient at the LMTP message stage
+	username       string
+	password       string
 }
 
 func (b *recordingBackend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
@@ -81,14 +85,18 @@ func (s *recordingSession) Reset()        { s.from = ""; s.rcpts = nil }
 func (s *recordingSession) Logout() error { return nil }
 
 func (s *recordingSession) Mail(from string, _ *smtp.MailOptions) error {
+	if s.backend.rejectMailFrom != nil {
+		return s.backend.rejectMailFrom
+	}
+
 	s.from = from
 
 	return nil
 }
 
 func (s *recordingSession) Rcpt(to string, _ *smtp.RcptOptions) error {
-	if code, ok := s.backend.rejectRcpt[to]; ok {
-		return &smtp.SMTPError{Code: code, Message: "no such user"}
+	if err := s.backend.rejectRcpt[to]; err != nil {
+		return err
 	}
 
 	s.rcpts = append(s.rcpts, to)
@@ -100,6 +108,10 @@ func (s *recordingSession) Data(r io.Reader) error {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
+	}
+
+	if s.backend.rejectData != nil {
+		return s.backend.rejectData
 	}
 
 	s.backend.record(s.from, s.rcpts, data)
@@ -116,6 +128,15 @@ func (s *recordingSession) LMTPData(r io.Reader, status smtp.StatusCollector) er
 	s.backend.record(s.from, s.rcpts, data)
 
 	for _, rcpt := range s.rcpts {
+		// Pass an untyped nil for accepted recipients: a typed-nil
+		// *smtp.SMTPError wrapped in the error interface is non-nil and
+		// panics inside go-smtp's status handling.
+		if serr := s.backend.rejectLMTPData[rcpt]; serr != nil {
+			status.SetStatus(rcpt, serr)
+
+			continue
+		}
+
 		status.SetStatus(rcpt, nil)
 	}
 

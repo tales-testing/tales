@@ -43,3 +43,12 @@ func scrub(msg string) string {
 
 	return strings.Join(lines, "\n")
 }
+
+// scrubMessage normalizes a server reply text into a single clean line for the
+// assertable response. The reply is server-controlled and carries no secret; it
+// is collapsed (CR/LF/tabs to spaces) and trimmed so it stays a tidy one-liner.
+func scrubMessage(msg string) string {
+	replacer := strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ", "\t", " ")
+
+	return strings.TrimSpace(replacer.Replace(msg))
+}
