@@ -1,0 +1,36 @@
+version = 1
+
+config {
+  mail = {
+    targets = {
+      inbound = {
+        protocol = "smtp"
+        host     = "127.0.0.1"
+        port     = 2525
+      }
+    }
+  }
+}
+
+# This suite is intentionally failing: the step references a target that does
+# not exist in config.mail.targets, so the provider returns a clear
+# "mail target ... not found" error and the run exits with code 1.
+scenario "mail unknown target fails" {
+  tags = ["mail"]
+
+  step "mail" "send_email" {
+    target = "does_not_exist"
+
+    message {
+      from = "sender@example.com"
+      to   = ["archive@example.test"]
+      text = "this should never be delivered"
+    }
+
+    expect {
+      json = {
+        accepted = true
+      }
+    }
+  }
+}
