@@ -50,7 +50,43 @@ func printMailSummary(out io.Writer, step *StepResult) error {
 		}
 	}
 
+	if err := printMailRejection(out, payload); err != nil {
+		return err
+	}
+
 	return printMailRecipients(out, payload)
+}
+
+// printMailRejection prints the top-level rejection summary when the server
+// returned a negative reply.
+func printMailRejection(out io.Writer, payload map[string]interface{}) error {
+	rejected, _ := payload["rejected"].(bool)
+	if !rejected {
+		return nil
+	}
+
+	stage, _ := payload["stage"].(string)
+	enhanced, _ := payload["enhanced_status_code"].(string)
+	message, _ := payload["message"].(string)
+
+	line := fmt.Sprintf("    rejected at %s:", stage)
+	if status, ok := numericField(payload, "status_code"); ok {
+		line += " status=" + formatInt(status)
+	}
+
+	if enhanced != "" {
+		line += " enhanced=" + enhanced
+	}
+
+	if message != "" {
+		line += fmt.Sprintf(" message=%q", message)
+	}
+
+	if _, err := fmt.Fprintf(out, "%s\n", line); err != nil {
+		return fmt.Errorf("print mail rejection: %w", err)
+	}
+
+	return nil
 }
 
 func printMailRecipients(out io.Writer, payload map[string]interface{}) error {
@@ -74,10 +110,10 @@ func printMailRecipients(out io.Writer, payload map[string]interface{}) error {
 
 		address, _ := entry["address"].(string)
 		message, _ := entry["message"].(string)
-		status, _ := numericField(entry, "status")
+		status, _ := numericField(entry, "status_code")
 
 		if _, err := fmt.Fprintf(out, "      rejected %s: %s %s\n", address, formatInt(status), message); err != nil {
-			return fmt.Errorf("print mail rejection: %w", err)
+			return fmt.Errorf("print mail recipient rejection: %w", err)
 		}
 	}
 
