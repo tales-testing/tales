@@ -1,8 +1,18 @@
-# Tales
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="website/src/assets/logo-dark.svg">
+    <img alt="Tales" src="website/src/assets/logo-light.svg" width="280">
+  </picture>
+</p>
 
-Tales is a single-binary integration and end-to-end testing tool. Scenarios are written in declarative HCL2 files with the `.tales` extension.
+<p align="center">
+  Tales is a single-binary integration and end-to-end testing tool.<br>
+  Scenarios are written in declarative HCL2 files with the <code>.tales</code> extension.
+</p>
 
-**📚 Full documentation: [taleslabs.org/](https://taleslabs.org/)**
+<p align="center">
+  <strong>📚 Full documentation: <a href="https://taleslabs.org/">taleslabs.org</a></strong>
+</p>
 
 ## Why Tales
 
