@@ -178,7 +178,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		stepNames = append(stepNames, step.Name)
 	}
 
-	state := NewScenarioState(stepNames)
+	state := NewScenarioState(stepNames, seed)
 
 	var evaluator *lang.Evaluator
 
@@ -402,6 +402,10 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 
 	if step.Provider == sqlProviderType {
 		return r.executeSQLStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
+	}
+
+	if step.Provider == mailProviderType {
+		return r.executeMailStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
 	}
 
 	if step.Provider == browserProviderType {
@@ -1172,7 +1176,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 
 	outerResults := state.GetResultMap()
 
-	keywordState, stateErr := newKeywordState(outerResults, keyword.Steps)
+	keywordState, stateErr := newKeywordState(outerResults, keyword.Steps, state.Seed())
 	if stateErr != nil {
 		stepReport.Status = report.StatusFail
 		stepReport.Failure = &report.ErrorDetail{Kind: kindKeyword, Message: stateErr.Error()}
@@ -1249,7 +1253,7 @@ func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scope lang.Scope
 	return keywordName, inputValues, requestSummary, nil
 }
 
-func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) (*ScenarioState, error) {
+func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step, seed int64) (*ScenarioState, error) {
 	stepNames := make([]string, 0, len(outerResults)+len(steps))
 	outerStepSet := toKeySet(outerResults)
 
@@ -1265,7 +1269,7 @@ func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step) (*S
 		stepNames = append(stepNames, step.Name)
 	}
 
-	keywordState := NewScenarioState(stepNames)
+	keywordState := NewScenarioState(stepNames, seed)
 
 	for name, value := range outerResults {
 		keywordState.SetStepResult(name, value)

@@ -5,6 +5,14 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// Response/metadata field names reused across the two builders.
+const (
+	fieldProtocol  = "protocol"
+	fieldMessageID = "message_id"
+	fieldAccepted  = "accepted"
+	fieldRejected  = "rejected"
+)
+
 // toSendResponse builds the cty response map exposed to expect/capture under
 // the "json" key, mirroring the SQL provider's response shape.
 func toSendResponse(messageID string, result *Result, protocol string) map[string]cty.Value {
@@ -23,15 +31,15 @@ func toSendResponse(messageID string, result *Result, protocol string) map[strin
 	}
 
 	recipients := cty.ObjectVal(map[string]cty.Value{
-		"accepted": stringList(result.Accepted),
-		"rejected": rejectedList,
+		fieldAccepted: stringList(result.Accepted),
+		fieldRejected: rejectedList,
 	})
 
 	jsonValue := cty.ObjectVal(map[string]cty.Value{
-		"accepted":   cty.BoolVal(len(result.Accepted) > 0),
-		"message_id": cty.StringVal(messageID),
-		"recipients": recipients,
-		"protocol":   cty.StringVal(protocol),
+		fieldAccepted:  cty.BoolVal(len(result.Accepted) > 0),
+		fieldMessageID: cty.StringVal(messageID),
+		"recipients":   recipients,
+		fieldProtocol:  cty.StringVal(protocol),
 	})
 
 	return map[string]cty.Value{"json": jsonValue}
@@ -57,16 +65,16 @@ func buildRequestMeta(target Target, exec *provider.MailExecution, spec messageS
 	}
 
 	return map[string]cty.Value{
-		"protocol":    cty.StringVal(target.Protocol),
-		"target":      cty.StringVal(target.Name),
-		"from":        cty.StringVal(exec.From),
-		"to":          stringList(exec.To),
-		"cc":          stringList(exec.Cc),
-		"bcc":         stringList(exec.Bcc),
-		"subject":     cty.StringVal(exec.Subject),
-		"message_id":  cty.StringVal(exec.MessageID),
-		"headers":     stringMap(exec.Headers),
-		"attachments": attachmentsList,
+		fieldProtocol:  cty.StringVal(target.Protocol),
+		"target":       cty.StringVal(target.Name),
+		fieldFrom:      cty.StringVal(exec.From),
+		"to":           stringList(exec.To),
+		"cc":           stringList(exec.Cc),
+		fieldBcc:       stringList(exec.Bcc),
+		fieldSubject:   cty.StringVal(exec.Subject),
+		fieldMessageID: cty.StringVal(exec.MessageID),
+		"headers":      stringMap(exec.Headers),
+		"attachments":  attachmentsList,
 	}
 }
 
