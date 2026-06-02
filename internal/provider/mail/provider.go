@@ -67,17 +67,26 @@ type Envelope struct {
 	Recipients []string
 }
 
-// Result reports per-recipient delivery outcome.
+// Result reports the outcome of a send. Accepted lists recipients delivered to;
+// Rejected lists per-recipient negative replies (RCPT, or per-recipient LMTP
+// DATA). Transaction carries a transaction-level negative reply (MAIL FROM, the
+// DATA command, or the single SMTP final response) that is not tied to one
+// recipient. None of these are provider errors: they are assertable protocol
+// outcomes.
 type Result struct {
-	Accepted []string
-	Rejected []Rejection
+	Accepted    []string
+	Rejected    []Rejection
+	Transaction *Rejection
 }
 
-// Rejection is one recipient the server refused, with the sanitized status.
+// Rejection is one sanitized SMTP/LMTP negative reply. Address is empty for
+// transaction-level stages (mail_from, data, message).
 type Rejection struct {
-	Address string
-	Status  int
-	Message string
+	Address  string
+	Stage    string
+	Status   int
+	Enhanced string
+	Message  string
 }
 
 // Execute resolves the target, builds the MIME message, sends it, and shapes
@@ -118,11 +127,10 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 
 	result, err := sender.Send(ctx, target, envelope, raw)
 	if err != nil {
+		// Only transport / runtime failures reach here (sanitized so the
+		// password never leaks). Protocol-level SMTP/LMTP rejections are not
+		// errors: they are carried in result and asserted via expect.
 		return nil, sanitizeSendError(target, err)
-	}
-
-	if len(result.Accepted) == 0 {
-		return nil, noRecipientAcceptedError(target, result)
 	}
 
 	output := &provider.Output{
@@ -277,16 +285,4 @@ func renderAddresses(raws []string) []string {
 	}
 
 	return out
-}
-
-func noRecipientAcceptedError(target Target, result *Result) error {
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "mail delivery failed: no recipient accepted (target %q, protocol %s)", target.Name, target.Protocol)
-
-	for _, r := range result.Rejected {
-		fmt.Fprintf(&b, "\n  %s: %d %s", r.Address, r.Status, r.Message)
-	}
-
-	return errors.New(b.String())
 }

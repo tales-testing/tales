@@ -12,10 +12,25 @@ import (
 // machine name into reports or errors.
 const heloName = "tales.local"
 
+// Send stages. connect / greeting / ehlo / lhlo / auth / quit failures stay
+// fatal (session setup) and never surface as a structured stage here.
+const (
+	stageMailFrom = "mail_from"
+	stageRcpt     = "rcpt"
+	stageData     = "data"
+	stageMessage  = "message"
+	stageAccepted = "accepted"
+)
+
 // runTransaction performs MAIL FROM, per-recipient RCPT TO, and DATA on an
-// already-greeted client. lmtp selects the per-recipient final-response read.
+// already-greeted client. A protocol-level negative reply (4xx/5xx) is mapped
+// into the returned Result; only transport / IO failures return an error.
 func runTransaction(c *smtp.Client, envelope Envelope, raw []byte, lmtp bool) (*Result, error) {
 	if err := c.Mail(envelope.From, nil); err != nil {
+		if rej, ok := asRejection(stageMailFrom, "", err); ok {
+			return &Result{Transaction: rej}, nil
+		}
+
 		return nil, fmt.Errorf("MAIL FROM: %w", err)
 	}
 
@@ -25,13 +40,17 @@ func runTransaction(c *smtp.Client, envelope Envelope, raw []byte, lmtp bool) (*
 	}
 
 	if len(accepted) == 0 {
-		// Every recipient was refused at RCPT time; skip DATA and let the
-		// provider turn this into a step failure.
+		// Every recipient was refused at RCPT time; skip DATA. This is a
+		// protocol outcome, not a provider error.
 		return &Result{Rejected: rejected}, nil
 	}
 
 	wc, err := c.Data()
 	if err != nil {
+		if rej, ok := asRejection(stageData, "", err); ok {
+			return &Result{Rejected: rejected, Transaction: rej}, nil
+		}
+
 		return nil, fmt.Errorf("DATA: %w", err)
 	}
 
@@ -63,9 +82,8 @@ func sendRecipients(c *smtp.Client, recipients []string) ([]string, []Rejection,
 			continue
 		}
 
-		var serr *smtp.SMTPError
-		if errors.As(err, &serr) {
-			rejected = append(rejected, Rejection{Address: rcpt, Status: serr.Code, Message: serr.Message})
+		if rej, ok := asRejection(stageRcpt, rcpt, err); ok {
+			rejected = append(rejected, *rej)
 
 			continue
 		}
@@ -80,6 +98,10 @@ func sendRecipients(c *smtp.Client, recipients []string) ([]string, []Rejection,
 // the whole message.
 func finishSMTP(wc *smtp.DataCommand, accepted []string, rejected []Rejection) (*Result, error) {
 	if err := wc.Close(); err != nil {
+		if rej, ok := asRejection(stageMessage, "", err); ok {
+			return &Result{Rejected: rejected, Transaction: rej}, nil
+		}
+
 		return nil, fmt.Errorf("DATA close: %w", err)
 	}
 
@@ -87,8 +109,8 @@ func finishSMTP(wc *smtp.DataCommand, accepted []string, rejected []Rejection) (
 }
 
 // finishLMTP closes the LMTP DATA command and maps the per-recipient final
-// responses: a recipient present in the LMTPDataError failed at DATA, the rest
-// were delivered.
+// responses: a recipient present in the LMTPDataError failed at the message
+// stage, the rest were delivered.
 func finishLMTP(wc *smtp.DataCommand, rcptAccepted []string, rejected []Rejection) (*Result, error) {
 	_, err := wc.CloseWithLMTPResponse()
 
@@ -102,7 +124,7 @@ func finishLMTP(wc *smtp.DataCommand, rcptAccepted []string, rejected []Rejectio
 
 	for _, rcpt := range rcptAccepted {
 		if serr, ok := dataRejections[rcpt]; ok && serr != nil {
-			rejected = append(rejected, Rejection{Address: rcpt, Status: serr.Code, Message: serr.Message})
+			rejected = append(rejected, rejectionFromSMTPError(stageMessage, rcpt, serr))
 
 			continue
 		}
@@ -111,4 +133,39 @@ func finishLMTP(wc *smtp.DataCommand, rcptAccepted []string, rejected []Rejectio
 	}
 
 	return &Result{Accepted: accepted, Rejected: rejected}, nil
+}
+
+// asRejection converts a go-smtp protocol error into a Rejection. It returns
+// ok=false for transport / IO errors, which the caller must treat as fatal.
+func asRejection(stage, address string, err error) (*Rejection, bool) {
+	var serr *smtp.SMTPError
+	if !errors.As(err, &serr) {
+		return nil, false
+	}
+
+	rej := rejectionFromSMTPError(stage, address, serr)
+
+	return &rej, true
+}
+
+// rejectionFromSMTPError maps a *smtp.SMTPError into a sanitized Rejection.
+func rejectionFromSMTPError(stage, address string, serr *smtp.SMTPError) Rejection {
+	return Rejection{
+		Address:  address,
+		Stage:    stage,
+		Status:   serr.Code,
+		Enhanced: formatEnhanced(serr.EnhancedCode),
+		Message:  scrubMessage(serr.Message),
+	}
+}
+
+// formatEnhanced renders go-smtp's [3]int enhanced status as "a.b.c", or "" when
+// the reply carried no enhanced code ({0,0,0}) or it was explicitly unset
+// ({-1,-1,-1}).
+func formatEnhanced(code smtp.EnhancedCode) string {
+	if code == (smtp.EnhancedCode{}) || code == smtp.NoEnhancedCode {
+		return ""
+	}
+
+	return fmt.Sprintf("%d.%d.%d", code[0], code[1], code[2])
 }

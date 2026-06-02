@@ -13,38 +13,87 @@ const (
 	fieldMessageID = "message_id"
 	fieldAccepted  = "accepted"
 	fieldRejected  = "rejected"
+	fieldStage     = "stage"
+	fieldStatus    = "status_code"
+	fieldEnhanced  = "enhanced_status_code"
+	fieldMessage   = "message"
+	fieldAddress   = "address"
 )
 
 // toSendResponse builds the cty response map exposed to expect/capture under
-// the "json" key, mirroring the SQL provider's response shape.
+// the "json" key, mirroring the SQL provider's response shape. SMTP/LMTP
+// rejections are first-class assertable fields, not provider errors.
 func toSendResponse(messageID string, result *Result, protocol string) map[string]cty.Value {
-	rejected := make([]cty.Value, 0, len(result.Rejected))
-	for _, r := range result.Rejected {
-		rejected = append(rejected, cty.ObjectVal(map[string]cty.Value{
-			"address": cty.StringVal(r.Address),
-			"status":  cty.NumberIntVal(int64(r.Status)),
-			"message": cty.StringVal(r.Message),
+	recipients := cty.ObjectVal(map[string]cty.Value{
+		fieldAccepted: stringList(result.Accepted),
+		fieldRejected: rejectionList(result.Rejected),
+	})
+
+	jsonValue := map[string]cty.Value{
+		fieldAccepted:  cty.BoolVal(len(result.Accepted) > 0),
+		fieldRejected:  cty.BoolVal(result.Transaction != nil || len(result.Rejected) > 0),
+		fieldMessageID: cty.StringVal(messageID),
+		fieldProtocol:  cty.StringVal(protocol),
+		"recipients":   recipients,
+	}
+
+	primary := primaryRejection(result)
+	if primary != nil {
+		jsonValue[fieldStage] = cty.StringVal(primary.Stage)
+		jsonValue[fieldStatus] = numberOrNull(primary.Status)
+		jsonValue[fieldEnhanced] = cty.StringVal(primary.Enhanced)
+		jsonValue[fieldMessage] = cty.StringVal(primary.Message)
+	} else {
+		jsonValue[fieldStage] = cty.StringVal(stageAccepted)
+		jsonValue[fieldStatus] = cty.NullVal(cty.Number)
+		jsonValue[fieldEnhanced] = cty.StringVal("")
+		jsonValue[fieldMessage] = cty.StringVal("")
+	}
+
+	return map[string]cty.Value{"json": cty.ObjectVal(jsonValue)}
+}
+
+// primaryRejection picks the representative top-level rejection: a
+// transaction-level reply (MAIL FROM / DATA / SMTP final) wins, otherwise the
+// first per-recipient rejection, otherwise nil (fully accepted).
+func primaryRejection(result *Result) *Rejection {
+	if result.Transaction != nil {
+		return result.Transaction
+	}
+
+	if len(result.Rejected) > 0 {
+		return &result.Rejected[0]
+	}
+
+	return nil
+}
+
+func rejectionList(rejections []Rejection) cty.Value {
+	if len(rejections) == 0 {
+		return cty.EmptyTupleVal
+	}
+
+	out := make([]cty.Value, 0, len(rejections))
+	for _, r := range rejections {
+		out = append(out, cty.ObjectVal(map[string]cty.Value{
+			fieldAddress:  cty.StringVal(r.Address),
+			fieldStage:    cty.StringVal(r.Stage),
+			fieldStatus:   numberOrNull(r.Status),
+			fieldEnhanced: cty.StringVal(r.Enhanced),
+			fieldMessage:  cty.StringVal(r.Message),
 		}))
 	}
 
-	rejectedList := cty.EmptyTupleVal
-	if len(rejected) > 0 {
-		rejectedList = cty.TupleVal(rejected)
+	return cty.TupleVal(out)
+}
+
+// numberOrNull renders a status code, using null for the zero (absent) value.
+func numberOrNull(status int) cty.Value {
+	if status == 0 {
+		return cty.NullVal(cty.Number)
 	}
 
-	recipients := cty.ObjectVal(map[string]cty.Value{
-		fieldAccepted: stringList(result.Accepted),
-		fieldRejected: rejectedList,
-	})
-
-	jsonValue := cty.ObjectVal(map[string]cty.Value{
-		fieldAccepted:  cty.BoolVal(len(result.Accepted) > 0),
-		fieldMessageID: cty.StringVal(messageID),
-		"recipients":   recipients,
-		fieldProtocol:  cty.StringVal(protocol),
-	})
-
-	return map[string]cty.Value{"json": jsonValue}
+	return cty.NumberIntVal(int64(status))
 }
 
 // buildRequestMeta builds the report-facing request map. It carries only

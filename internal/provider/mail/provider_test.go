@@ -8,10 +8,44 @@ import (
 	"strings"
 	"testing"
 
+	smtp "github.com/emersion/go-smtp"
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
 	"github.com/zclconf/go-cty/cty"
 )
+
+// assertBool / assertString / assertStatus read a field of a response.json
+// object and fail the test on mismatch.
+func assertBool(t *testing.T, obj cty.Value, key string, want bool) {
+	t.Helper()
+
+	if got := obj.GetAttr(key).True(); got != want {
+		t.Errorf("%s: want %v got %v", key, want, got)
+	}
+}
+
+func assertString(t *testing.T, obj cty.Value, key, want string) {
+	t.Helper()
+
+	if got := obj.GetAttr(key).AsString(); got != want {
+		t.Errorf("%s: want %q got %q", key, want, got)
+	}
+}
+
+func assertStatus(t *testing.T, obj cty.Value, want int) {
+	t.Helper()
+
+	got := obj.GetAttr("status_code")
+	if got.IsNull() {
+		t.Errorf("status_code: want %d got null", want)
+
+		return
+	}
+
+	if got.AsBigFloat().Cmp(cty.NumberIntVal(int64(want)).AsBigFloat()) != 0 {
+		t.Errorf("status_code: want %d got %s", want, got.AsBigFloat().String())
+	}
+}
 
 // smtpConfig builds a config map with one SMTP target.
 func smtpConfig(name, host string, port int, extra map[string]cty.Value) map[string]cty.Value {
@@ -192,28 +226,60 @@ func TestProviderSMTPAuthPlain(t *testing.T) {
 	}
 }
 
-func TestProviderNoRecipientAcceptedFails(t *testing.T) {
+func TestProviderMailFromRejected(t *testing.T) {
 	t.Parallel()
 
-	backend := &recordingBackend{rejectRcpt: map[string]int{"bad@example.test": 550}}
+	backend := &recordingBackend{rejectMailFrom: &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "sender domain rejected"}}
 	host, port := startMailServer(t, backend, false)
 
 	exec := &provider.MailExecution{
-		Target:    "inbound",
-		From:      "sender@example.com",
-		To:        []string{"bad@example.test"},
-		Subject:   "rejected",
-		Text:      "body",
-		MessageID: "<reject-1@tales.local>",
+		Target: "inbound", From: "attacker@invalid.example", To: []string{"a@example.test"},
+		Text: "body", MessageID: "<mf-1@tales.local>",
 	}
 
-	_, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", host, port, nil), exec))
-	if err == nil {
-		t.Fatalf("expected error when no recipient is accepted")
+	out, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", host, port, nil), exec))
+	if err != nil {
+		t.Fatalf("MAIL FROM rejection must not be a provider error, got: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "no recipient accepted") {
-		t.Fatalf("error should mention no recipient accepted, got: %v", err)
+	mail := out.Response["json"]
+	assertBool(t, mail, "accepted", false)
+	assertBool(t, mail, "rejected", true)
+	assertString(t, mail, "stage", "mail_from")
+	assertString(t, mail, "enhanced_status_code", "5.7.1")
+	assertStatus(t, mail, 550)
+
+	if len(backend.all()) != 0 {
+		t.Fatalf("no message should be stored when MAIL FROM is rejected")
+	}
+}
+
+func TestProviderAllRecipientsRejected(t *testing.T) {
+	t.Parallel()
+
+	backend := &recordingBackend{rejectRcpt: map[string]*smtp.SMTPError{
+		"bad@example.test": {Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "user unknown"},
+	}}
+	host, port := startMailServer(t, backend, false)
+
+	exec := &provider.MailExecution{
+		Target: "inbound", From: "sender@example.com", To: []string{"bad@example.test"},
+		Text: "body", MessageID: "<reject-1@tales.local>",
+	}
+
+	out, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", host, port, nil), exec))
+	if err != nil {
+		t.Fatalf("all-recipients-rejected must not be a provider error, got: %v", err)
+	}
+
+	mail := out.Response["json"]
+	assertBool(t, mail, "accepted", false)
+	assertBool(t, mail, "rejected", true)
+	assertString(t, mail, "stage", "rcpt")
+
+	rejected := mail.GetAttr("recipients").GetAttr("rejected")
+	if rejected.LengthInt() != 1 {
+		t.Fatalf("want 1 rejected recipient got %d", rejected.LengthInt())
 	}
 
 	if len(backend.all()) != 0 {
@@ -224,16 +290,14 @@ func TestProviderNoRecipientAcceptedFails(t *testing.T) {
 func TestProviderPartialRejection(t *testing.T) {
 	t.Parallel()
 
-	backend := &recordingBackend{rejectRcpt: map[string]int{"bad@example.test": 550}}
+	backend := &recordingBackend{rejectRcpt: map[string]*smtp.SMTPError{
+		"bad@example.test": {Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "user unknown"},
+	}}
 	host, port := startMailServer(t, backend, false)
 
 	exec := &provider.MailExecution{
-		Target:    "inbound",
-		From:      "sender@example.com",
-		To:        []string{"ok@example.test", "bad@example.test"},
-		Subject:   "partial",
-		Text:      "body",
-		MessageID: "<partial-1@tales.local>",
+		Target: "inbound", From: "sender@example.com", To: []string{"ok@example.test", "bad@example.test"},
+		Text: "body", MessageID: "<partial-1@tales.local>",
 	}
 
 	out, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", host, port, nil), exec))
@@ -241,7 +305,11 @@ func TestProviderPartialRejection(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	recipients := out.Response["json"].GetAttr("recipients")
+	mail := out.Response["json"]
+	assertBool(t, mail, "accepted", true)
+	assertBool(t, mail, "rejected", true)
+
+	recipients := mail.GetAttr("recipients")
 	if recipients.GetAttr("accepted").LengthInt() != 1 {
 		t.Fatalf("want 1 accepted recipient")
 	}
@@ -256,8 +324,90 @@ func TestProviderPartialRejection(t *testing.T) {
 		t.Fatalf("rejected address mismatch")
 	}
 
-	if first.GetAttr("status").AsBigFloat().Cmp(cty.NumberIntVal(550).AsBigFloat()) != 0 {
-		t.Fatalf("rejected status should be 550")
+	assertString(t, first, "stage", "rcpt")
+	assertString(t, first, "enhanced_status_code", "5.1.1")
+
+	if first.GetAttr("status_code").AsBigFloat().Cmp(cty.NumberIntVal(550).AsBigFloat()) != 0 {
+		t.Fatalf("rejected status_code should be 550")
+	}
+}
+
+func TestProviderMessageRejected(t *testing.T) {
+	t.Parallel()
+
+	backend := &recordingBackend{rejectData: &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "message rejected due to DMARC policy"}}
+	host, port := startMailServer(t, backend, false)
+
+	exec := &provider.MailExecution{
+		Target: "inbound", From: "sender@example.com", To: []string{"a@example.test"},
+		Text: "body", MessageID: "<msg-1@tales.local>",
+	}
+
+	out, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", host, port, nil), exec))
+	if err != nil {
+		t.Fatalf("message rejection must not be a provider error, got: %v", err)
+	}
+
+	mail := out.Response["json"]
+	assertBool(t, mail, "accepted", false)
+	assertBool(t, mail, "rejected", true)
+	assertString(t, mail, "stage", "message")
+	assertStatus(t, mail, 554)
+
+	if !strings.Contains(mail.GetAttr("message").AsString(), "DMARC") {
+		t.Fatalf("message should carry the server reason, got %q", mail.GetAttr("message").AsString())
+	}
+}
+
+func TestProviderLMTPPartialRejection(t *testing.T) {
+	t.Parallel()
+
+	backend := &recordingBackend{rejectLMTPData: map[string]*smtp.SMTPError{
+		"bad@example.test": {Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "user unknown"},
+	}}
+	host, port := startMailServer(t, backend, true)
+
+	exec := &provider.MailExecution{
+		Target: "lmtp", From: "sender@example.com", To: []string{"ok@example.test", "bad@example.test"},
+		Text: "body", MessageID: "<lmtp-partial@tales.local>",
+	}
+
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+
+	out, err := New().Execute(context.Background(), mailInput(lmtpConfig("lmtp", "tcp", addr), exec))
+	if err != nil {
+		t.Fatalf("LMTP partial rejection must not be a provider error, got: %v", err)
+	}
+
+	mail := out.Response["json"]
+	assertBool(t, mail, "accepted", true)
+	assertBool(t, mail, "rejected", true)
+
+	recipients := mail.GetAttr("recipients")
+	if recipients.GetAttr("accepted").LengthInt() != 1 || recipients.GetAttr("rejected").LengthInt() != 1 {
+		t.Fatalf("want 1 accepted and 1 rejected recipient")
+	}
+
+	rej := recipients.GetAttr("rejected").Index(cty.NumberIntVal(0))
+	if rej.GetAttr("address").AsString() != "bad@example.test" {
+		t.Fatalf("rejected address mismatch")
+	}
+
+	assertString(t, rej, "stage", "message")
+}
+
+func TestProviderConnectionRefusedIsFatal(t *testing.T) {
+	t.Parallel()
+
+	exec := &provider.MailExecution{
+		Target: "inbound", From: "sender@example.com", To: []string{"a@example.test"},
+		Text: "body", MessageID: "<refused@tales.local>",
+	}
+
+	// Port 1 is not listening: a transport failure must remain a provider error.
+	_, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", "127.0.0.1", 1, nil), exec))
+	if err == nil {
+		t.Fatalf("connection refused must be a provider error")
 	}
 }
 
