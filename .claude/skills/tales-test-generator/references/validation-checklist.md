@@ -84,7 +84,8 @@ When the suite contains `step "mail"` blocks:
 - Each `attachment` sets `filename` and exactly one of `path` or `content`
 - The send is **paired** with a downstream HTTP / SQL / UI assertion (the mail step alone is not proof of behaviour)
 - `capture { message_id = response.json.message_id }`; a follow-up lookup `url_encode`s the id (it has `<>` / `@`)
-- `expect { json = { accepted = true } }` (optionally `recipients = { rejected = [] }`)
+- Positive ingestion tests assert `expect { json = { accepted = true } }` (optionally `recipients = { rejected = [] }`)
+- Negative tests assert the rejection: `expect { json = { accepted = false, rejected = true, stage = ..., status_code = ... } }` — a protocol rejection is a PASS only when asserted (never leave a negative test without an `expect`); transport errors still fail the step regardless
 
 ## 7) Mobile (iOS) specifics
 
