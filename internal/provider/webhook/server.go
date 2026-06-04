@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -70,7 +71,24 @@ func (rc *receiver) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, _ := io.ReadAll(io.LimitReader(r.Body, rc.maxBody))
+	// Enforce the body cap with MaxBytesReader so an over-limit payload fails
+	// loudly (413) instead of being silently truncated — a truncated body would
+	// otherwise surface as a confusing HMAC mismatch. Rejected requests are not
+	// recorded, so a wait on them times out rather than asserting on partial data.
+	r.Body = http.MaxBytesReader(w, r.Body, rc.maxBody)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var maxErr *http.MaxBytesError
+
+		if errors.As(err, &maxErr) {
+			http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "cannot read body", http.StatusBadRequest)
+		}
+
+		return
+	}
 
 	captured := &receivedRequest{
 		Method:     r.Method,
