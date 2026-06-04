@@ -29,7 +29,8 @@
       "Bash(gh issue *)",
       "Bash(gh run *)",
       "Bash(echo \"make lint exit=$?\")",
-      "Bash(echo \"make test exit=$?\")"
+      "Bash(echo \"make test exit=$?\")",
+      "Bash(gh release *)"
     ]
   }
 }
