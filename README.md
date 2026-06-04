@@ -26,6 +26,7 @@
 - **Browser UI automation via Chrome DevTools Protocol** (`step "browser"`), no Puppeteer / no Playwright / no Selenium. Drives Chrome / Chromium through Go-native chromedp; ordered `actions` (goto/click/fill/…), polled `expect` (visible/text/url/title/attribute/…), Web performance budgets via `expect.web_perf { fcp = lt("1800ms") … }` and `browser.performance` capture (FCP/LCP/CLS/load/DOM/resources). Per-scenario browsing context for cookie isolation, full visual-report integration with masked secure values. See [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/).
 - **Mail provider** (`step "mail"`), inject an email over SMTP or LMTP to test an application's mail-ingestion path end to end, then assert the result through HTTP/SQL/UI. Go-native (no external mail binary), with `text`/`html`/`multipart` bodies, attachments, custom headers, a deterministic Message-ID, SMTP TLS/STARTTLS/AUTH PLAIN, and LMTP over tcp or unix socket. Server **rejections are assertable** (`accepted`/`rejected`/`stage`/`status_code`/`enhanced_status_code`) so "the server refuses this email" can be the expected outcome, while transport errors still fail the step. Not a mailbox client. See [docs/providers/mail/](https://taleslabs.org/docs/providers/mail/).
 - **Load smoke benchmarks** (`step "load"`), Go-native concurrent HTTP replay with latency percentiles, RPS, error and status-class ratios, threshold matchers (`p95 = lt("200ms")`, `error_ratio = lte(0.01)`). Not a substitute for k6/Gatling; designed for regression smoke runs. See [docs/providers/load/](https://taleslabs.org/docs/providers/load/).
+- **Webhook receiver** (`step "webhook"`), boots a temporary local HTTP receiver (`start`), waits for the application under test to call back (`wait`), then asserts the inbound request — method/path/headers/body and a Stripe-style HMAC `hmac_signature` — and tears it down (`stop`). `public_host` / `public_url` / `public_port` knobs make the callback URL reachable from a Dockerized app. In-memory and HTTP-only; not a tunnel. See [docs/providers/webhook/](https://taleslabs.org/docs/providers/webhook/).
 - **Reports**: human-readable console output, JUnit XML for CI dashboards, JSONL event stream for log pipelines, single-file visual HTML report with action-by-action screenshot replay.
 
 ## Current Status
@@ -271,6 +272,9 @@ Exit codes:
   (see [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/)).
 - `step "mail" "name" { target = "..."; message { from; to/cc/bcc; subject; text/html; headers; attachment { ... } } }`
   (see [docs/providers/mail/](https://taleslabs.org/docs/providers/mail/)).
+- `step "webhook" "name" { start { path; address; public_host/public_url/public_port } | wait { timeout; count } | stop { target } }`
+  with `expect { request { method/path/headers/json/body } hmac_signature { header; secret; algorithm; format; payload } }`
+  (see [docs/providers/webhook/](https://taleslabs.org/docs/providers/webhook/)).
 - `request.body { json = ... }` for JSON payloads.
 - `request.body { form = ... }` for `application/x-www-form-urlencoded` payloads.
 - `request.body { raw = ... }` for raw string payloads.
