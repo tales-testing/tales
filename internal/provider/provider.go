@@ -22,7 +22,32 @@ type Input struct {
 	Mail     *MailExecution
 	Browser  *BrowserExecution
 	Load     *LoadExecution
+	Webhook  *WebhookExecution
 	Timeout  time.Duration
+}
+
+// WebhookExecution carries the resolved parameters for one webhook step ready
+// to be executed by the webhook provider. The runner evaluates the step's
+// start / wait / stop expressions into these concrete Go values before invoking
+// the provider. Operation is one of "start", "wait", or "stop"; only the fields
+// relevant to that operation are populated.
+type WebhookExecution struct {
+	Operation string
+
+	// start
+	ID           string
+	Address      string
+	Path         string
+	PublicURL    string
+	PublicScheme string
+	PublicHost   string
+	PublicPort   int
+	MaxBodySize  int64
+
+	// wait / stop
+	Target  string
+	Timeout time.Duration
+	Count   int
 }
 
 // LoadExecution carries the resolved execution parameters for a load

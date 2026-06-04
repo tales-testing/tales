@@ -42,6 +42,12 @@ func decodeBrowserStepIfNeeded(path string, rs stepBlock, stepName string) (*mod
 		return nil, nil
 	}
 
+	// A webhook step also carries `target`; defer to the webhook dispatcher so
+	// the user gets a webhook-specific diagnostic instead of a browser one.
+	if looksLikeWebhookStep(rs) {
+		return nil, nil
+	}
+
 	if !looksLikeBrowserStep(rs) {
 		return nil, nil
 	}

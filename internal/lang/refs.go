@@ -86,6 +86,7 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
+	collectWebhookRefs(step.Webhook, collect)
 	collectSkipRefs(step.SkipRules, collect)
 
 	// A step referencing its own name — through depends_on or a
@@ -298,6 +299,60 @@ func collectSQLRefs(sql *model.SQLCall, collect func(model.Expression)) {
 	}
 }
 
+func collectWebhookRefs(webhook *model.WebhookCall, collect func(model.Expression)) {
+	if webhook == nil {
+		return
+	}
+
+	collect(webhook.Target)
+
+	if webhook.Start != nil {
+		collect(webhook.Start.Address)
+		collect(webhook.Start.Path)
+		collect(webhook.Start.PublicURL)
+		collect(webhook.Start.PublicScheme)
+		collect(webhook.Start.PublicHost)
+		collect(webhook.Start.PublicPort)
+		collect(webhook.Start.MaxBodySize)
+	}
+
+	if webhook.Wait != nil {
+		collect(webhook.Wait.Timeout)
+		collect(webhook.Wait.Count)
+	}
+
+	if webhook.Stop != nil {
+		collect(webhook.Stop.Target)
+	}
+
+	collectWebhookExpectRefs(webhook.Expect, collect)
+}
+
+func collectWebhookExpectRefs(expect *model.WebhookExpect, collect func(model.Expression)) {
+	if expect == nil {
+		return
+	}
+
+	if expect.Request != nil {
+		collect(expect.Request.Method)
+		collect(expect.Request.Path)
+		collect(expect.Request.Headers)
+		collect(expect.Request.Query)
+		collect(expect.Request.JSON)
+		collect(expect.Request.Body)
+	}
+
+	if expect.HMAC != nil {
+		collect(expect.HMAC.Header)
+		collect(expect.HMAC.Secret)
+		collect(expect.HMAC.Algorithm)
+		collect(expect.HMAC.Format)
+		collect(expect.HMAC.Payload)
+		collect(expect.HMAC.TimestampTolerance)
+		collect(expect.HMAC.TimestampRequired)
+	}
+}
+
 func collectSkipRefs(rules []model.SkipRule, collect func(model.Expression)) {
 	for _, rule := range rules {
 		collect(rule.Condition)
@@ -373,6 +428,7 @@ func ValidateStepVars(step *model.Step) error {
 
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
+	collectWebhookRefs(step.Webhook, collect)
 
 	for ref := range seen {
 		if _, ok := declared[ref]; !ok {

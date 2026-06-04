@@ -424,6 +424,10 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 		return r.executeLoadStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
 	}
 
+	if step.Provider == webhookProviderType {
+		return r.executeWebhookStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
+	}
+
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
 
 	if failedVar, err := evaluateStepVars(evaluator, &scope, scenarioName, step); err != nil {

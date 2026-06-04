@@ -36,32 +36,58 @@ type teardownDef struct {
 }
 
 type stepBlock struct {
-	Provider    string                  `hcl:",label"`
-	Name        string                  `hcl:",label"`
-	DependsOn   []string                `hcl:"depends_on,optional"`
-	When        hcl.Expression          `hcl:"when,optional"`
-	Vars        *varsBlock              `hcl:"vars,block"`
-	Request     *requestBlock           `hcl:"request,block"`
-	Expect      *expectBlock            `hcl:"expect,block"`
-	Response    *expectBlock            `hcl:"response,block"`
-	Capture     *captureBlock           `hcl:"capture,block"`
-	Retry       *retryBlock             `hcl:"retry,block"`
-	CallName    hcl.Expression          `hcl:"name,optional"`
-	Inputs      hcl.Expression          `hcl:"inputs,optional"`
-	Platform    hcl.Expression          `hcl:"platform,optional"`
-	Target      hcl.Expression          `hcl:"target,optional"`
-	Launch      *mobileLaunchBlock      `hcl:"launch,block"`
-	Terminate   *mobileTerminateBlock   `hcl:"terminate,block"`
-	Actions     *actionsBlock           `hcl:"actions,block"`
-	Permissions *mobilePermissionsBlock `hcl:"permissions,block"`
-	Connection  hcl.Expression          `hcl:"connection,optional"`
-	Exec        *sqlOpBlock             `hcl:"exec,block"`
-	Query       *sqlOpBlock             `hcl:"query,block"`
-	Message     *messageBlock           `hcl:"message,block"`
-	HTTPReq     *requestBlock           `hcl:"http,block"`
-	Run         *runBlock               `hcl:"run,block"`
-	SkipIf      []skipBlock             `hcl:"skip_if,block"`
-	SkipUnless  []skipBlock             `hcl:"skip_unless,block"`
+	Provider     string                  `hcl:",label"`
+	Name         string                  `hcl:",label"`
+	DependsOn    []string                `hcl:"depends_on,optional"`
+	When         hcl.Expression          `hcl:"when,optional"`
+	Vars         *varsBlock              `hcl:"vars,block"`
+	Request      *requestBlock           `hcl:"request,block"`
+	Expect       *expectBlock            `hcl:"expect,block"`
+	Response     *expectBlock            `hcl:"response,block"`
+	Capture      *captureBlock           `hcl:"capture,block"`
+	Retry        *retryBlock             `hcl:"retry,block"`
+	CallName     hcl.Expression          `hcl:"name,optional"`
+	Inputs       hcl.Expression          `hcl:"inputs,optional"`
+	Platform     hcl.Expression          `hcl:"platform,optional"`
+	Target       hcl.Expression          `hcl:"target,optional"`
+	Launch       *mobileLaunchBlock      `hcl:"launch,block"`
+	Terminate    *mobileTerminateBlock   `hcl:"terminate,block"`
+	Actions      *actionsBlock           `hcl:"actions,block"`
+	Permissions  *mobilePermissionsBlock `hcl:"permissions,block"`
+	Connection   hcl.Expression          `hcl:"connection,optional"`
+	Exec         *sqlOpBlock             `hcl:"exec,block"`
+	Query        *sqlOpBlock             `hcl:"query,block"`
+	Message      *messageBlock           `hcl:"message,block"`
+	HTTPReq      *requestBlock           `hcl:"http,block"`
+	Run          *runBlock               `hcl:"run,block"`
+	WebhookStart *webhookStartBlock      `hcl:"start,block"`
+	WebhookWait  *webhookWaitBlock       `hcl:"wait,block"`
+	WebhookStop  *webhookStopBlock       `hcl:"stop,block"`
+	SkipIf       []skipBlock             `hcl:"skip_if,block"`
+	SkipUnless   []skipBlock             `hcl:"skip_unless,block"`
+}
+
+// webhookStartBlock boots a temporary local HTTP receiver. Only path is
+// required; the rest carry sensible defaults resolved at runtime.
+type webhookStartBlock struct {
+	Address      hcl.Expression `hcl:"address,optional"`
+	Path         hcl.Expression `hcl:"path,optional"`
+	PublicURL    hcl.Expression `hcl:"public_url,optional"`
+	PublicScheme hcl.Expression `hcl:"public_scheme,optional"`
+	PublicHost   hcl.Expression `hcl:"public_host,optional"`
+	PublicPort   hcl.Expression `hcl:"public_port,optional"`
+	MaxBodySize  hcl.Expression `hcl:"max_body_size,optional"`
+}
+
+// webhookWaitBlock blocks until enough requests reach the targeted receiver.
+type webhookWaitBlock struct {
+	Timeout hcl.Expression `hcl:"timeout,optional"`
+	Count   hcl.Expression `hcl:"count,optional"`
+}
+
+// webhookStopBlock shuts down the targeted receiver.
+type webhookStopBlock struct {
+	Target hcl.Expression `hcl:"target,optional"`
 }
 
 // runBlock describes how a load step should drive its request. Exactly
