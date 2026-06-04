@@ -114,6 +114,7 @@ export default defineConfig({
 						{ label: 'Mobile iOS', slug: 'docs/providers/mobile-ios' },
 						{ label: 'Browser (Chrome / Chromium)', slug: 'docs/providers/browser' },
 						{ label: 'Mail (SMTP / LMTP)', slug: 'docs/providers/mail' },
+						{ label: 'Webhook (receiver)', slug: 'docs/providers/webhook' },
 						{ label: 'Load (HTTP benchmarks)', slug: 'docs/providers/load' },
 						{ label: 'Keyword', slug: 'docs/providers/keyword' },
 					],

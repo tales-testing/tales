@@ -1,0 +1,316 @@
+---
+title: Webhook (receiver)
+description: The Tales webhook provider boots a temporary local HTTP receiver, hands its callback URL to the application under test, then waits for and asserts the inbound webhook — method, path, headers, body, and HMAC signature. Docker host reachability, request assertions, signature verification, capture, and teardown.
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="A receiver, not a sender.">
+  The `webhook` provider **receives** an inbound HTTP request from the application under test. To *send* an HTTP request, use the [`http`](/docs/providers/http) provider. The receiver is in-memory and HTTP-only: no HTTPS is generated, no tunnel is managed, and requests are not persisted across runs.
+</Aside>
+
+Many applications emit **outbound webhooks**: a notarization completes, an order ships, a payment settles, and the app POSTs a signed event to a subscriber URL. To test that path end to end, Tales must play the subscriber: start a local HTTP receiver, configure the application with its callback URL, trigger the business action, then wait for the inbound request and assert its shape and signature.
+
+## When to use it
+
+<CardGrid>
+	<Card title="Use it for" icon="approve-check">
+		- Asserting an application actually delivers a webhook after a business action.
+		- Verifying the payload shape and a Stripe-style HMAC signature header.
+		- Capturing fields from the received webhook to drive later steps.
+	</Card>
+	<Card title="Don't use it for" icon="error">
+		- Sending HTTP requests — that is the [`http`](/docs/providers/http) provider.
+		- Public internet delivery. The receiver is local; expose it to Docker with `public_host` / `public_url` (see below).
+		- Deterministic, seed-replayable data. Real inbound requests arrive on a real network; pin flakiness with `wait { timeout }`.
+	</Card>
+</CardGrid>
+
+## Operations
+
+A `webhook` step performs **exactly one** of three operations. Declaring none, or more than one, is a load-time error (exit code 2).
+
+| Operation | Purpose |
+| --- | --- |
+| `start { ... }` | Boot a receiver, expose its callback URL. |
+| `wait { ... }`  | Block until N requests arrive, then assert. |
+| `stop { ... }`  | Shut a receiver down (usually in `teardown`). |
+
+```hcl
+scenario "Webhook is delivered" {
+  step "webhook" "start_receiver" {
+    start {
+      address = "127.0.0.1:0"        # bind address; :0 picks a free port
+      path    = "/webhooks/orders"   # required, must start with "/"
+    }
+    capture {
+      id  = webhook.id
+      url = webhook.url
+    }
+  }
+
+  step "http" "configure_subscription" {
+    request {
+      method = "POST"
+      url    = "${config.api_base_url}/v1/webhook-subscriptions"
+      body { json = { url = result.start_receiver.url, events = ["order.completed"] } }
+    }
+    expect { status = one_of([200, 201]) }
+  }
+
+  step "http" "trigger_event" {
+    request {
+      method = "POST"
+      url    = "${config.api_base_url}/v1/orders/${result.begin.order_id}/complete"
+    }
+    expect { status = 200 }
+  }
+
+  step "webhook" "expect_webhook" {
+    target = result.start_receiver.id
+
+    wait {
+      timeout = "30s"
+      count   = 1
+    }
+
+    expect {
+      request {
+        method = "POST"
+        path   = "/webhooks/orders"
+        headers = {
+          "Content-Type"        = contains("application/json")
+          "X-Webhook-Signature" = is_string()
+        }
+        json = {
+          type = "order.completed"
+          data = { order = { external_id = result.begin.order_id, status = "completed" } }
+        }
+      }
+
+      hmac_signature {
+        header              = "X-Webhook-Signature"
+        secret              = config.webhook_secret
+        algorithm           = "sha256"
+        format              = "t={timestamp},v1={signature}"
+        payload             = "${timestamp}.${request.body.raw}"
+        timestamp_tolerance = "5m"
+      }
+    }
+
+    capture {
+      event_id = request.json.id
+      raw_body = request.body.raw
+    }
+  }
+
+  teardown {
+    step "webhook" "stop_receiver" {
+      when = can(result.start_receiver.id)
+      stop { target = result.start_receiver.id }
+    }
+  }
+}
+```
+
+## Start
+
+```hcl
+start {
+  address       = "0.0.0.0:0"                                  # optional, default "127.0.0.1:0"
+  path          = "/webhooks/orders"                           # required, must start with "/"
+  public_url    = env("WEBHOOK_PUBLIC_URL", "")                # optional, wins over the fields below
+  public_scheme = "http"                                       # optional, default "http"
+  public_host   = env("WEBHOOK_PUBLIC_HOST", "host.docker.internal")
+  public_port   = null                                         # optional, defaults to the real listener port
+  max_body_size = "10MB"                                       # optional, default 10MB (binary: 10 * 1024 * 1024)
+}
+```
+
+After a `start` step the `webhook` namespace is available in its `capture` block:
+
+| Field | Meaning |
+| --- | --- |
+| `webhook.id` | Stable receiver ID. Pass it as `target` to `wait` / `stop`. |
+| `webhook.url` | The externally reachable callback URL (see URL rules below). |
+| `webhook.listen_url` | The actual local URL Tales listens on. |
+| `webhook.address` | The resolved `host:port` of the listener. |
+| `webhook.port` | The resolved listener port (after a `:0` bind). |
+| `webhook.path` | The registered path. |
+
+Capture `webhook.id` so later steps can reference `result.<start step>.id`.
+
+### URL building rules
+
+1. If `public_url` is non-empty, it is used verbatim as `webhook.url`.
+2. Otherwise the URL is `<public_scheme>://<host>:<port><path>` where:
+   - `host` is `public_host` if set, else the listener host (a wildcard bind such as `0.0.0.0` collapses to `127.0.0.1`);
+   - `port` is `public_port` if set, else the real listener port.
+
+## Docker Compose host reachability
+
+When Tales runs on the host and the application under test runs in Docker Compose, the container cannot reach `127.0.0.1` on the host. Bind the receiver on all interfaces and advertise a host-reachable name:
+
+```hcl
+start {
+  address     = "0.0.0.0:0"
+  path        = "/webhooks/orders"
+  public_host = env("WEBHOOK_PUBLIC_HOST", "host.docker.internal")
+}
+# => webhook.url = http://host.docker.internal:<chosen-port>/webhooks/orders
+```
+
+On Linux, `host.docker.internal` may need an explicit mapping in the compose file:
+
+```yaml
+services:
+  api:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+If Tales itself runs inside the same Compose network, prefer the service DNS name and a fixed port:
+
+```hcl
+start {
+  address     = "0.0.0.0:9000"
+  path        = "/webhooks/orders"
+  public_host = "tales"   # the Tales service name on the Docker network
+  public_port = 9000
+}
+```
+
+If a tunnel or reverse proxy is managed externally, set `public_url` directly; Tales still listens locally on `address`:
+
+```hcl
+start {
+  address    = "127.0.0.1:9000"
+  path       = "/webhooks/orders"
+  public_url = env("WEBHOOK_PUBLIC_URL")
+}
+```
+
+Tales never inspects or configures Docker; it only exposes the `public_host` / `public_url` / `public_port` knobs.
+
+## Wait
+
+```hcl
+wait {
+  timeout = "30s"   # optional, default "30s"
+  count   = 1       # optional, default 1
+}
+```
+
+`wait` blocks until at least `count` requests have reached the receiver, then evaluates the `expect` assertions against the **latest** received request. On timeout the step fails with:
+
+```text
+webhook receiver "<id>" timed out after 30s waiting for 1 request(s), got 0
+```
+
+Inside a `wait` step's `expect` and `capture`, the received request is exposed under the `request` namespace, and a summary under `response.json`:
+
+| Expression | Meaning |
+| --- | --- |
+| `request.method` | HTTP method of the received request. |
+| `request.path` | Request path. |
+| `request.query` | Query parameters (`name` → list of strings). |
+| `request.headers` | First-value convenience map (canonical MIME keys). |
+| `request.headers_all` | All header values (`name` → list of strings). |
+| `request.body.raw` | Raw body, exactly as received. |
+| `request.body.json` / `request.json` | Parsed JSON body (null if not JSON). |
+| `response.json.received` | `true` once a request arrived. |
+| `response.json.count` | Number of requests received. |
+| `response.json.requests` | All received requests. |
+| `response.json.request` | The selected (latest) request. |
+
+## Request expectations
+
+```hcl
+expect {
+  request {
+    method  = "POST"
+    path    = "/webhooks/orders"
+    headers = { "Content-Type" = contains("application/json") }
+    query   = { source = ["billing"] }
+    json    = { type = "order.completed" }   # partial by default
+    body    = contains("order.completed")     # raw-body matcher
+  }
+}
+```
+
+Every field is optional — an absent field is not asserted. `headers`, `query`, and `json` match **partially** (only the declared keys). All the standard [matchers](/docs/reference/matchers) work: `contains`, `matches`, `one_of`, `is_string`, `optional`, `any`, and so on.
+
+## HMAC signature expectation
+
+`hmac_signature` verifies a Stripe-style signature header on the received request. It is generic enough for most schemes that sign `<timestamp>.<body>`.
+
+```hcl
+expect {
+  hmac_signature {
+    header              = "X-Webhook-Signature"
+    secret              = config.webhook_secret
+    algorithm           = "sha256"                       # sha1 | sha256 | sha384 | sha512; default sha256
+    format              = "t={timestamp},v1={signature}" # literal pattern with placeholders
+    payload             = "${timestamp}.${request.body.raw}"
+    timestamp_tolerance = "5m"                            # optional; 0 disables the freshness check
+    timestamp_required  = true                            # optional; default true when {timestamp} is present
+  }
+}
+```
+
+How it works:
+
+1. Read the `header` value from the received request.
+2. Parse it with `format`, a literal pattern where `{timestamp}` and `{signature}` are placeholders. The format is compiled to an anchored regular expression; `{signature}` is mandatory.
+3. Evaluate `payload` — a string expression with a `timestamp` variable in scope plus the full `request` namespace — to the exact bytes that were signed. Compare against `request.body.raw` (never a re-serialized body, whose byte order would differ).
+4. Compute `HMAC(secret, payload)` with `algorithm`, hex-encode it, and compare to the parsed signature in constant time.
+5. If `timestamp_tolerance` is set, parse the timestamp as Unix seconds and fail if it is outside the tolerance of the current time.
+
+Failure messages are deliberately concise and never include the secret, the payload, or the computed digest:
+
+```text
+missing signature header "X-Webhook-Signature"
+signature header does not match format "t={timestamp},v1={signature}"
+invalid webhook signature
+webhook signature timestamp is outside tolerance 5m
+```
+
+## Capture
+
+```hcl
+capture {
+  event_id   = request.json.id
+  event_type = request.json.type
+  raw_body   = request.body.raw
+  signature  = request.headers["X-Webhook-Signature"]
+  count      = response.json.count
+}
+```
+
+## Teardown
+
+A receiver lives until an explicit `stop` or the end of the suite (the provider stops all remaining receivers on close). Stop it in `teardown`, guarding on the captured id so the teardown is skipped when the receiver was never started:
+
+```hcl
+teardown {
+  step "webhook" "stop_receiver" {
+    when = can(result.start_receiver.id)
+    stop { target = result.start_receiver.id }
+  }
+}
+```
+
+## Security & masking
+
+- The HMAC `secret` is never logged and never appears in any error message.
+- Received headers are masked in the report: any header whose name contains `signature`, plus `Authorization` / `Cookie` / `X-Api-Key`, render as `***`.
+- The console / JSONL / JUnit reports carry only metadata (method, path, count, masked headers) — never the raw inbound body. The full body and headers remain available to `expect` / `capture` because you reference them explicitly.
+
+## Limitations (V1)
+
+- HTTP only; HTTPS is not generated automatically.
+- No tunnel management (no ngrok / cloudflared / webhook.site); use `public_url` for an externally managed tunnel.
+- In-memory receivers; no persistent request storage across runs.
+- No retry simulation beyond whatever the sender does.
+- The `format` parser supports a single literal pattern with `{timestamp}` / `{signature}` placeholders (no regex format).
+- Real inbound requests are not seed-deterministic; pin flakiness with `wait { timeout }` and `retry`.

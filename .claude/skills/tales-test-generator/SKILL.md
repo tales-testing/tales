@@ -33,13 +33,16 @@ Use this skill when asked to:
 - `internal/runtime/sql.go` (sql execution: expression evaluation + provider dispatch)
 - `internal/runtime/mail.go` (mail execution: message evaluation + Message-ID derivation + provider dispatch)
 - `internal/runtime/browser.go` (browser execution + capture functions)
+- `internal/runtime/webhook.go` (webhook execution: start/wait/stop lowering + request/HMAC assertions + capture)
 - `internal/provider/sql/` (sql provider package: drivers, config resolver, args/row conversion)
 - `internal/provider/mail/` (mail provider package: target config, MIME builder, SMTP/LMTP senders)
 - `internal/provider/browser/` (browser provider package: chromedp driver, Chrome locator, session lifecycle)
+- `internal/provider/webhook/` (webhook provider package: receiver lifecycle, HMAC signature helpers, URL building)
 - `website/src/content/docs/docs/providers/mobile-ios.mdx` (mobile architecture and config)
 - `website/src/content/docs/docs/providers/sql.mdx` (sql provider reference)
 - `website/src/content/docs/docs/providers/mail.mdx` (mail provider reference)
 - `website/src/content/docs/docs/providers/browser.mdx` (browser provider reference)
+- `website/src/content/docs/docs/providers/webhook.mdx` (webhook provider reference)
 - `e2e/pass/*.tales` (HTTP and SQL examples; `e2e/pass/sql.tales` is the canonical SQL scenario)
 - `e2e/ios/pass/*.tales` (mobile examples)
 - `e2e/browser/*.tales` (browser examples)
@@ -54,6 +57,7 @@ Use this skill when asked to:
 - `step "browser" "name" { target = "<name>"; actions { goto/click/fill/... } expect { visible/text/url/title/web_perf/... } capture { ... } }` — see the Browser provider section below.
 - `step "load" "name" { http { method/url/headers/body/timeout } run { duration|requests, concurrency, rate, warmup } expect { p95/error_ratio/status_2xx_ratio/... } }` — see the Load provider section below.
 - `step "mail" "name" { target = "<name>"; message { from; to/cc/bcc; subject; text/html; headers; attachment { ... } } expect { json = { accepted = true } } capture { ... } }` — see the Mail provider section below.
+- `step "webhook" "name" { start { path; address?; public_host?/public_url?/public_port? } | wait { timeout?; count? } | stop { target } }` with, on a `wait`, `expect { request { method/path/headers/query/json/body } hmac_signature { header; secret; algorithm?; format; payload; timestamp_tolerance? } } capture { ... }` — see the Webhook provider section below.
 - optional `teardown { step ... }`
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
 - optional `skip_if { ... }` / `skip_unless { ... }` on a `scenario` or `step` to gate execution on `host.os` / `host.arch`, env vars, or any bool expression. Attribute set: `condition`, `reason`, `os`, `arch`, `env_set`, `env`. Skipped scenarios skip their steps and teardown; skipped steps cascade-skip their dependents. See [docs/skip.md](../../../docs/skip.md).
@@ -887,3 +891,90 @@ recipient yields `accepted = true, rejected = true`. **A rejection with no
   content-type / size). Sensitive headers are masked.
 - **The generated Message-ID is seed-deterministic**, so the same suite +
   seed always captures the same id.
+
+## Webhook provider (`step "webhook"`)
+
+The webhook provider makes Tales the **receiver** of an outbound webhook: start
+a temporary local HTTP server, hand its callback URL to the application under
+test, trigger the action, then wait for and assert the inbound request. A step
+performs **exactly one** of `start` / `wait` / `stop`.
+
+### Step shape
+
+```hcl
+# 1. Boot a receiver and expose its callback URL.
+step "webhook" "start_receiver" {
+  start {
+    address = "127.0.0.1:0"        # default; :0 picks a free port
+    path    = "/webhooks/orders"   # required, must start with "/"
+    # For a Dockerized app calling back to the host:
+    # public_host = env("WEBHOOK_PUBLIC_HOST", "host.docker.internal")
+  }
+  capture {
+    id  = webhook.id   # capture the id so wait/stop can target it
+    url = webhook.url
+  }
+}
+
+# 2. (HTTP step) configure the app's subscription with result.start_receiver.url
+#    and trigger the business action that emits the webhook.
+
+# 3. Wait for the inbound request and assert it.
+step "webhook" "expect_webhook" {
+  target = result.start_receiver.id
+
+  wait {
+    timeout = "30s"
+    count   = 1
+  }
+
+  expect {
+    request {
+      method  = "POST"
+      path    = "/webhooks/orders"
+      headers = { "X-Webhook-Signature" = is_string() }
+      json    = { type = "order.completed" }   # partial
+    }
+
+    hmac_signature {
+      header              = "X-Webhook-Signature"
+      secret              = config.webhook_secret
+      algorithm           = "sha256"            # sha1|sha256|sha384|sha512
+      format              = "t={timestamp},v1={signature}"
+      payload             = "${timestamp}.${request.body.raw}"
+      timestamp_tolerance = "5m"
+    }
+  }
+
+  capture {
+    event_id = request.json.id
+    count    = response.json.count
+  }
+}
+
+# 4. Tear the receiver down.
+teardown {
+  step "webhook" "stop_receiver" {
+    when = can(result.start_receiver.id)
+    stop { target = result.start_receiver.id }
+  }
+}
+```
+
+### Context exposed inside a `wait` step
+
+- `request.method` / `request.path` / `request.query`.
+- `request.headers["Name"]` — first-value, canonical MIME keys.
+- `request.headers_all["Name"]` — all values (list).
+- `request.body.raw` — exact bytes received; `request.body.json` / `request.json` — parsed JSON (null if not JSON).
+- `response.json.received` / `.count` / `.requests` / `.request`.
+
+### Authoring rules (webhook)
+
+- **Capture `webhook.id` in the `start` step** so `wait` (`target = result.<start>.id`) and the teardown `stop` can reference it.
+- **`start` declares `path` (must begin with `/`)**; everything else has a default. Use `public_host` / `public_url` / `public_port` only to make the URL reachable from a container — Tales never configures Docker.
+- **Always stop the receiver in `teardown`** with `when = can(result.<start>.id)` so teardown is skipped when start never ran.
+- **HMAC `payload` must reconstruct the exact signed bytes** — use `request.body.raw`, never a re-encoded body. The `timestamp` variable holds the value parsed from the signature header.
+- **A `webhook` `expect` uses `request {}` / `hmac_signature {}` blocks**, not top-level `json` / `headers` / `status` (those are rejected at load time).
+- **Real inbound requests are not seed-deterministic** — bound the `wait { timeout }` and add `retry` if the sender is slow.
+- **Secrets never leak**: the HMAC `secret` is absent from errors, and reports carry only metadata + masked headers, never the raw inbound body.

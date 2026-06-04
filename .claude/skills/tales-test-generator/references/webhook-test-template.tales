@@ -1,0 +1,115 @@
+version = 1
+
+# Webhook receiver template.
+#
+# Tales plays the *subscriber*: it starts a local HTTP receiver, the app under
+# test calls back into it, and Tales asserts the inbound request + signature.
+#
+# Flow: start receiver -> configure subscription -> trigger event -> wait & assert -> stop.
+# Replace base_url / paths / event shape with the system under test.
+
+config {
+  base_url       = env("BASE_URL", "http://localhost:1337")
+  webhook_secret = env("WEBHOOK_SECRET", "test-secret")
+}
+
+scenario "Application delivers a signed webhook" {
+  tags = ["webhook"]
+
+  step "webhook" "start_receiver" {
+    start {
+      address = "127.0.0.1:0"          # :0 picks a free port
+      path    = "/webhooks/orders"     # required, must start with "/"
+
+      # For an app running in Docker Compose calling back to the host, advertise
+      # a host-reachable name instead of 127.0.0.1:
+      # public_host = env("WEBHOOK_PUBLIC_HOST", "host.docker.internal")
+    }
+
+    capture {
+      id  = webhook.id
+      url = webhook.url
+    }
+  }
+
+  # Point the application's webhook subscription at the receiver URL.
+  step "http" "configure_subscription" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/v1/webhook-subscriptions"
+
+      body {
+        json = {
+          url    = result.start_receiver.url
+          events = ["order.completed"]
+        }
+      }
+    }
+
+    expect {
+      status = one_of([200, 201])
+    }
+  }
+
+  # Trigger the business action that causes the app to emit the webhook.
+  step "http" "trigger_event" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/v1/orders/demo/complete"
+    }
+
+    expect {
+      status = one_of([200, 202])
+    }
+  }
+
+  # Wait for the inbound webhook and assert its shape + HMAC signature.
+  step "webhook" "expect_webhook" {
+    target = result.start_receiver.id
+
+    wait {
+      timeout = "30s"
+      count   = 1
+    }
+
+    expect {
+      request {
+        method = "POST"
+        path   = "/webhooks/orders"
+
+        headers = {
+          "Content-Type"        = contains("application/json")
+          "X-Webhook-Signature" = is_string()
+        }
+
+        json = {
+          type = "order.completed"
+        }
+      }
+
+      hmac_signature {
+        header              = "X-Webhook-Signature"
+        secret              = config.webhook_secret
+        algorithm           = "sha256"
+        format              = "t={timestamp},v1={signature}"
+        payload             = "${timestamp}.${request.body.raw}"
+        timestamp_tolerance = "5m"
+      }
+    }
+
+    capture {
+      event_id = request.json.id
+      count    = response.json.count
+    }
+  }
+
+  teardown {
+    step "webhook" "stop_receiver" {
+      when = can(result.start_receiver.id)
+
+      stop {
+        target = result.start_receiver.id
+      }
+    }
+  }
+}
