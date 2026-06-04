@@ -1,0 +1,101 @@
+version = 1
+
+config {
+  base_url       = env("BASE_URL", "http://localhost:1337")
+  webhook_secret = "test-secret"
+}
+
+scenario "Receive signed webhook" {
+  tags = ["webhook"]
+
+  # Boot a local HTTP receiver on an ephemeral port and expose its callback URL.
+  step "webhook" "start_receiver" {
+    start {
+      address = "127.0.0.1:0"
+      path    = "/webhooks/test"
+    }
+
+    capture {
+      id  = webhook.id
+      url = webhook.url
+    }
+  }
+
+  # Ask the mock server to deliver a signed webhook to the receiver URL.
+  step "http" "send_webhook" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/webhook/send"
+
+      body {
+        json = {
+          url    = result.start_receiver.url
+          secret = config.webhook_secret
+          event = {
+            id   = "evt_123"
+            type = "order.completed"
+          }
+        }
+      }
+    }
+
+    expect {
+      status = 200
+      json = {
+        sent = true
+      }
+    }
+  }
+
+  # Wait for the inbound webhook and assert its shape + HMAC signature.
+  step "webhook" "expect_webhook" {
+    target = result.start_receiver.id
+
+    wait {
+      timeout = "10s"
+      count   = 1
+    }
+
+    expect {
+      request {
+        method = "POST"
+        path   = "/webhooks/test"
+
+        headers = {
+          "Content-Type"        = contains("application/json")
+          "X-Webhook-Signature" = is_string()
+        }
+
+        json = {
+          id   = "evt_123"
+          type = "order.completed"
+        }
+      }
+
+      hmac_signature {
+        header              = "X-Webhook-Signature"
+        secret              = config.webhook_secret
+        algorithm           = "sha256"
+        format              = "t={timestamp},v1={signature}"
+        payload             = "${timestamp}.${request.body.raw}"
+        timestamp_tolerance = "5m"
+      }
+    }
+
+    capture {
+      event_id   = request.json.id
+      event_type = request.json.type
+      received   = response.json.count
+    }
+  }
+
+  teardown {
+    step "webhook" "stop_receiver" {
+      when = can(result.start_receiver.id)
+
+      stop {
+        target = result.start_receiver.id
+      }
+    }
+  }
+}

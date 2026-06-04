@@ -1,0 +1,38 @@
+version = 1
+
+# A webhook wait with no incoming request must fail fast with a clear timeout,
+# driving the CLI to exit code 1. The timeout is kept short so make
+# e2e-failure stays quick.
+scenario "Webhook wait times out" {
+  tags = ["webhook"]
+
+  step "webhook" "start_receiver" {
+    start {
+      address = "127.0.0.1:0"
+      path    = "/webhooks/never"
+    }
+
+    capture {
+      id = webhook.id
+    }
+  }
+
+  step "webhook" "expect_webhook" {
+    target = result.start_receiver.id
+
+    wait {
+      timeout = "1s"
+      count   = 1
+    }
+  }
+
+  teardown {
+    step "webhook" "stop_receiver" {
+      when = can(result.start_receiver.id)
+
+      stop {
+        target = result.start_receiver.id
+      }
+    }
+  }
+}
