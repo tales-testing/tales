@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -107,6 +108,7 @@ func main() {
 	r.HandleFunc("/markers", state.createMarker).Methods(http.MethodPost)
 	r.HandleFunc("/markers/{id}", state.getMarker).Methods(http.MethodGet)
 	r.HandleFunc("/webhook/signed", state.signedWebhook).Methods(http.MethodPost)
+	r.HandleFunc("/webhook/send", state.sendWebhook).Methods(http.MethodPost)
 	r.HandleFunc("/upload", state.upload).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts/{id}", state.getPost).Methods(http.MethodGet)
@@ -572,6 +574,75 @@ func (s *serverState) signedWebhook(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// sendWebhook delivers a signed webhook to a caller-provided URL. It backs the
+// webhook-receiver e2e scenario: Tales starts a local receiver, this endpoint
+// posts a signed event to it, and Tales asserts the inbound request. The body
+// is the JSON-encoded event; the signature is computed over "<t>.<raw>" with
+// the supplied secret and sent as "X-Webhook-Signature: t=<t>,v1=<hex>".
+func (s *serverState) sendWebhook(w http.ResponseWriter, req *http.Request) {
+	var payload struct {
+		URL    string                 `json:"url"`
+		Secret string                 `json:"secret"`
+		Event  map[string]interface{} `json:"event"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid json"})
+
+		return
+	}
+
+	if payload.URL == "" || payload.Secret == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "url and secret are required"})
+
+		return
+	}
+
+	raw, err := json.Marshal(payload.Event)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "cannot encode event"})
+
+		return
+	}
+
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+
+	mac := hmac.New(sha256.New, []byte(payload.Secret))
+	mac.Write([]byte(ts + "." + string(raw)))
+	signature := hex.EncodeToString(mac.Sum(nil))
+
+	outReq, err := http.NewRequestWithContext(req.Context(), http.MethodPost, payload.URL, bytes.NewReader(raw))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": "invalid url"})
+
+		return
+	}
+
+	outReq.Header.Set("Content-Type", "application/json")
+	outReq.Header.Set("X-Webhook-Signature", fmt.Sprintf("t=%s,v1=%s", ts, signature))
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Do(outReq)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]interface{}{"sent": false, "error": "delivery failed"})
+
+		return
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		writeJSON(w, http.StatusBadGateway, map[string]interface{}{"sent": false, "status": resp.StatusCode})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"sent": true})
 }
 
 // parseSignatureHeader splits an "t=<unix>,v1=<hex>" header. It tolerates
