@@ -120,6 +120,51 @@ func TestAssertWebhookRequestMethodMismatch(t *testing.T) {
 	}
 }
 
+func TestParseByteSize(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		in      string
+		want    int64
+		wantErr bool
+	}{
+		{"", 0, false},
+		{"512", 512, false},
+		{"100B", 100, false},
+		{"1KB", 1 << 10, false},
+		{"10MB", 10 << 20, false},
+		{"10mb", 10 << 20, false},
+		{"  2MB  ", 2 << 20, false},
+		{"1GB", 1 << 30, false},
+		{"1.5KB", 1536, false},
+		{"abc", 0, true},
+		{"10XB", 0, true},
+		{"MB", 0, true},
+	}
+
+	for _, tc := range cases {
+		got, err := parseByteSize(tc.in)
+
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("parseByteSize(%q): expected error, got %d", tc.in, got)
+			}
+
+			continue
+		}
+
+		if err != nil {
+			t.Errorf("parseByteSize(%q): unexpected error %v", tc.in, err)
+
+			continue
+		}
+
+		if got != tc.want {
+			t.Errorf("parseByteSize(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestAssertWebhookRequestJSONPartialMatch(t *testing.T) {
 	t.Parallel()
 

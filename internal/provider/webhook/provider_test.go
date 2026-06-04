@@ -242,6 +242,38 @@ func TestProviderNonMatchingPathIsNotFound(t *testing.T) {
 	}
 }
 
+func TestProviderRejectsOversizedBody(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	defer func() { _ = p.Close() }()
+
+	start, err := p.Execute(context.Background(), provider.Input{
+		Webhook: &provider.WebhookExecution{Operation: "start", ID: "webhook_big", Path: "/hook", Address: "127.0.0.1:0", MaxBodySize: 16},
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	resp, err := http.Post(listenURL(start), "application/json", strings.NewReader(strings.Repeat("x", 100)))
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body returned %d, want 413", resp.StatusCode)
+	}
+
+	// The rejected request must not have been recorded: a wait times out.
+	if _, waitErr := p.Execute(context.Background(), provider.Input{
+		Webhook: &provider.WebhookExecution{Operation: "wait", Target: "webhook_big", Count: 1, Timeout: 150 * time.Millisecond},
+	}); waitErr == nil || !strings.Contains(waitErr.Error(), "timed out") {
+		t.Fatalf("expected wait to time out on a rejected request, got %v", waitErr)
+	}
+}
+
 func TestProviderCloseStopsAllReceivers(t *testing.T) {
 	t.Parallel()
 
