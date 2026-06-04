@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -207,40 +208,7 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 			}
 		}
 
-		mobileStep, mobileDiags := decodeMobileStepIfNeeded(path, rs, step.Name)
-		diags = append(diags, mobileDiags...)
-
-		if mobileStep != nil {
-			step.Mobile = mobileStep
-		}
-
-		sqlStep, sqlDiags := decodeSQLStepIfNeeded(path, rs, step.Name)
-		diags = append(diags, sqlDiags...)
-
-		if sqlStep != nil {
-			step.SQL = sqlStep
-		}
-
-		mailStep, mailDiags := decodeMailStepIfNeeded(path, rs, step.Name)
-		diags = append(diags, mailDiags...)
-
-		if mailStep != nil {
-			step.Mail = mailStep
-		}
-
-		browserStep, browserDiags := decodeBrowserStepIfNeeded(path, rs, step.Name)
-		diags = append(diags, browserDiags...)
-
-		if browserStep != nil {
-			step.Browser = browserStep
-		}
-
-		loadStep, loadDiags := decodeLoadStepIfNeeded(path, rs, step.Name)
-		diags = append(diags, loadDiags...)
-
-		if loadStep != nil {
-			step.Load = loadStep
-		}
+		diags = append(diags, decodeProviderSteps(path, rs, step)...)
 
 		if step.Provider == "" {
 			diags = append(diags, &hcl.Diagnostic{
@@ -258,6 +226,45 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 	}
 
 	return steps, diags
+}
+
+// decodeProviderSteps runs every provider-specific decoder against the step
+// block and attaches the resulting model payload. Each decoder either returns
+// its typed payload (for its own provider) or a diagnostic when its fields
+// appear on a foreign provider. Extracted from decodeSteps to keep that
+// function under the cyclomatic-complexity budget.
+func decodeProviderSteps(path string, rs stepBlock, step *model.Step) hcl.Diagnostics {
+	mobileStep, mobileDiags := decodeMobileStepIfNeeded(path, rs, step.Name)
+	if mobileStep != nil {
+		step.Mobile = mobileStep
+	}
+
+	sqlStep, sqlDiags := decodeSQLStepIfNeeded(path, rs, step.Name)
+	if sqlStep != nil {
+		step.SQL = sqlStep
+	}
+
+	mailStep, mailDiags := decodeMailStepIfNeeded(path, rs, step.Name)
+	if mailStep != nil {
+		step.Mail = mailStep
+	}
+
+	browserStep, browserDiags := decodeBrowserStepIfNeeded(path, rs, step.Name)
+	if browserStep != nil {
+		step.Browser = browserStep
+	}
+
+	loadStep, loadDiags := decodeLoadStepIfNeeded(path, rs, step.Name)
+	if loadStep != nil {
+		step.Load = loadStep
+	}
+
+	webhookStep, webhookDiags := decodeWebhookStepIfNeeded(path, rs, step.Name)
+	if webhookStep != nil {
+		step.Webhook = webhookStep
+	}
+
+	return slices.Concat(mobileDiags, sqlDiags, mailDiags, browserDiags, loadDiags, webhookDiags)
 }
 
 func decodeMobileStepIfNeeded(path string, rs stepBlock, stepName string) (*model.MobileStep, hcl.Diagnostics) {
@@ -769,6 +776,12 @@ func bodyToNamedExprMap(path string, body hcl.Body) (map[string]model.Expression
 // model and dispatches to the provider-aware validators. Keeping it
 // outside decodeSteps keeps the latter under the gocyclo budget.
 func decodeStepExpect(path, providerType string, expect *expectBlock, step *model.Step) hcl.Diagnostics {
+	// Webhook decodes its expect (request{} / hmac_signature{}) as part of the
+	// webhook step itself; here we only reject web_perf, which is browser-only.
+	if providerType == webhookProviderType {
+		return rejectWebPerfOnNonBrowser(expect)
+	}
+
 	step.Expect = &model.Expect{
 		Status:  expr(path, expect.Status),
 		Headers: expr(path, expect.Headers),

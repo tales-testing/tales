@@ -524,7 +524,7 @@ func isSensitiveHeader(name string) bool {
 	}
 
 	// Any header whose name contains "signature" carries signing material.
-	// This covers X-Anchorify-Signature, X-Hub-Signature, X-My-Signature-Token,
+	// This covers X-Webhook-Signature, X-Hub-Signature, X-My-Signature-Token,
 	// etc. without having to enumerate every vendor-specific name.
 	return strings.Contains(normalized, "signature")
 }

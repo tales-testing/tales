@@ -148,13 +148,13 @@ func TestMaskHeadersSignatureContains(t *testing.T) {
 	t.Parallel()
 
 	headers := MaskHeaders(map[string]interface{}{
-		"X-Anchorify-Signature": "deadbeef",
+		"X-Webhook-Signature": "deadbeef",
 		"X-My-Signature-Token":  "abc123",
 		"X-Visible":             "ok",
 	})
 
-	if got := headers["X-Anchorify-Signature"]; len(got) != 1 || got[0] != "***" {
-		t.Fatalf("X-Anchorify-Signature should be masked: %v", headers)
+	if got := headers["X-Webhook-Signature"]; len(got) != 1 || got[0] != "***" {
+		t.Fatalf("X-Webhook-Signature should be masked: %v", headers)
 	}
 
 	if got := headers["X-My-Signature-Token"]; len(got) != 1 || got[0] != "***" {

@@ -20,6 +20,7 @@ type Step struct {
 	Mail      *MailCall
 	Browser   *BrowserStep
 	Load      *LoadCall
+	Webhook   *WebhookCall
 	Retry     *Retry
 	SkipRules []SkipRule
 }

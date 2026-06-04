@@ -19,6 +19,7 @@ import (
 	mailprovider "github.com/tales-testing/tales/internal/provider/mail"
 	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
 	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
+	webhookprovider "github.com/tales-testing/tales/internal/provider/webhook"
 	"github.com/tales-testing/tales/internal/report"
 	"github.com/tales-testing/tales/internal/report/visual"
 	talesruntime "github.com/tales-testing/tales/internal/runtime"
@@ -186,6 +187,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		mailprovider.New(),
 		chromebrowser.New(browserprovider.WithCaptureMode(captureMode)),
 		loadprovider.New(),
+		webhookprovider.New(),
 	))
 
 	sink := buildEventSink(cmd.Bool("no-progress"), cmd.Bool("no-color"))

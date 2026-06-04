@@ -9,16 +9,26 @@ import (
 	"github.com/tales-testing/tales/internal/model"
 )
 
+// expectAttr* name the typed attributes on expectBlock. They are shared with
+// the webhook decoder, which rejects them on a webhook step.
+const (
+	expectAttrStatus  = "status"
+	expectAttrHeaders = "headers"
+	expectAttrJSON    = "json"
+	expectAttrBody    = "body"
+	expectAttrStrict  = "strict"
+)
+
 // typedExpectAttrs are the attribute names already consumed by typed
 // fields on expectBlock. They appear in the remain body too (hclsyntax
 // only hides them from schema-driven reads, not from raw iteration),
 // so the load decoder and the non-load validator must skip them.
 var typedExpectAttrs = map[string]bool{
-	"status":  true,
-	"headers": true,
-	"json":    true,
-	"body":    true,
-	"strict":  true,
+	expectAttrStatus:  true,
+	expectAttrHeaders: true,
+	expectAttrJSON:    true,
+	expectAttrBody:    true,
+	expectAttrStrict:  true,
 }
 
 // loadExpectShortcuts is the set of attribute names a load step is
