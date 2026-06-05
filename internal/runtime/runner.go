@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/tales-testing/tales/internal/lang"
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
+	"github.com/tales-testing/tales/internal/provider/artifacts"
 	"github.com/tales-testing/tales/internal/report"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -25,6 +28,14 @@ type Options struct {
 	Parallel int
 	Tags     []string
 	Scenario string
+	// ProjectDir is the absolute project / repository root, exposed as
+	// project.dir and used as a read-only allowed root by the path resolver.
+	// Empty defaults to the current working directory.
+	ProjectDir string
+	// ArtifactsBase is the root under which per-scenario workspaces are
+	// created (<base>/scenarios/<scenario>). Empty defaults to
+	// artifacts.DefaultBase ("build/artifacts").
+	ArtifactsBase string
 	// Events optionally receives progress events as scenarios start and
 	// end. Nil disables streaming (the historical behavior). The sink must
 	// be safe for concurrent calls.
@@ -39,6 +50,11 @@ type Options struct {
 // Runner executes a suite.
 type Runner struct {
 	providers *provider.Registry
+	// projectDir is the absolute project root, set from Options at the start
+	// of Run. It is the read-only allowed root for the path resolver and the
+	// value exposed as project.dir. Written once before any scenario
+	// goroutine starts, then read-only.
+	projectDir string
 }
 
 // NewRunner creates runner.
@@ -51,6 +67,22 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 	if opts.Parallel <= 0 {
 		opts.Parallel = 1
 	}
+
+	if opts.ArtifactsBase == "" {
+		opts.ArtifactsBase = artifacts.DefaultBase
+	}
+
+	if opts.ProjectDir == "" {
+		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+			opts.ProjectDir = cwd
+		}
+	}
+
+	if abs, absErr := filepath.Abs(opts.ProjectDir); absErr == nil {
+		opts.ProjectDir = abs
+	}
+
+	r.projectDir = opts.ProjectDir
 
 	configValues, err := evalConfig(suite)
 	if err != nil {
@@ -99,7 +131,7 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 			tracker.start(sc.Name)
 			emitScenarioStarted(opts.Events, sc.Name)
 
-			scenarioResult, runErr := r.runScenario(runCtx, suite, sc, configValues, opts.Seed)
+			scenarioResult, runErr := r.runScenario(runCtx, suite, sc, configValues, opts)
 			result.Scenarios[index] = scenarioResult
 
 			// Capture the ctx state BEFORE the post-run bookkeeping so
@@ -165,9 +197,10 @@ func (r *Runner) closeProviders() {
 	}
 }
 
-func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *model.Scenario, config map[string]cty.Value, seed int64) (*report.ScenarioResult, error) {
+func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *model.Scenario, config map[string]cty.Value, opts Options) (*report.ScenarioResult, error) {
 	sResult := &report.ScenarioResult{File: scenario.File, Name: scenario.Name, Tags: scenario.Tags, Status: report.StatusPass}
 	start := time.Now()
+	seed := opts.Seed
 
 	stepNames := make([]string, 0, len(scenario.Steps)+len(scenario.Teardown))
 	for _, step := range scenario.Steps {
@@ -178,7 +211,12 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		stepNames = append(stepNames, step.Name)
 	}
 
-	state := NewScenarioState(stepNames, seed)
+	workdir, artifactsDir, scopeVars, err := buildScenarioWorkspace(opts, scenario)
+	if err != nil {
+		return nil, err
+	}
+
+	state := NewScenarioState(stepNames, seed, workdir, artifactsDir)
 
 	var evaluator *lang.Evaluator
 
@@ -203,6 +241,8 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 
 		return runGenerator(gen.Type, params, newGeneratorRandom(seed, parts...))
 	})
+
+	evaluator.SetScopeVars(scopeVars)
 
 	if handled := applyScenarioSkip(evaluator, scenario, sResult, state, config, start); handled {
 		return sResult, nil
@@ -238,6 +278,45 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	sResult.Duration = time.Since(start)
 
 	return sResult, nil
+}
+
+// buildScenarioWorkspace creates the per-scenario workspace directory and
+// returns its absolute roots plus the scenario / project namespaces to expose
+// on the evaluator. The directory name mixes the scenario name with a hash
+// over (file, name) so identical names from different files do not collide,
+// reusing the same collision-resistant scheme as the artifacts package. The
+// directory is created eagerly (before any step runs) so save / file / exec
+// can write into it; artifacts_dir is a stable subdirectory of workdir.
+func buildScenarioWorkspace(opts Options, scenario *model.Scenario) (string, string, map[string]cty.Value, error) {
+	rel := filepath.Join(
+		opts.ArtifactsBase,
+		"scenarios",
+		fmt.Sprintf("%s-%s", artifacts.SafePathSegment(scenario.Name), artifacts.Hash(scenario.File, scenario.Name)),
+	)
+
+	workdir, err := filepath.Abs(rel)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("resolve scenario workspace path: %w", err)
+	}
+
+	artifactsDir := filepath.Join(workdir, "artifacts")
+
+	if err := os.MkdirAll(artifactsDir, 0o755); err != nil {
+		return "", "", nil, fmt.Errorf("create scenario workspace: %w", err)
+	}
+
+	scopeVars := map[string]cty.Value{
+		"scenario": cty.ObjectVal(map[string]cty.Value{
+			"name":          cty.StringVal(scenario.Name),
+			"workdir":       cty.StringVal(workdir),
+			"artifacts_dir": cty.StringVal(artifactsDir),
+		}),
+		"project": cty.ObjectVal(map[string]cty.Value{
+			"dir": cty.StringVal(opts.ProjectDir),
+		}),
+	}
+
+	return workdir, artifactsDir, scopeVars, nil
 }
 
 // runScenarioSteps executes a scenario's steps sequentially in .tales file
@@ -1188,7 +1267,7 @@ func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluat
 
 	outerResults := state.GetResultMap()
 
-	keywordState, stateErr := newKeywordState(outerResults, keyword.Steps, state.Seed())
+	keywordState, stateErr := newKeywordState(outerResults, keyword.Steps, state)
 	if stateErr != nil {
 		stepReport.Status = report.StatusFail
 		stepReport.Failure = &report.ErrorDetail{Kind: kindKeyword, Message: stateErr.Error()}
@@ -1272,7 +1351,7 @@ func (r *Runner) evaluateKeywordCall(evaluator *lang.Evaluator, scope lang.Scope
 	return keywordName, inputValues, requestSummary, nil
 }
 
-func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step, seed int64) (*ScenarioState, error) {
+func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step, parent *ScenarioState) (*ScenarioState, error) {
 	stepNames := make([]string, 0, len(outerResults)+len(steps))
 	outerStepSet := toKeySet(outerResults)
 
@@ -1288,7 +1367,9 @@ func newKeywordState(outerResults map[string]cty.Value, steps []*model.Step, see
 		stepNames = append(stepNames, step.Name)
 	}
 
-	keywordState := NewScenarioState(stepNames, seed)
+	// Keyword steps share the calling scenario's workspace: save / file /
+	// exec inside a keyword resolve against the same roots.
+	keywordState := NewScenarioState(stepNames, parent.Seed(), parent.Workdir(), parent.ArtifactsDir())
 
 	for name, value := range outerResults {
 		keywordState.SetStepResult(name, value)
