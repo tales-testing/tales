@@ -13,6 +13,7 @@ import (
 	"github.com/tales-testing/tales/internal/provider"
 	browserprovider "github.com/tales-testing/tales/internal/provider/browser"
 	chromebrowser "github.com/tales-testing/tales/internal/provider/browser/chrome"
+	fileprovider "github.com/tales-testing/tales/internal/provider/file"
 	httpprovider "github.com/tales-testing/tales/internal/provider/http"
 	keywordprovider "github.com/tales-testing/tales/internal/provider/keyword"
 	loadprovider "github.com/tales-testing/tales/internal/provider/load"
@@ -188,6 +189,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		chromebrowser.New(browserprovider.WithCaptureMode(captureMode)),
 		loadprovider.New(),
 		webhookprovider.New(),
+		fileprovider.New(),
 	))
 
 	sink := buildEventSink(cmd.Bool("no-progress"), cmd.Bool("no-color"))

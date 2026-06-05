@@ -15,6 +15,7 @@ type Step struct {
 	Expect    *Expect
 	Capture   map[string]Expression
 	Save      *SaveBlock
+	FileOp    *FileCall
 	Keyword   *KeywordCall
 	Mobile    *MobileStep
 	SQL       *SQLCall

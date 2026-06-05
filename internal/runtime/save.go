@@ -17,14 +17,6 @@ import (
 // paths.
 const exprPathSaveBody = "save.body"
 
-// downloadKeyPath is the response.download.path attribute key.
-const downloadKeyPath = "path"
-
-// downloadHashAlgos are the digest algorithms exposed on response.download.
-// They mirror lang.HashHex's registry; the order is fixed for readability and
-// does not affect the resulting object (cty objects are keyed, not ordered).
-var downloadHashAlgos = []string{"sha1", "sha224", "sha256", "sha384", "sha512", "sha512_224", "sha512_256"}
-
 // applySaveAndDownload writes the HTTP response body to the path declared in
 // the step's save block (resolved under scenario.workdir) and injects a
 // response.download object carrying the file path, size and hex digests. The
@@ -100,11 +92,11 @@ func writeSaveFile(target string, data []byte) error {
 // byte length, and a hex digest for every supported algorithm.
 func buildDownloadMeta(path string, data []byte) (cty.Value, error) {
 	attrs := map[string]cty.Value{
-		downloadKeyPath: cty.StringVal(path),
-		"size_bytes":    cty.NumberIntVal(int64(len(data))),
+		keyPath: cty.StringVal(path),
+		keySize: cty.NumberIntVal(int64(len(data))),
 	}
 
-	for _, algo := range downloadHashAlgos {
+	for _, algo := range lang.HashAlgorithms() {
 		digest, err := lang.HashHex(algo, data)
 		if err != nil {
 			return cty.NilVal, fmt.Errorf("hash %s: %w", algo, err)

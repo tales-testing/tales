@@ -195,6 +195,8 @@ func decodeSteps(path string, rawSteps []stepBlock) ([]*model.Step, hcl.Diagnost
 			step.Capture = capture
 		}
 
+		diags = append(diags, decodeSaveBlock(path, rs, step)...)
+
 		if rs.Vars != nil {
 			vars, vDiags := decodeStepVars(path, rs.Vars)
 			diags = append(diags, vDiags...)
@@ -264,7 +266,12 @@ func decodeProviderSteps(path string, rs stepBlock, step *model.Step) hcl.Diagno
 		step.Webhook = webhookStep
 	}
 
-	return slices.Concat(mobileDiags, sqlDiags, mailDiags, browserDiags, loadDiags, webhookDiags)
+	fileStep, fileDiags := decodeFileStepIfNeeded(path, rs, step.Name)
+	if fileStep != nil {
+		step.FileOp = fileStep
+	}
+
+	return slices.Concat(mobileDiags, sqlDiags, mailDiags, browserDiags, loadDiags, webhookDiags, fileDiags)
 }
 
 func decodeMobileStepIfNeeded(path string, rs stepBlock, stepName string) (*model.MobileStep, hcl.Diagnostics) {
@@ -776,9 +783,10 @@ func bodyToNamedExprMap(path string, body hcl.Body) (map[string]model.Expression
 // model and dispatches to the provider-aware validators. Keeping it
 // outside decodeSteps keeps the latter under the gocyclo budget.
 func decodeStepExpect(path, providerType string, expect *expectBlock, step *model.Step) hcl.Diagnostics {
-	// Webhook decodes its expect (request{} / hmac_signature{}) as part of the
-	// webhook step itself; here we only reject web_perf, which is browser-only.
-	if providerType == webhookProviderType {
+	// Webhook and file decode their own expect surface inside their provider
+	// decoders (called from decodeProviderSteps); here we only reject
+	// web_perf, which is browser-only, and skip setting the generic Expect.
+	if providerType == webhookProviderType || providerType == fileProviderType {
 		return rejectWebPerfOnNonBrowser(expect)
 	}
 

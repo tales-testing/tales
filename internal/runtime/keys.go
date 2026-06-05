@@ -26,6 +26,10 @@ const (
 	keyTitle    = "title"
 	keyURL      = "url"
 	keyMasked   = "***"
+	keyPath     = "path"
+	keyExists   = "exists"
+	keyJSON     = "json"
+	keySize     = "size_bytes"
 
 	keyPerformance          = "performance"
 	keyDOMContentLoadedMS   = "dom_content_loaded_ms"

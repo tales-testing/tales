@@ -18,6 +18,13 @@ func FindVarRefs(expr hcl.Expression) []string {
 	return findRootAttrRefs(expr, "vars")
 }
 
+// FindFileRefs returns the attribute names referenced under the file.<attr>
+// namespace (path, exists, size_bytes, sha256, text, json, …). The file
+// provider uses it to decide which reads a capture expression requires.
+func FindFileRefs(expr hcl.Expression) []string {
+	return findRootAttrRefs(expr, "file")
+}
+
 func findRootAttrRefs(expr hcl.Expression, rootName string) []string {
 	if expr == nil {
 		return nil
@@ -80,6 +87,7 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 	}
 
 	collectSaveRefs(step.Save, collect)
+	collectFileRefs(step.FileOp, collect)
 
 	if step.Keyword != nil {
 		collect(step.Keyword.Name)
@@ -219,6 +227,27 @@ func collectSaveRefs(save *model.SaveBlock, collect func(model.Expression)) {
 	}
 
 	collect(save.Body)
+}
+
+func collectFileRefs(file *model.FileCall, collect func(model.Expression)) {
+	if file == nil {
+		return
+	}
+
+	collect(file.Path)
+
+	if file.Expect == nil {
+		return
+	}
+
+	collect(file.Expect.Exists)
+	collect(file.Expect.SizeBytes)
+	collect(file.Expect.Text)
+	collect(file.Expect.JSON)
+
+	for _, h := range file.Expect.Hashes {
+		collect(h)
+	}
 }
 
 func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
@@ -437,6 +466,7 @@ func ValidateStepVars(step *model.Step) error {
 	}
 
 	collectSaveRefs(step.Save, collect)
+	collectFileRefs(step.FileOp, collect)
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
 	collectWebhookRefs(step.Webhook, collect)
