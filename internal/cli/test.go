@@ -197,11 +197,14 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		heartbeatInterval = heartbeatTickEvery
 	}
 
+	projectDir, _ := os.Getwd()
+
 	result, err := runner.Run(ctx, suite, talesruntime.Options{
 		Seed:              seed,
 		Parallel:          cmd.Int("parallel"),
 		Tags:              cmd.StringSlice("tag"),
 		Scenario:          cmd.String("scenario"),
+		ProjectDir:        projectDir,
 		Events:            sink,
 		HeartbeatInterval: heartbeatInterval,
 	})
