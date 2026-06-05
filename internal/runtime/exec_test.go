@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/tales-testing/tales/internal/lang"
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
 	execprovider "github.com/tales-testing/tales/internal/provider/exec"
@@ -34,6 +35,33 @@ func runExecScenario(t *testing.T, allowExec bool, step *model.Step) *report.Sui
 	}
 
 	return result
+}
+
+// TestExecArtifactsSegmentNamespacesBySeedScope verifies that the same exec
+// step name yields distinct artifacts directories per keyword call site, so a
+// later call's start-of-run cleanup cannot wipe an earlier call's artifacts.
+func TestExecArtifactsSegmentNamespacesBySeedScope(t *testing.T) {
+	t.Parallel()
+
+	ev := lang.NewEvaluator(nil)
+
+	atScenario := execArtifactsSegment(ev, "run")
+
+	restoreA := ev.PushSeedScope("call_a")
+	fromCallA := execArtifactsSegment(ev, "run")
+	restoreA()
+
+	restoreB := ev.PushSeedScope("call_b")
+	fromCallB := execArtifactsSegment(ev, "run")
+	restoreB()
+
+	if atScenario == fromCallA || fromCallA == fromCallB || atScenario == fromCallB {
+		t.Fatalf("expected distinct segments, got scenario=%q call_a=%q call_b=%q", atScenario, fromCallA, fromCallB)
+	}
+
+	if atScenario != "run" {
+		t.Fatalf("scenario-level segment should be the plain step name, got %q", atScenario)
+	}
 }
 
 func TestExecDisabledFailsStepWithExactMessage(t *testing.T) {

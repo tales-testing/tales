@@ -35,12 +35,11 @@ func runFileScenario(t *testing.T, base string, step *model.Step) *report.SuiteR
 func seedWorkspaceFile(t *testing.T, base, rel string, data []byte) {
 	t.Helper()
 
-	_, _, _, err := buildScenarioWorkspace(Options{ArtifactsBase: base, ProjectDir: t.TempDir()}, &model.Scenario{Name: "inspect", File: "test.tales"})
+	workdir, _, _, err := buildScenarioWorkspace(Options{ArtifactsBase: base, ProjectDir: t.TempDir()}, &model.Scenario{Name: "inspect", File: "test.tales"})
 	if err != nil {
 		t.Fatalf("workspace: %v", err)
 	}
 
-	workdir, _, _, _ := buildScenarioWorkspace(Options{ArtifactsBase: base}, &model.Scenario{Name: "inspect", File: "test.tales"})
 	target := filepath.Join(workdir, rel)
 
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {

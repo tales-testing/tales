@@ -73,15 +73,20 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 	}
 
 	if opts.ProjectDir == "" {
-		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
-			opts.ProjectDir = cwd
+		cwd, cwdErr := os.Getwd()
+		if cwdErr != nil {
+			return nil, fmt.Errorf("determine project directory: %w", cwdErr)
 		}
+
+		opts.ProjectDir = cwd
 	}
 
-	if abs, absErr := filepath.Abs(opts.ProjectDir); absErr == nil {
-		opts.ProjectDir = abs
+	abs, absErr := filepath.Abs(opts.ProjectDir)
+	if absErr != nil {
+		return nil, fmt.Errorf("resolve project directory %q: %w", opts.ProjectDir, absErr)
 	}
 
+	opts.ProjectDir = abs
 	r.projectDir = opts.ProjectDir
 
 	configValues, err := evalConfig(suite)
