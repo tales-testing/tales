@@ -65,8 +65,24 @@ type stepBlock struct {
 	WebhookWait  *webhookWaitBlock       `hcl:"wait,block"`
 	WebhookStop  *webhookStopBlock       `hcl:"stop,block"`
 	Path         hcl.Expression          `hcl:"path,optional"`
+	Command      hcl.Expression          `hcl:"command,optional"`
+	Args         hcl.Expression          `hcl:"args,optional"`
+	Env          hcl.Expression          `hcl:"env,optional"`
+	Stdin        hcl.Expression          `hcl:"stdin,optional"`
+	Timeout      hcl.Expression          `hcl:"timeout,optional"`
+	Sandbox      *sandboxBlock           `hcl:"sandbox,block"`
 	SkipIf       []skipBlock             `hcl:"skip_if,block"`
 	SkipUnless   []skipBlock             `hcl:"skip_unless,block"`
+}
+
+// sandboxBlock configures the exec soft sandbox. mode is process | docker;
+// workdir is scenario | project | a custom path; env is minimal | inherit;
+// network is advisory in process mode.
+type sandboxBlock struct {
+	Mode    hcl.Expression `hcl:"mode,optional"`
+	Workdir hcl.Expression `hcl:"workdir,optional"`
+	Env     hcl.Expression `hcl:"env,optional"`
+	Network hcl.Expression `hcl:"network,optional"`
 }
 
 // webhookStartBlock boots a temporary local HTTP receiver. Only path is

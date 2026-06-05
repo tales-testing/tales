@@ -76,6 +76,14 @@ func (r Resolver) ResolveInput(p string) (string, error) {
 	return "", escapeError(p)
 }
 
+// Contains reports whether target (an absolute, cleaned path) resolves within
+// root, applying the same best-effort symlink canonicalization as the
+// resolver. The exec provider uses it to enforce the command-path policy
+// (absolute commands must live under the scenario workdir or the project dir).
+func Contains(root, target string) (bool, error) {
+	return contained(root, target)
+}
+
 // cleanAbs turns a possibly-relative path into a cleaned absolute path under
 // base. Relative paths are joined onto base first; absolute paths are cleaned
 // as-is. filepath.Join already cleans, so this collapses ../ segments before
