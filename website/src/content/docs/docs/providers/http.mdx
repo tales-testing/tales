@@ -221,6 +221,62 @@ Cookie names that are not HCL identifiers (e.g. `ia-session`) are accessible via
 
 When the runner renders a response into a report, `Cookie`/`Set-Cookie` headers, any header whose name contains `signature` (case-insensitive), and the `value`/`raw` fields of every parsed cookie are replaced with `***`. Captures see the unmasked values, masking only applies to report output.
 
+## Saving the response body
+
+A `save` block writes the raw response body to the scenario workspace, so a
+later [`file`](/docs/providers/file/) or [`exec`](/docs/providers/exec/) step
+can inspect or verify the downloaded artifact:
+
+```hcl
+step "http" "download_certificate" {
+  request {
+    method = "GET"
+    url    = "${config.api_url}/proofs/${result.create_proof.id}/certificate"
+  }
+
+  expect {
+    status = 200
+    headers = {
+      "Content-Type" = contains("application/pdf")
+    }
+  }
+
+  save {
+    body = "downloads/certificate.pdf"
+  }
+
+  capture {
+    path   = response.download.path
+    sha512 = response.download.sha512
+    size   = response.download.size_bytes
+  }
+}
+```
+
+Behavior:
+
+- The bytes are written exactly as received — binary bodies are not corrupted
+  and no UTF-8 conversion happens.
+- A relative path resolves under [`scenario.workdir`](/docs/reference/variables/);
+  parent directories are created automatically.
+- Paths that escape the workspace (`../outside`, an absolute path outside it)
+  are rejected and the step fails.
+- The save happens after the response arrives and before `expect` / `capture`
+  run, so the metadata below is available to both.
+- `save` is only valid on `http` steps.
+
+When a `save` block is present, the body metadata is exposed under
+`response.download`:
+
+| Field                       | Type   | Notes                                              |
+| --------------------------- | ------ | -------------------------------------------------- |
+| `response.download.path`    | string | Absolute path of the saved file.                   |
+| `response.download.size_bytes` | number | Body size in bytes.                             |
+| `response.download.sha1` … `sha512_256` | string | Lowercase hex digests of the body (sha1, sha224, sha256, sha384, sha512, sha512_224, sha512_256). |
+
+`response.body` is unaffected — it remains the raw body string, so
+`regex_find(response.body, …)` and `expect { body = … }` keep working.
+
 ## Timeouts
 
 | Source                       | Effect                                            |

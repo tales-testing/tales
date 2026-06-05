@@ -91,6 +91,7 @@ The provider's response, bound after the step's request fires. Available inside 
 | `response.headers`     | Map of strings (HTTP).                                               |
 | `response.json`        | Parsed JSON body when the body is JSON; SQL result shape; mobile expects don't expose `response.json`. |
 | `response.body`        | Raw body string (HTTP).                                              |
+| `response.download`    | Saved-file metadata when the HTTP step has a [`save`](/docs/providers/http/) block: `.path`, `.size_bytes`, `.sha1` … `.sha512_256`. |
 
 ```hcl
 expect {
@@ -145,6 +146,30 @@ step "http" "signed" {
 ```
 
 See [Step-local vars](/docs/writing-scenarios/step-vars/) for evaluation order and scope rules.
+
+## `scenario` and `project`
+
+Every scenario gets a writable workspace directory, created before its steps
+run. The paths are exposed so the [HTTP `save`](/docs/providers/http/),
+[`file`](/docs/providers/file/) and [`exec`](/docs/providers/exec/) surfaces
+can read and write artifacts.
+
+| Field                    | Notes                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------- |
+| `scenario.name`          | The current scenario's name.                                                     |
+| `scenario.workdir`       | Absolute, writable per-scenario directory. Relative save / file / exec paths resolve under it. |
+| `scenario.artifacts_dir` | Absolute artifacts directory (a subdirectory of `workdir`).                      |
+| `project.dir`            | Absolute project / repository root (where `tales` was invoked). Read-only for path resolution; reference project files as `${project.dir}/fixtures/...`. |
+
+```hcl
+step "exec" "verify" {
+  command = "${project.dir}/bin/verify"
+  args    = ["--output", "${scenario.workdir}/verify.json"]
+}
+```
+
+Relative output paths resolve under `scenario.workdir`; paths escaping the
+workspace (or, for reads, the project dir) are rejected.
 
 ## `host`
 
@@ -202,6 +227,10 @@ Both functions error if the element is missing. Wrap in `can(...)` if you want a
 | `response`          | current step's `expect` / `capture`         |
 | `input`             | keyword body                                |
 | `vars`              | current step's `request` / `expect` / `capture` |
+| `scenario`          | anywhere (workdir / artifacts_dir / name)   |
+| `project`           | anywhere (`project.dir`)                     |
 | `host`              | anywhere                                    |
 | `value("id")`       | mobile step's `capture` / `expect`          |
 | `text("id")`        | mobile step's `capture` / `expect`          |
+| `file`              | file step's `capture` (`file.path`, `file.json`, `file.sha256`, …) |
+| `stdout` / `stderr` / `exec` | exec step's `expect` / `capture` (`stdout.json`, `exec.exit_code`, …) |

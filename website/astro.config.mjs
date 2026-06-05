@@ -116,6 +116,8 @@ export default defineConfig({
 						{ label: 'Mail (SMTP / LMTP)', slug: 'docs/providers/mail' },
 						{ label: 'Webhook (receiver)', slug: 'docs/providers/webhook' },
 						{ label: 'Load (HTTP benchmarks)', slug: 'docs/providers/load' },
+						{ label: 'File', slug: 'docs/providers/file' },
+						{ label: 'Exec', slug: 'docs/providers/exec' },
 						{ label: 'Keyword', slug: 'docs/providers/keyword' },
 					],
 				},
