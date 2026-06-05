@@ -14,6 +14,7 @@ type Step struct {
 	Request   *Request
 	Expect    *Expect
 	Capture   map[string]Expression
+	Save      *SaveBlock
 	Keyword   *KeywordCall
 	Mobile    *MobileStep
 	SQL       *SQLCall
@@ -23,6 +24,13 @@ type Step struct {
 	Webhook   *WebhookCall
 	Retry     *Retry
 	SkipRules []SkipRule
+}
+
+// SaveBlock persists part of an HTTP response to the scenario workspace.
+// V1 supports body = "<path>", which writes the raw response body bytes; the
+// path resolves under scenario.workdir. It is only valid on http steps.
+type SaveBlock struct {
+	Body Expression
 }
 
 // StepVar is one step-local variable declared in a vars block. Vars are

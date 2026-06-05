@@ -9,6 +9,7 @@ const (
 	kindVars     = "vars"
 	kindKeyword  = "keyword"
 	kindSkip     = "skip"
+	kindSave     = "save"
 
 	outputRequest  = "request"
 	outputResponse = "response"

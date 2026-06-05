@@ -79,6 +79,8 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 		collect(capExpr)
 	}
 
+	collectSaveRefs(step.Save, collect)
+
 	if step.Keyword != nil {
 		collect(step.Keyword.Name)
 		collect(step.Keyword.Inputs)
@@ -209,6 +211,14 @@ func collectExpectRefs(expect *model.Expect, collect func(model.Expression)) {
 	collect(expect.JSON)
 	collect(expect.Body)
 	collect(expect.Strict)
+}
+
+func collectSaveRefs(save *model.SaveBlock, collect func(model.Expression)) {
+	if save == nil {
+		return
+	}
+
+	collect(save.Body)
 }
 
 func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
@@ -426,6 +436,7 @@ func ValidateStepVars(step *model.Step) error {
 		collect(step.Keyword.Inputs)
 	}
 
+	collectSaveRefs(step.Save, collect)
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
 	collectWebhookRefs(step.Webhook, collect)
