@@ -13,6 +13,7 @@ import (
 	"github.com/tales-testing/tales/internal/provider"
 	browserprovider "github.com/tales-testing/tales/internal/provider/browser"
 	chromebrowser "github.com/tales-testing/tales/internal/provider/browser/chrome"
+	execprovider "github.com/tales-testing/tales/internal/provider/exec"
 	fileprovider "github.com/tales-testing/tales/internal/provider/file"
 	httpprovider "github.com/tales-testing/tales/internal/provider/http"
 	keywordprovider "github.com/tales-testing/tales/internal/provider/keyword"
@@ -54,6 +55,7 @@ func NewTestCommand() *cli.Command {
 			&cli.StringFlag{Name: "capture-screenshots", Usage: "Mobile screenshot capture mode (none|failures|steps|actions)"},
 			&cli.DurationFlag{Name: "timeout", Usage: "Global wall-clock budget for the whole run (e.g. 30s, 5m). 0 disables (default)."},
 			&cli.BoolFlag{Name: "verbose", Usage: "Emit a heartbeat every 30s listing scenarios still running"},
+			&cli.BoolFlag{Name: "allow-exec", Usage: "Allow exec steps to run external programs (disabled by default)"},
 		},
 		Action: runTest,
 	}
@@ -190,6 +192,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		loadprovider.New(),
 		webhookprovider.New(),
 		fileprovider.New(),
+		execprovider.New(execprovider.WithAllowExec(cmd.Bool("allow-exec"))),
 	))
 
 	sink := buildEventSink(cmd.Bool("no-progress"), cmd.Bool("no-color"))

@@ -497,6 +497,8 @@ func (r *Runner) dispatchProviderStep(ctx context.Context, evaluator *lang.Evalu
 		return r.executeWebhookStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
 	case fileProviderType:
 		return r.executeFileStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case execProviderType:
+		return r.executeExecStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
 	default:
 		return nil, false
 	}

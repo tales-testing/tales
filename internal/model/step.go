@@ -16,6 +16,7 @@ type Step struct {
 	Capture   map[string]Expression
 	Save      *SaveBlock
 	FileOp    *FileCall
+	Exec      *ExecCall
 	Keyword   *KeywordCall
 	Mobile    *MobileStep
 	SQL       *SQLCall

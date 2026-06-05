@@ -271,7 +271,12 @@ func decodeProviderSteps(path string, rs stepBlock, step *model.Step) hcl.Diagno
 		step.FileOp = fileStep
 	}
 
-	return slices.Concat(mobileDiags, sqlDiags, mailDiags, browserDiags, loadDiags, webhookDiags, fileDiags)
+	execStep, execDiags := decodeExecStepIfNeeded(path, rs, step.Name)
+	if execStep != nil {
+		step.Exec = execStep
+	}
+
+	return slices.Concat(mobileDiags, sqlDiags, mailDiags, browserDiags, loadDiags, webhookDiags, fileDiags, execDiags)
 }
 
 func decodeMobileStepIfNeeded(path string, rs stepBlock, stepName string) (*model.MobileStep, hcl.Diagnostics) {
@@ -786,7 +791,7 @@ func decodeStepExpect(path, providerType string, expect *expectBlock, step *mode
 	// Webhook and file decode their own expect surface inside their provider
 	// decoders (called from decodeProviderSteps); here we only reject
 	// web_perf, which is browser-only, and skip setting the generic Expect.
-	if providerType == webhookProviderType || providerType == fileProviderType {
+	if providerType == webhookProviderType || providerType == fileProviderType || providerType == execProviderType {
 		return rejectWebPerfOnNonBrowser(expect)
 	}
 

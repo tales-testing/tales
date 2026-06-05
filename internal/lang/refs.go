@@ -88,6 +88,7 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 
 	collectSaveRefs(step.Save, collect)
 	collectFileRefs(step.FileOp, collect)
+	collectExecRefs(step.Exec, collect)
 
 	if step.Keyword != nil {
 		collect(step.Keyword.Name)
@@ -247,6 +248,32 @@ func collectFileRefs(file *model.FileCall, collect func(model.Expression)) {
 
 	for _, h := range file.Expect.Hashes {
 		collect(h)
+	}
+}
+
+func collectExecRefs(exec *model.ExecCall, collect func(model.Expression)) {
+	if exec == nil {
+		return
+	}
+
+	collect(exec.Command)
+	collect(exec.Args)
+	collect(exec.Env)
+	collect(exec.Stdin)
+	collect(exec.Timeout)
+
+	if exec.Sandbox != nil {
+		collect(exec.Sandbox.Mode)
+		collect(exec.Sandbox.Workdir)
+		collect(exec.Sandbox.Env)
+		collect(exec.Sandbox.Network)
+	}
+
+	if exec.Expect != nil {
+		collect(exec.Expect.ExitCode)
+		collect(exec.Expect.Stdout)
+		collect(exec.Expect.Stderr)
+		collect(exec.Expect.StdoutJSON)
 	}
 }
 
@@ -467,6 +494,7 @@ func ValidateStepVars(step *model.Step) error {
 
 	collectSaveRefs(step.Save, collect)
 	collectFileRefs(step.FileOp, collect)
+	collectExecRefs(step.Exec, collect)
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
 	collectWebhookRefs(step.Webhook, collect)

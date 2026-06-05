@@ -24,7 +24,39 @@ type Input struct {
 	Load     *LoadExecution
 	Webhook  *WebhookExecution
 	File     *FileExecution
+	Exec     *ExecExecution
 	Timeout  time.Duration
+}
+
+// ExecExecution carries the resolved data for one exec step. The runtime
+// evaluates the step's expressions and resolves the working directory; the
+// provider resolves the command against the roots, builds the process
+// environment, runs the program directly (never via a shell) and captures the
+// streams. AllowExec is checked by the provider before any spawn.
+type ExecExecution struct {
+	// Command is the program as written (bare name, ./relative, or absolute);
+	// the provider resolves it against Workdir / ProjectDir per the command
+	// resolution policy.
+	Command string
+	Args    []string
+	// Env holds the user-supplied environment overlaid on the base
+	// environment selected by EnvMode ("minimal" or "inherit").
+	Env     map[string]string
+	EnvMode string
+	Stdin   string
+	Timeout time.Duration
+	// SandboxMode is "process" (soft sandbox) or "docker" (reserved, not
+	// implemented). Network is advisory in process mode.
+	SandboxMode string
+	Network     bool
+	// Workdir is the absolute working directory the process runs in.
+	// ProjectDir is the project root used only for command resolution.
+	Workdir    string
+	ProjectDir string
+	// ArtifactsDir is where stdout.txt / stderr.txt / metadata.json /
+	// stdout.json are written. MaxOutput caps each captured stream in bytes.
+	ArtifactsDir string
+	MaxOutput    int64
 }
 
 // FileExecution carries the resolved data for one file step. Path is absolute
