@@ -1,0 +1,86 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# End-to-end artifact-verification flow, kept fully generic:
+#   1. download a binary file and save it to the scenario workspace,
+#   2. inspect the saved file with the file provider (size + hashes),
+#   3. run an external verifier (exec) over it and assert its JSON output.
+scenario "Download a file and verify it with exec" {
+  tags = ["exec", "file", "download"]
+
+  step "http" "download_file" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/files/certificate.pdf"
+    }
+
+    expect {
+      status = 200
+      headers = {
+        "Content-Type" = contains("application/pdf")
+      }
+    }
+
+    save {
+      body = "downloads/certificate.pdf"
+    }
+
+    capture {
+      path   = response.download.path
+      sha256 = response.download.sha256
+      sha512 = response.download.sha512
+      size   = response.download.size_bytes
+    }
+  }
+
+  step "file" "check_file" {
+    path = result.download_file.path
+
+    expect {
+      exists     = true
+      size_bytes = result.download_file.size
+      sha256     = result.download_file.sha256
+      sha512     = result.download_file.sha512
+    }
+
+    capture {
+      path   = file.path
+      sha512 = file.sha512
+    }
+  }
+
+  step "exec" "verify_file" {
+    command = "./build/e2e-tools/verify-file"
+
+    args = [
+      result.download_file.path,
+    ]
+
+    timeout = "10s"
+
+    sandbox {
+      mode    = "process"
+      workdir = "scenario"
+      env     = "minimal"
+      network = false
+    }
+
+    expect {
+      exit_code = 0
+
+      stdout_json = {
+        valid      = true
+        size_bytes = result.download_file.size
+        sha256     = result.download_file.sha256
+        sha512     = result.download_file.sha512
+      }
+    }
+
+    capture {
+      verified_sha512 = stdout.json.sha512
+    }
+  }
+}

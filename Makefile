@@ -290,6 +290,41 @@ e2e-load: build
 	  --report-jsonl $(BUILD_DIR)/reports/e2e-load.jsonl \
 	  ./e2e/load
 
+# exec e2e. Kept out of the default `e2e` target because the exec provider is
+# opt-in (--allow-exec) and runs an external helper. Builds the generic
+# verify-file helper, starts the mock server, then drives the download -> file
+# -> exec flow.
+VERIFY_FILE_BIN := $(BUILD_DIR)/e2e-tools/verify-file
+
+.PHONY: verify-file-bin
+verify-file-bin: | $(BUILD_READY)
+	@mkdir -p $(BUILD_DIR)/e2e-tools
+	@go build -o $(VERIFY_FILE_BIN) ./e2e/tools/verify-file
+
+.PHONY: e2e-exec
+e2e-exec: build verify-file-bin
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	BASE_URL=http://localhost:1337 $(TALES_BIN) test --allow-exec --seed 1234 --parallel 1 \
+	  --report-junit $(BUILD_DIR)/reports/e2e-exec.junit.xml \
+	  --report-jsonl $(BUILD_DIR)/reports/e2e-exec.jsonl \
+	  ./e2e/exec
+
 .PHONY: e2e-failure
 e2e-failure: build
 	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
