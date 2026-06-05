@@ -1,0 +1,114 @@
+---
+title: File
+description: The Tales file provider inspects a file produced earlier in a scenario — existence, size, SHA digests, UTF-8 text and parsed JSON — and exposes them under the file.* namespace for assertions and capture.
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+The `file` provider inspects a file that an earlier step produced — typically
+one written by an HTTP [`save`](/docs/providers/http/) block or by an
+[`exec`](/docs/providers/exec/) tool. It asserts existence, size, hex digests,
+text and JSON content, and exposes the same data under the `file.*` namespace
+for capture.
+
+## When to use it
+
+<CardGrid>
+	<Card title="Use it for" icon="approve-check">
+		- Asserting a downloaded artifact exists and has the expected size / hash.
+		- Reading a tool's JSON or text output file and asserting on its contents.
+		- Capturing file metadata or parsed fields to drive later steps.
+	</Card>
+	<Card title="Don't use it for" icon="error">
+		- Writing files — the file provider is read-only. Produce files with HTTP `save` or `exec`.
+		- Reading arbitrary host paths. Paths resolve under the scenario workspace (or the project dir for `${project.dir}/...`).
+	</Card>
+</CardGrid>
+
+## Inspecting a file
+
+```hcl
+step "file" "check_certificate" {
+  path = result.download_certificate.path
+
+  expect {
+    exists     = true
+    size_bytes = gt(0)
+    sha512     = result.download_certificate.sha512
+  }
+
+  capture {
+    path   = file.path
+    size   = file.size_bytes
+    sha512 = file.sha512
+  }
+}
+```
+
+`path` is the only required attribute.
+
+- A **relative** path resolves under [`scenario.workdir`](/docs/reference/variables/).
+- Reference project files with `${project.dir}/fixtures/document.pdf`.
+- Paths that escape the workspace (and the project dir) are rejected.
+
+## JSON and text assertions
+
+```hcl
+step "file" "read_verify_result" {
+  path = "exec/verify_certificate/stdout.json"
+
+  expect {
+    json = { valid = true }
+  }
+
+  capture {
+    root = file.json.merkle.root
+  }
+}
+
+step "file" "read_log" {
+  path = "exec/verify_certificate/stderr.txt"
+
+  expect {
+    text = contains("warning")
+  }
+}
+```
+
+## Missing files
+
+The provider does **not** fail just because a file is absent — it reports
+`exists = false`. A failure only occurs when an assertion or capture actually
+needs to read the file:
+
+```hcl
+step "file" "must_be_absent" {
+  path = "should-not-exist.tmp"
+  expect { exists = false }   // passes when the file is missing
+}
+```
+
+If `json` is asserted/captured and the file is not valid JSON, or `text` is
+asked for and the bytes are not valid UTF-8, the step fails with a clear error.
+
+## The `file.*` namespace
+
+| Field            | Type    | Notes                                                       |
+| ---------------- | ------- | ----------------------------------------------------------- |
+| `file.path`      | string  | Absolute resolved path.                                     |
+| `file.exists`    | bool    | Whether the file exists (and is not a directory).           |
+| `file.size_bytes`| number  | File size in bytes.                                         |
+| `file.sha1` … `file.sha512_256` | string | Lowercase hex digests (sha1, sha224, sha256, sha384, sha512, sha512_224, sha512_256). |
+| `file.text`      | string  | File contents as UTF-8 text (when requested).               |
+| `file.json`      | dynamic | Parsed JSON (when requested).                               |
+
+## Expectations
+
+`exists`, `size_bytes`, the `sha*` digests, `text` and `json` are all
+assertable; each accepts a literal or a [matcher](/docs/reference/matchers/)
+(`gt(0)`, `contains("...")`, `{ valid = true }`, …).
+
+<Aside type="note" title="Report output">
+	The file report carries only metadata (path, existence, size, digests). File
+	text and parsed JSON are never echoed into the console / JSONL report.
+</Aside>

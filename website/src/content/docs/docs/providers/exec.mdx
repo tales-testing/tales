@@ -1,0 +1,200 @@
+---
+title: Exec
+description: The Tales exec provider runs an external program directly (never through a shell) and exposes its exit code, stdout, stderr and duration for assertions and capture. Disabled by default; enable with --allow-exec. The process sandbox is a hygiene feature, not a security boundary.
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+The `exec` provider runs an external verifier or helper program and asserts on
+its exit code and output. It is the bridge to logic Tales deliberately does not
+build in — hashing tools, format validators, custom CLIs — while keeping the
+DSL generic.
+
+<Aside type="danger" title="Disabled by default">
+	Exec steps do **not** run unless you pass `--allow-exec` to `tales test`.
+	Without it, every exec step fails before execution with:
+
+	```text
+	exec provider is disabled by default. Re-run with --allow-exec.
+	```
+
+	`tales validate` parses exec steps without the flag. This keeps arbitrary
+	command execution from being enabled by a `.tales` file alone or silently in
+	CI.
+</Aside>
+
+## When to use it
+
+<CardGrid>
+	<Card title="Use it for" icon="approve-check">
+		- Running an external verifier over a downloaded artifact and parsing its JSON.
+		- Invoking a project script or CLI as part of an end-to-end flow.
+		- Asserting a tool's exit code, stdout / stderr, or structured output.
+	</Card>
+	<Card title="Don't use it for" icon="error">
+		- Anything needing strong isolation — the process sandbox is not a security boundary (see below).
+		- Deterministic, seed-replayable data — exec output and duration are inherently non-deterministic.
+		- Shell pipelines — Tales calls the program directly; there is no shell.
+	</Card>
+</CardGrid>
+
+## Running a program
+
+```hcl
+step "exec" "verify_certificate" {
+  command = "./bin/artifact-verify"
+
+  args = [
+    "--certificate", result.download_certificate.path,
+    "--format", "json",
+  ]
+
+  env = {
+    VERIFY_STRICT = "1"
+  }
+
+  timeout = "30s"
+
+  sandbox {
+    mode    = "process"
+    workdir = "scenario"
+    env     = "minimal"
+    network = false
+  }
+
+  expect {
+    exit_code = 0
+
+    stdout_json = {
+      valid          = true
+      hash_algorithm = "SHA512"
+    }
+  }
+
+  capture {
+    merkle_root = stdout.json.merkle.root
+  }
+}
+```
+
+Run a script through an interpreter by naming the interpreter as the command:
+
+```hcl
+step "exec" "verify_with_python" {
+  command = "python3"
+  args    = ["${project.dir}/scripts/verify_proof.py", result.download.path]
+  timeout = "30s"
+  expect { exit_code = 0 }
+}
+```
+
+### No implicit shell
+
+Tales calls the executable directly with its `args`. `command = "bash"`,
+`args = ["script.sh"]` runs bash with that argument; `command = "bash -c ..."`
+is **not** split or interpreted — it is treated as a single program name and
+will fail to resolve. There is no variable expansion, globbing, or piping.
+
+## Fields
+
+| Field      | Notes                                                                 |
+| ---------- | --------------------------------------------------------------------- |
+| `command`  | Required. The program to run (see command resolution below).          |
+| `args`     | Optional `list(string)`.                                              |
+| `env`      | Optional `map(string)` overlaid on the base environment.              |
+| `stdin`    | Optional string piped to the program's stdin.                         |
+| `timeout`  | Optional duration (default `30s`). On timeout the process is killed and the step fails. |
+| `sandbox`  | Optional. See below.                                                  |
+
+### Command resolution
+
+| Form                         | Resolution                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| Bare name (`python3`)        | Looked up on `PATH`.                                                        |
+| Relative (`./bin/tool`)      | Resolved under `project.dir`; must stay within it.                         |
+| Absolute (`${project.dir}/bin/tool`) | Allowed only within the scenario workdir or the project dir.       |
+
+Absolute paths outside those roots (`/usr/bin/python3`, `/tmp/tool`) are
+rejected — reference system interpreters by **bare name** so resolution stays
+deterministic across machines.
+
+## Output and assertions
+
+The response exposes:
+
+| Field                 | Notes                                                  |
+| --------------------- | ------------------------------------------------------ |
+| `exec.exit_code`      | Process exit status.                                   |
+| `exec.duration_ms`    | Wall-clock duration (non-deterministic).               |
+| `stdout.raw`          | Captured stdout (capped at 1 MiB).                     |
+| `stdout.json`         | Parsed stdout JSON, or `null` when stdout is not JSON. |
+| `stdout.truncated`    | `true` when stdout exceeded the cap.                   |
+| `stderr.raw`          | Captured stderr (capped at 1 MiB).                     |
+| `stderr.truncated`    | `true` when stderr exceeded the cap.                   |
+
+```hcl
+expect {
+  exit_code = 0
+  stdout    = contains("ok")
+  stderr    = ""
+  stdout_json = { valid = true }
+}
+```
+
+`exit_code`, `stdout`, `stderr` (matched against the raw streams) and
+`stdout_json` (matched against the parsed JSON) are all optional. When
+`stdout_json` is declared but stdout is not valid JSON, the step fails clearly.
+
+When a stream exceeds 1 MiB it is truncated, `truncated` is set, and the
+truncated bytes are still written to the artifact.
+
+## Artifacts
+
+Every exec step writes, under `scenario.workdir/exec/<step-name>/`:
+
+| File            | Contents                                                            |
+| --------------- | ------------------------------------------------------------------- |
+| `stdout.txt`    | Captured stdout (possibly truncated).                               |
+| `stderr.txt`    | Captured stderr (possibly truncated).                               |
+| `metadata.json` | command, args count, exit_code, duration_ms, timed_out, stdout/stderr paths, truncation flags, workdir, sandbox mode, network. |
+| `stdout.json`   | Parsed stdout, when it is valid JSON.                               |
+
+`metadata.json` never contains environment values or argument values, so
+secrets passed via `env` or `args` are not persisted. The console / JSONL
+report is metadata-only and never dumps raw stdout / stderr.
+
+## Sandbox
+
+```hcl
+sandbox {
+  mode    = "process"   # process (default) | docker (reserved)
+  workdir = "scenario"  # scenario (default) | project | <custom path>
+  env     = "minimal"   # minimal (default) | inherit
+  network = false       # advisory in process mode
+}
+```
+
+- `workdir`: `scenario` runs in `scenario.workdir`, `project` in `project.dir`,
+  any other value is a custom path resolved under the scenario workspace.
+- `env`: `minimal` exposes only `PATH`, a scenario-local `TMPDIR`, `HOME`
+  (set to the workdir) and your `env` entries. `inherit` starts from the host
+  environment. The host environment is never fully leaked by default.
+- `network`: advisory in process mode (recorded in metadata, not enforced).
+
+<Aside type="danger" title="The process sandbox is not a security boundary">
+	`sandbox.mode = "process"` is a portability and hygiene feature, not a
+	security boundary. It controls the working directory, environment, timeout
+	and output capture, but it does **not** prevent all filesystem or network
+	access. Use Docker or an external sandbox for stronger isolation.
+
+	`mode = "docker"` is reserved for that purpose but not implemented yet; it
+	currently fails with `exec sandbox mode "docker" is not implemented yet`.
+	The future model mounts the project dir read-only and the scenario workdir
+	read-write at `/work`, defaults to no network, and runs as a non-root user.
+</Aside>
+
+## Determinism
+
+Unlike Tales' generators, exec is **not** seed-replayable: a program reads real
+files, the clock, and possibly the network, and `exec.duration_ms` is real
+wall-clock time. Pin flakiness with `timeout` and assert only on stable output.
