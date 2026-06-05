@@ -110,6 +110,7 @@ func main() {
 	r.HandleFunc("/webhook/signed", state.signedWebhook).Methods(http.MethodPost)
 	r.HandleFunc("/webhook/send", state.sendWebhook).Methods(http.MethodPost)
 	r.HandleFunc("/upload", state.upload).Methods(http.MethodPost)
+	r.HandleFunc("/files/certificate.pdf", state.certificatePDF).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts", state.createPost).Methods(http.MethodPost)
 	r.HandleFunc("/blog/posts/{id}", state.getPost).Methods(http.MethodGet)
 	r.HandleFunc("/blog/posts/{id}", state.deletePost).Methods(http.MethodDelete)
@@ -375,6 +376,20 @@ func (s *serverState) createPost(w http.ResponseWriter, req *http.Request) {
 	created := post{id: id, userID: userID, title: payload.Title, content: payload.Content, tags: payload.Tags}
 	s.posts[id] = created
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"id": created.id, "title": created.title, "content": created.content, "tags": created.tags})
+}
+
+// certificatePDFBytes is a small, deterministic PDF-like payload served by
+// /files/certificate.pdf. It contains a NUL byte so the download / file / exec
+// e2e exercises binary-safe saving and hashing, not just text.
+var certificatePDFBytes = []byte("%PDF-1.4\n% Tales test certificate\x00\n1 0 obj<<>>endobj\n%%EOF\n")
+
+// certificatePDF serves a fixed binary body with an application/pdf content
+// type so the exec e2e can download, hash and verify it deterministically.
+func (s *serverState) certificatePDF(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Length", strconv.Itoa(len(certificatePDFBytes)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(certificatePDFBytes)
 }
 
 func (s *serverState) getPost(w http.ResponseWriter, req *http.Request) {

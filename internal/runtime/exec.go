@@ -61,6 +61,10 @@ func (r *Runner) executeExecStep(ctx context.Context, evaluator *lang.Evaluator,
 		return failStep(stepReport, start, kindProvider, "", fmt.Sprintf("unknown provider %q", step.Provider))
 	}
 
+	// Clear any artifacts a previous run left in this step's directory so the
+	// report reflects only the current run (e.g. a disabled exec writes none).
+	_ = os.RemoveAll(exec.ArtifactsDir)
+
 	output, runErr := providerImpl.Execute(ctx, provider.Input{Scenario: scenarioName, Step: step, Phase: phase, Attempt: attempt, Config: config, Exec: exec})
 
 	stepReport.Artifacts = execArtifacts(exec.ArtifactsDir)
