@@ -143,8 +143,24 @@ func (r *Runner) evaluateExecExecution(evaluator *lang.Evaluator, scope lang.Sco
 		Network:      sandbox.network,
 		Workdir:      sandbox.workdir,
 		ProjectDir:   r.projectDir,
-		ArtifactsDir: filepath.Join(state.Workdir(), "exec", artifacts.SafePathSegment(step.Name)),
+		ArtifactsDir: filepath.Join(state.Workdir(), "exec", execArtifactsSegment(evaluator, step.Name)),
 	}, nil
+}
+
+// execArtifactsSegment derives the per-step exec artifacts directory segment.
+// It mixes in the evaluator seed scope (the keyword call stack) so the same
+// exec step invoked from different keyword call sites gets distinct
+// directories — otherwise the start-of-run cleanup of one call would wipe a
+// sibling call's artifacts. At scenario level the scope is empty and the
+// segment stays the plain step name.
+func execArtifactsSegment(evaluator *lang.Evaluator, stepName string) string {
+	segment := artifacts.SafePathSegment(stepName)
+
+	if scope := evaluator.SeedScope(); scope != "" {
+		segment = segment + "-" + artifacts.Hash(scope)
+	}
+
+	return segment
 }
 
 // execSandbox holds the resolved sandbox settings.
