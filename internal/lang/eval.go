@@ -47,11 +47,24 @@ type Evaluator struct {
 	baseFunctions map[string]function.Function
 	generate      GenerateFunc
 	seedScope     string
+	// scopeVars holds scenario-level namespaces (scenario, project) merged
+	// into every EvalContext. Like seedScope it is scenario-scoped: one
+	// Evaluator per scenario, set once before the steps run and read
+	// single-threaded thereafter (keyword and teardown steps reuse it).
+	scopeVars map[string]cty.Value
 }
 
 // NewEvaluator creates evaluator with built-in functions.
 func NewEvaluator(generate GenerateFunc) *Evaluator {
 	return &Evaluator{baseFunctions: baseFunctions(), generate: generate}
+}
+
+// SetScopeVars installs the scenario-level namespaces (scenario, project)
+// exposed to every expression evaluated by this Evaluator. The runtime calls
+// it once per scenario after creating the workspace; per-call extraVars passed
+// to EvalWithExtras still override these of the same name.
+func (e *Evaluator) SetScopeVars(vars map[string]cty.Value) {
+	e.scopeVars = vars
 }
 
 // SeedScope returns the current keyword call-stack scope used for deterministic
@@ -106,6 +119,12 @@ func (e *Evaluator) EvalWithExtras(expression model.Expression, scope ScopeData,
 		"input":    cty.ObjectVal(scope.Input),
 		"host":     hostObject(),
 		"vars":     varsValue,
+	}
+
+	// Scenario-level namespaces (scenario, project) come before per-call
+	// extras so a caller-provided extra of the same name still wins.
+	for name, value := range e.scopeVars {
+		variables[name] = value
 	}
 
 	for _, extra := range extraVars {
