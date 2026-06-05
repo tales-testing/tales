@@ -64,6 +64,7 @@ type stepBlock struct {
 	WebhookStart *webhookStartBlock      `hcl:"start,block"`
 	WebhookWait  *webhookWaitBlock       `hcl:"wait,block"`
 	WebhookStop  *webhookStopBlock       `hcl:"stop,block"`
+	Path         hcl.Expression          `hcl:"path,optional"`
 	SkipIf       []skipBlock             `hcl:"skip_if,block"`
 	SkipUnless   []skipBlock             `hcl:"skip_unless,block"`
 }

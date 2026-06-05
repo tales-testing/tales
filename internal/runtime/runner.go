@@ -475,36 +475,39 @@ func (r *Runner) executeStepInPhase(ctx context.Context, evaluator *lang.Evaluat
 	return &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusFail, Attempts: retry.Attempts, StartedAt: start, Duration: time.Since(start), Failure: &report.ErrorDetail{Kind: kindRuntime, Message: "step was not executed"}}
 }
 
+// dispatchProviderStep routes a step to its dedicated executor when the
+// provider has one (keyword / mobile / sql / mail / browser / load / webhook /
+// file). It returns (result, true) when it handled the step, or (nil, false)
+// for the generic request/expect/capture path that follows.
+func (r *Runner) dispatchProviderStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string, attempt int, start time.Time, stepReport *report.StepResult) (*report.StepResult, bool) {
+	switch step.Provider {
+	case kindKeyword:
+		return r.executeKeywordStep(ctx, evaluator, suite, scenarioName, config, state, input, step, start, stepReport), true
+	case mobileProviderType:
+		return r.executeMobileStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case sqlProviderType:
+		return r.executeSQLStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case mailProviderType:
+		return r.executeMailStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case browserProviderType:
+		return r.executeBrowserStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case loadProviderType:
+		return r.executeLoadStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case webhookProviderType:
+		return r.executeWebhookStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case fileProviderType:
+		return r.executeFileStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	default:
+		return nil, false
+	}
+}
+
 func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string, attempt int) *report.StepResult {
 	stepReport := &report.StepResult{File: step.File, Scenario: scenarioName, Name: step.Name, Provider: step.Provider, Phase: phase, Status: report.StatusPass}
 	start := time.Now()
 
-	if step.Provider == kindKeyword {
-		return r.executeKeywordStep(ctx, evaluator, suite, scenarioName, config, state, input, step, start, stepReport)
-	}
-
-	if step.Provider == mobileProviderType {
-		return r.executeMobileStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
-	}
-
-	if step.Provider == sqlProviderType {
-		return r.executeSQLStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
-	}
-
-	if step.Provider == mailProviderType {
-		return r.executeMailStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
-	}
-
-	if step.Provider == browserProviderType {
-		return r.executeBrowserStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
-	}
-
-	if step.Provider == loadProviderType {
-		return r.executeLoadStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
-	}
-
-	if step.Provider == webhookProviderType {
-		return r.executeWebhookStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt)
+	if result, handled := r.dispatchProviderStep(ctx, evaluator, suite, scenarioName, config, state, input, step, phase, attempt, start, stepReport); handled {
+		return result
 	}
 
 	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
@@ -551,6 +554,19 @@ func (r *Runner) executeStepAttempt(ctx context.Context, evaluator *lang.Evaluat
 	scope.Request = output.Request
 
 	scope.Response = output.Response
+
+	if step.Save != nil {
+		if detail := r.applySaveAndDownload(evaluator, &scope, scenarioName, state, step, output); detail != nil {
+			stepReport.Status = report.StatusFail
+			stepReport.Failure = detail
+			stepReport.Duration = time.Since(start)
+
+			return stepReport
+		}
+
+		stepReport.Response = diagnostic.FromCTYMap(output.Response)
+	}
+
 	if step.Expect != nil {
 		if err := evaluateExpect(evaluator, scope, scenarioName, step, output); err != nil {
 			stepReport.Status = report.StatusFail

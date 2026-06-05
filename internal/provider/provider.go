@@ -23,7 +23,21 @@ type Input struct {
 	Browser  *BrowserExecution
 	Load     *LoadExecution
 	Webhook  *WebhookExecution
+	File     *FileExecution
 	Timeout  time.Duration
+}
+
+// FileExecution carries the resolved data for one file step. Path is absolute
+// and already resolved against the scenario's allowed roots by the runtime.
+// The Need* flags tell the provider which reads are required so a missing file
+// or an unreadable form (binary when text is wanted, invalid JSON) only fails
+// when the step actually depends on it.
+type FileExecution struct {
+	Path     string
+	NeedSize bool
+	NeedHash bool
+	NeedText bool
+	NeedJSON bool
 }
 
 // WebhookExecution carries the resolved parameters for one webhook step ready

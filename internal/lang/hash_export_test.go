@@ -55,6 +55,23 @@ func TestHashHexNonEmpty(t *testing.T) {
 	}
 }
 
+// TestHashAlgorithmsMatchConstructors guards the invariant that the ordered
+// presentation list and the constructor registry stay in sync.
+func TestHashAlgorithmsMatchConstructors(t *testing.T) {
+	t.Parallel()
+
+	algos := HashAlgorithms()
+	if len(algos) != len(hashConstructors) {
+		t.Fatalf("HashAlgorithms() has %d entries, hashConstructors has %d", len(algos), len(hashConstructors))
+	}
+
+	for _, algo := range algos {
+		if _, ok := hashConstructors[algo]; !ok {
+			t.Fatalf("HashAlgorithms() lists %q, missing from hashConstructors", algo)
+		}
+	}
+}
+
 func TestHashHexUnknownAlgorithm(t *testing.T) {
 	t.Parallel()
 

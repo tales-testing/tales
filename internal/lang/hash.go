@@ -12,19 +12,45 @@ import (
 	"github.com/zclconf/go-cty/cty/function"
 )
 
-// hashConstructors is the single source of truth for the digest algorithms
-// Tales exposes. The keys are the short algorithm names used by the file /
-// download / exec surfaces (sha256, sha512, …); the cty `*_hex` functions and
-// the exported HashHex helper both range over this map, so adding a variant is
-// one entry. New224 / New512_224 / New512_256 cover the truncated SHA-2 forms.
-var hashConstructors = map[string]func() hash.Hash{
-	"sha1":       sha1.New,
-	"sha224":     sha256.New224,
-	"sha256":     sha256.New,
-	"sha384":     sha512.New384,
-	"sha512":     sha512.New,
-	"sha512_224": sha512.New512_224,
-	"sha512_256": sha512.New512_256,
+// hashAlgorithms is the single, ordered source of truth for the digest
+// algorithms Tales exposes (weakest to strongest). The short names are used by
+// the file / download / exec surfaces; the cty `*_hex` functions, the exported
+// HashHex helper and HashAlgorithms all derive from this slice, so adding a
+// variant is one entry. New224 / New512_224 / New512_256 cover the truncated
+// SHA-2 forms.
+var hashAlgorithms = []struct {
+	name string
+	ctor func() hash.Hash
+}{
+	{"sha1", sha1.New},
+	{"sha224", sha256.New224},
+	{"sha256", sha256.New},
+	{"sha384", sha512.New384},
+	{"sha512", sha512.New},
+	{"sha512_224", sha512.New512_224},
+	{"sha512_256", sha512.New512_256},
+}
+
+// hashConstructors indexes hashAlgorithms by name for O(1) lookup in HashHex.
+var hashConstructors = func() map[string]func() hash.Hash {
+	m := make(map[string]func() hash.Hash, len(hashAlgorithms))
+	for _, a := range hashAlgorithms {
+		m[a.name] = a.ctor
+	}
+
+	return m
+}()
+
+// HashAlgorithms returns the supported digest algorithm names in the stable
+// weak-to-strong order. Consumers (save / file / exec) range over it to expose
+// every digest without duplicating the list.
+func HashAlgorithms() []string {
+	out := make([]string, len(hashAlgorithms))
+	for i, a := range hashAlgorithms {
+		out[i] = a.name
+	}
+
+	return out
 }
 
 // HashHex returns the lowercase hex digest of data for the named algorithm
