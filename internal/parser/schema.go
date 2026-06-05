@@ -45,6 +45,7 @@ type stepBlock struct {
 	Expect       *expectBlock            `hcl:"expect,block"`
 	Response     *expectBlock            `hcl:"response,block"`
 	Capture      *captureBlock           `hcl:"capture,block"`
+	Save         *saveBlock              `hcl:"save,block"`
 	Retry        *retryBlock             `hcl:"retry,block"`
 	CallName     hcl.Expression          `hcl:"name,optional"`
 	Inputs       hcl.Expression          `hcl:"inputs,optional"`
@@ -270,6 +271,12 @@ type mobilePermissionsBlock struct {
 
 type captureBlock struct {
 	Body hcl.Body `hcl:",remain"`
+}
+
+// saveBlock persists part of an HTTP response to the scenario workspace.
+// V1 exposes body = "<path>"; gohcl rejects unknown attributes.
+type saveBlock struct {
+	Body hcl.Expression `hcl:"body,optional"`
 }
 
 type varsBlock struct {
