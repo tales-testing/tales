@@ -448,7 +448,11 @@ func buildOutput(
 ) (*provider.Output, error) {
 	responseJSON := decodeResponseJSON(resp.Header.Get("Content-Type"), respBytes)
 	output := &provider.Output{
-		Duration:   duration,
+		Duration: duration,
+		// RawBody is the byte-exact body; Response["body"] below is a cty
+		// string (NFC-normalized by go-cty), fine for text assertions but
+		// lossy for binary, so save / download must use RawBody.
+		RawBody:    respBytes,
 		StatusCode: resp.StatusCode,
 		Request: map[string]cty.Value{
 			"method":   cty.StringVal(method),

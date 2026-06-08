@@ -19,19 +19,26 @@ const exprPathSaveBody = "save.body"
 
 // applySaveAndDownload writes the HTTP response body to the path declared in
 // the step's save block (resolved under scenario.workdir) and injects a
-// response.download object carrying the file path, size and hex digests. The
-// body is taken from response.body, which is the byte-exact string the HTTP
-// provider built from the raw response, so binary payloads round-trip without
-// corruption. On any failure it returns a kindSave error detail and writes
-// nothing further. download is added to output.Response so expect and capture
-// see response.download.*.
+// response.download object carrying the file path, size and hex digests.
+//
+// The on-disk bytes come from output.RawBody — the exact response body the
+// HTTP provider read — NOT from response.body. response.body is a go-cty
+// string and go-cty NFC-normalizes strings, which silently mutates binary
+// payloads (and their length), so using it would corrupt downloads. The
+// fallback to the cty string only triggers for a provider that exposes a body
+// string without RawBody. On any failure it returns a kindSave error detail
+// and writes nothing further. download is added to output.Response so expect
+// and capture see response.download.*.
 func (r *Runner) applySaveAndDownload(evaluator *lang.Evaluator, scope *lang.ScopeData, scenarioName string, state *ScenarioState, step *model.Step, output *provider.Output) *report.ErrorDetail {
-	bodyVal, ok := output.Response["body"]
-	if !ok || bodyVal.IsNull() || bodyVal.Type() != cty.String {
-		return &report.ErrorDetail{Kind: kindSave, Path: exprPathSaveBody, Message: "save requires an HTTP response body"}
-	}
+	data := output.RawBody
+	if data == nil {
+		bodyVal, ok := output.Response["body"]
+		if !ok || bodyVal.IsNull() || bodyVal.Type() != cty.String {
+			return &report.ErrorDetail{Kind: kindSave, Path: exprPathSaveBody, Message: "save requires an HTTP response body"}
+		}
 
-	data := []byte(bodyVal.AsString())
+		data = []byte(bodyVal.AsString())
+	}
 
 	rawPath, detail := evalSaveBodyPath(evaluator, *scope, scenarioName, step)
 	if detail != nil {

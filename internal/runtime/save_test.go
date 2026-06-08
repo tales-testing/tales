@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -29,6 +30,10 @@ func (p *bodyProvider) Execute(_ context.Context, input provider.Input) (*provid
 	return &provider.Output{
 		StatusCode: 200,
 		Request:    input.Request,
+		// RawBody mirrors the real HTTP provider: the byte-exact body that
+		// save / download must use, distinct from the NFC-normalized
+		// Response["body"] cty string.
+		RawBody: p.body,
 		Response: map[string]cty.Value{
 			"status":  cty.NumberIntVal(200),
 			"headers": cty.EmptyObjectVal,
@@ -42,6 +47,14 @@ func runSaveScenario(t *testing.T, step *model.Step) (string, *report.SuiteResul
 	t.Helper()
 
 	body := []byte{0x25, 0x50, 0x44, 0x46, 0x00, 0x01, 0x02, 0xff, 0xfe, 0x0a} // %PDF + binary
+
+	base, result := runSaveScenarioWithBody(t, step, body)
+
+	return base, result, body
+}
+
+func runSaveScenarioWithBody(t *testing.T, step *model.Step, body []byte) (string, *report.SuiteResult) {
+	t.Helper()
 
 	prov := &bodyProvider{body: body}
 	runner := NewRunner(provider.NewRegistry(prov))
@@ -57,7 +70,7 @@ func runSaveScenario(t *testing.T, step *model.Step) (string, *report.SuiteResul
 		t.Fatalf("run error: %v", err)
 	}
 
-	return base, result, body
+	return base, result
 }
 
 func newSaveStep() *model.Step {
@@ -110,6 +123,42 @@ func TestSaveWritesExactBytesAndExposesDownload(t *testing.T) {
 	wantSHA512 := sha512.Sum512(body)
 	if got := capturedString(t, result, "sha512"); got != hex.EncodeToString(wantSHA512[:]) {
 		t.Fatalf("sha512 mismatch")
+	}
+}
+
+// TestSaveWritesNFCUnstableBinaryBytes pins binary-safe downloads. The body
+// 0x65 0xCC 0x81 ("e" + combining acute, U+0301) is NFC-recomposed to the
+// 2-byte 0xC3 0xA9 ("é", U+00E9) when round-tripped through a go-cty string.
+// save must write the exact 3 source bytes and report their true size/digest,
+// never the NFC-normalized form.
+func TestSaveWritesNFCUnstableBinaryBytes(t *testing.T) {
+	t.Parallel()
+
+	body := []byte{0x65, 0xCC, 0x81}
+
+	step := newSaveStep()
+
+	_, result := runSaveScenarioWithBody(t, step, body)
+
+	stepResult := result.Scenarios[0].Steps[0]
+	if stepResult.Status != report.StatusPass {
+		t.Fatalf("step should pass: %#v", stepResult.Failure)
+	}
+
+	saved := capturedString(t, result, "path")
+
+	onDisk, err := os.ReadFile(saved)
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+
+	if !bytes.Equal(onDisk, body) {
+		t.Fatalf("saved bytes are not byte-exact: got %x (%d bytes), want %x (%d bytes)", onDisk, len(onDisk), body, len(body))
+	}
+
+	wantSHA512 := sha512.Sum512(body)
+	if got := capturedString(t, result, "sha512"); got != hex.EncodeToString(wantSHA512[:]) {
+		t.Fatalf("response.download.sha512 = %q, want %q (must hash the true bytes)", got, hex.EncodeToString(wantSHA512[:]))
 	}
 }
 

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"io"
@@ -46,6 +47,42 @@ func TestHTTPProviderJSONRequestAndResponse(t *testing.T) {
 	}
 	if out.Response["json"].IsNull() {
 		t.Fatalf("expected decoded json response")
+	}
+}
+
+// TestHTTPProviderRawBodyIsByteExact pins that Output.RawBody is the faithful
+// response body, even for binary that the cty Response["body"] string mangles.
+// The bytes 0x65 0xCC 0x81 NFC-recompose to 0xC3 0xA9 when wrapped in a go-cty
+// string, so RawBody (used by save / download) and the cty string must differ.
+func TestHTTPProviderRawBodyIsByteExact(t *testing.T) {
+	t.Parallel()
+
+	raw := []byte{0x25, 0x50, 0x44, 0x46, 0x65, 0xCC, 0x81, 0x00, 0xff} // %PDF + "e+combining acute" + binary
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write(raw)
+	}))
+	defer ts.Close()
+
+	out, err := New().Execute(context.Background(), provider.Input{
+		Request: map[string]cty.Value{
+			"method": cty.StringVal("GET"),
+			"url":    cty.StringVal(ts.URL),
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !bytes.Equal(out.RawBody, raw) {
+		t.Fatalf("RawBody = %x, want %x", out.RawBody, raw)
+	}
+
+	// Guard the rationale: the cty string body is NOT byte-exact for this
+	// input, which is exactly why save / download must read RawBody.
+	if ctyBytes := []byte(out.Response["body"].AsString()); bytes.Equal(ctyBytes, raw) {
+		t.Fatal("expected the cty body string to differ from raw bytes (NFC normalization); RawBody is the binary-safe path")
 	}
 }
 

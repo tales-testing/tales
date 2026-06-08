@@ -122,8 +122,14 @@ type SQLExecution struct {
 
 // Output is provider execution output.
 type Output struct {
-	Request       map[string]cty.Value
-	Response      map[string]cty.Value
+	Request  map[string]cty.Value
+	Response map[string]cty.Value
+	// RawBody carries the exact, unmodified response body bytes. The HTTP
+	// provider sets it so binary downloads (HTTP `save` / response.download)
+	// bypass go-cty's NFC string normalization, which would otherwise mutate
+	// binary payloads exposed through Response["body"]. Providers without a
+	// byte body leave it nil.
+	RawBody       []byte
 	Duration      time.Duration
 	StatusCode    int
 	ActionResults []ActionResult

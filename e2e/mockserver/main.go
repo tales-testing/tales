@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -379,15 +380,24 @@ func (s *serverState) createPost(w http.ResponseWriter, req *http.Request) {
 }
 
 // certificatePDFBytes is a small, deterministic PDF-like payload served by
-// /files/certificate.pdf. It contains a NUL byte so the download / file / exec
-// e2e exercises binary-safe saving and hashing, not just text.
-var certificatePDFBytes = []byte("%PDF-1.4\n% Tales test certificate\x00\n1 0 obj<<>>endobj\n%%EOF\n")
+// /files/certificate.pdf. It deliberately contains a NUL byte and the
+// NFC-unstable run 0x65 0xCC 0x81 ("e" + combining acute) so the download /
+// file / exec e2e exercises binary-safe saving and hashing: a naive cty-string
+// round-trip would recompose that run to "é" (0xC3 0xA9) and corrupt the file.
+var certificatePDFBytes = []byte("%PDF-1.4\n% Tales test certificate \x65\xCC\x81\x00\n1 0 obj<<>>endobj\n%%EOF\n")
 
 // certificatePDF serves a fixed binary body with an application/pdf content
-// type so the exec e2e can download, hash and verify it deterministically.
+// type. It also publishes the true SHA-256 / SHA-512 of the bytes in headers
+// so the scenario can assert the downloaded file's digest against an
+// independent source (not the tautological response.download).
 func (s *serverState) certificatePDF(w http.ResponseWriter, _ *http.Request) {
+	sum256 := sha256.Sum256(certificatePDFBytes)
+	sum512 := sha512.Sum512(certificatePDFBytes)
+
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Length", strconv.Itoa(len(certificatePDFBytes)))
+	w.Header().Set("X-Content-Sha256", hex.EncodeToString(sum256[:]))
+	w.Header().Set("X-Content-Sha512", hex.EncodeToString(sum512[:]))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(certificatePDFBytes)
 }

@@ -33,6 +33,10 @@ scenario "Download a file and verify it with exec" {
       sha256 = response.download.sha256
       sha512 = response.download.sha512
       size   = response.download.size_bytes
+      # Independent digests of the true bytes, published by the server in
+      # headers — used below to catch any byte corruption on download.
+      server_sha256 = response.headers["X-Content-Sha256"][0]
+      server_sha512 = response.headers["X-Content-Sha512"][0]
     }
   }
 
@@ -42,8 +46,10 @@ scenario "Download a file and verify it with exec" {
     expect {
       exists     = true
       size_bytes = result.download_file.size
-      sha256     = result.download_file.sha256
-      sha512     = result.download_file.sha512
+      # Assert the saved file against the server's independent digests, so a
+      # corrupted (e.g. NFC-normalized) download fails here.
+      sha256     = result.download_file.server_sha256
+      sha512     = result.download_file.server_sha512
     }
 
     capture {
@@ -74,8 +80,8 @@ scenario "Download a file and verify it with exec" {
       stdout_json = {
         valid      = true
         size_bytes = result.download_file.size
-        sha256     = result.download_file.sha256
-        sha512     = result.download_file.sha512
+        sha256     = result.download_file.server_sha256
+        sha512     = result.download_file.server_sha512
       }
     }
 
