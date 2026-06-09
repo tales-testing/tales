@@ -217,6 +217,27 @@ func (c *Client) Screenshot(ctx context.Context) ([]byte, error) {
 	return data, nil
 }
 
+// Launch posts to /launch so the driver relaunches the app through
+// XCUIApplication.launch(), re-establishing XCTest's automation session
+// with the running process.
+func (c *Client) Launch(ctx context.Context, bundleID string) error {
+	if bundleID == "" {
+		return fmt.Errorf("launch: bundleID is required")
+	}
+
+	return c.postJSON(ctx, "/launch", map[string]any{payloadBundleIDKey: bundleID})
+}
+
+// Terminate posts to /terminate so the driver terminates the app through
+// XCUIApplication.terminate(), keeping XCTest's process model in sync.
+func (c *Client) Terminate(ctx context.Context, bundleID string) error {
+	if bundleID == "" {
+		return fmt.Errorf("terminate: bundleID is required")
+	}
+
+	return c.postJSON(ctx, "/terminate", map[string]any{payloadBundleIDKey: bundleID})
+}
+
 func (c *Client) postJSON(ctx context.Context, path string, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {

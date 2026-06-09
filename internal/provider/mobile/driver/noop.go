@@ -50,3 +50,9 @@ func (NoopDriver) EraseText(_ context.Context, _ string, _ int) error { return n
 
 // Screenshot returns an empty image.
 func (NoopDriver) Screenshot(_ context.Context) ([]byte, error) { return []byte{}, nil }
+
+// Launch does nothing.
+func (NoopDriver) Launch(_ context.Context, _ string) error { return nil }
+
+// Terminate does nothing.
+func (NoopDriver) Terminate(_ context.Context, _ string) error { return nil }

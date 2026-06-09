@@ -377,7 +377,11 @@ func (p *Provider) finalizeStep(ctx context.Context, session *Session, exec *pro
 	}
 
 	if exec.Terminate != nil {
-		if err := session.Lifecycle.TerminateApp(ctx, session.UDID, session.Target); err != nil {
+		// Terminate through the driver (XCUIApplication.terminate()) so
+		// XCTest deregisters the app process. Tearing it down out-of-band
+		// via simctl would leave XCTest bound to a now-dead process, and the
+		// next scenario reusing this session would hang on /hierarchy.
+		if err := session.Driver.Terminate(ctx, session.Target.BundleID); err != nil {
 			return fmt.Errorf("terminate: %w", err)
 		}
 	}
@@ -572,7 +576,17 @@ func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *p
 		return err
 	}
 
-	if err := session.Lifecycle.LaunchApp(ctx, session.UDID, session.Target); err != nil {
+	// Launch through the driver (XCUIApplication.launch()) rather than an
+	// out-of-band simctl launch. app.launch() terminates any existing
+	// instance, launches a fresh one, and re-establishes XCTest's automation
+	// session with the new process — without it, a scenario reusing a cached
+	// session would snapshot a stale process and time out on /hierarchy.
+	// Launch through the driver (XCUIApplication.launch()) rather than an
+	// out-of-band simctl launch. app.launch() terminates any existing
+	// instance, launches a fresh one, and re-establishes XCTest's automation
+	// session with the new process — without it, a scenario reusing a cached
+	// session would snapshot a stale process and time out on /hierarchy.
+	if err := session.Driver.Launch(ctx, session.Target.BundleID); err != nil {
 		return fmt.Errorf("launch app: %w", err)
 	}
 
