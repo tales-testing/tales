@@ -67,4 +67,16 @@ type Driver interface {
 
 	// Screenshot captures a PNG-encoded screenshot of the active screen.
 	Screenshot(ctx context.Context) ([]byte, error)
+
+	// Launch (re)launches the app under test through the driver so XCTest
+	// owns the process. Routing the launch through XCUIApplication.launch()
+	// (rather than an out-of-band simctl launch) re-establishes XCTest's
+	// automation session with the freshly launched process; otherwise a
+	// later snapshot would query a stale, terminated process and hang.
+	Launch(ctx context.Context, bundleID string) error
+
+	// Terminate terminates the app under test through the driver
+	// (XCUIApplication.terminate()), keeping XCTest's process model in sync
+	// with the app lifecycle across scenarios that reuse the same session.
+	Terminate(ctx context.Context, bundleID string) error
 }

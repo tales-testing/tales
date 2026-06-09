@@ -57,6 +57,8 @@ type fakeDriverAll struct {
 	orientations    []string
 	inputs          []fakeInput
 	erases          []int
+	launches        []string
+	terminatesDrv   []string
 	screenshotPNG   []byte
 	screenshotErr   error
 	healthErr       error
@@ -64,12 +66,45 @@ type fakeDriverAll struct {
 	activeHierarchy atomic.Int32
 	maxHierarchy    atomic.Int32
 	hierarchyCalls  atomic.Int32
+
+	// requireBindForHierarchy models the XCUITest constraint that drives
+	// issue #41: a /hierarchy snapshot only succeeds while the driver owns a
+	// live, registered app process. Launch (XCUIApplication.launch()) binds
+	// it, Terminate unbinds it; without a driver-routed Launch, Hierarchy
+	// behaves like the real driver and times out.
+	requireBindForHierarchy bool
+	boundLive               atomic.Bool
 }
 
 func (f *fakeDriverAll) Health(_ context.Context) error { return f.healthErr }
 
+func (f *fakeDriverAll) Launch(_ context.Context, bundleID string) error {
+	f.mu.Lock()
+	f.launches = append(f.launches, bundleID)
+	f.mu.Unlock()
+
+	f.boundLive.Store(true)
+
+	return nil
+}
+
+func (f *fakeDriverAll) Terminate(_ context.Context, bundleID string) error {
+	f.mu.Lock()
+	f.terminatesDrv = append(f.terminatesDrv, bundleID)
+	f.mu.Unlock()
+
+	f.boundLive.Store(false)
+
+	return nil
+}
+
 func (f *fakeDriverAll) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
 	f.hierarchyCalls.Add(1)
+
+	if f.requireBindForHierarchy && !f.boundLive.Load() {
+		return nil, context.DeadlineExceeded
+	}
+
 	if f.hierarchyDelay > 0 {
 		active := f.activeHierarchy.Add(1)
 		for {
@@ -1485,6 +1520,59 @@ func TestTypeReturnsMobile(t *testing.T) {
 	p := New()
 	if p.Type() != "mobile" {
 		t.Fatalf("expected mobile, got %q", p.Type())
+	}
+}
+
+// TestSharedTargetSecondScenarioRelaunchesViaDriver pins issue #41: two
+// scenarios reuse the same cached session, and the second one must still be
+// able to read the hierarchy. It only can because launch and the terminate{}
+// step route through the driver (XCUIApplication.launch()/terminate()), which
+// keeps XCTest bound to the live app process. The fake encodes that binding:
+// Hierarchy times out unless a driver-routed Launch happened since the last
+// Terminate — exactly what a simctl-based launch would fail to do.
+func TestSharedTargetSecondScenarioRelaunchesViaDriver(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{
+		hierarchies:             []*tree.ViewNode{newButtonNode()},
+		requireBindForHierarchy: true,
+	}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	run := func(scenario string) error {
+		_, err := p.Execute(context.Background(), provider.Input{
+			Scenario: scenario,
+			Step:     newStep("run"),
+			Config:   sampleConfigCty(),
+			Mobile: &provider.MobileExecution{
+				Platform:   "ios",
+				TargetName: "iphone",
+				Launch:     &provider.MobileLaunchExec{ClearState: true},
+				Actions: []provider.MobileActionExec{
+					{Kind: model.MobileActionWaitVisible, ID: "welcome.register", Timeout: time.Second},
+				},
+				Terminate: &provider.MobileTerminateExec{},
+			},
+		})
+
+		return err
+	}
+
+	if err := run("scenario A"); err != nil {
+		t.Fatalf("scenario A: %v", err)
+	}
+
+	if err := run("scenario B"); err != nil {
+		t.Fatalf("scenario B (the #41 regression): %v", err)
+	}
+
+	if len(drv.launches) != 2 {
+		t.Fatalf("expected 2 driver launches (one per scenario), got %d (%v)", len(drv.launches), drv.launches)
+	}
+
+	if len(drv.terminatesDrv) != 2 {
+		t.Fatalf("expected 2 driver terminates (one per scenario), got %d (%v)", len(drv.terminatesDrv), drv.terminatesDrv)
 	}
 }
 

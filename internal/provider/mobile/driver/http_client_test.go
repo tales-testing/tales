@@ -122,6 +122,82 @@ func TestClientHierarchyMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestClientLaunchSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/launch" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.Launch(context.Background(), "com.example.MyApp"); err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+
+	if captured["bundleId"] != "com.example.MyApp" {
+		t.Fatalf("unexpected launch payload: %v", captured)
+	}
+}
+
+func TestClientLaunchRequiresBundleID(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("server must not be hit when bundleID is empty")
+	}))
+
+	if err := client.Launch(context.Background(), ""); err == nil {
+		t.Fatal("expected error for empty bundleID")
+	}
+}
+
+func TestClientTerminateSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/terminate" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.Terminate(context.Background(), "com.example.MyApp"); err != nil {
+		t.Fatalf("terminate: %v", err)
+	}
+
+	if captured["bundleId"] != "com.example.MyApp" {
+		t.Fatalf("unexpected terminate payload: %v", captured)
+	}
+}
+
+func TestClientTerminateRequiresBundleID(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("server must not be hit when bundleID is empty")
+	}))
+
+	if err := client.Terminate(context.Background(), ""); err == nil {
+		t.Fatal("expected error for empty bundleID")
+	}
+}
+
 func TestClientTapSendsPayload(t *testing.T) {
 	t.Parallel()
 
