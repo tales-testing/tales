@@ -1,6 +1,6 @@
 ---
 title: Matchers
-description: Assertion matchers, contains, matches, optional, required, any, is_*, one_of, can, exists, not_exists.
+description: Assertion matchers, contains, matches, uuid, optional, required, any, is_*, one_of, can, exists, not_exists.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -34,6 +34,29 @@ json = {
   request_id = matches("^req-[a-f0-9]{16}$")
 }
 ```
+
+### `uuid([version])`
+
+Asserts the value is a UUID string (RFC 9562, formerly RFC 4122). The canonical hyphenated `8-4-4-4-12` form is required (case-insensitive); braced, URN (`urn:uuid:`) and unhyphenated forms are rejected, because JSON API responses use the canonical form.
+
+```hcl
+json = {
+  id         = uuid()        // any official UUID
+  request_id = uuid("v4")    // exactly a v4 UUID
+  trace_id   = uuid("7")     // bare digit, same as uuid("v7")
+}
+```
+
+Without an argument, `uuid()` accepts any official UUID. With an argument you pin a specific form:
+
+| Argument                    | Matches                                                       |
+| --------------------------- | ------------------------------------------------------------- |
+| `uuid()`                    | any official UUID (versions 1–8, plus the nil and max UUIDs). |
+| `uuid("v1")` … `uuid("v8")` | that exact version. `uuid("4")` is the same as `uuid("v4")`.  |
+| `uuid("nil")`               | the nil UUID `00000000-0000-0000-0000-000000000000`.          |
+| `uuid("max")`               | the max UUID `ffffffff-ffff-ffff-ffff-ffffffffffff`.          |
+
+Both the version nibble **and** the RFC variant bits (`10xx`) are checked, so a well-shaped but non-compliant identifier still fails. An unknown version token (e.g. `uuid("v9")`) is rejected when the scenario is parsed, before any step runs.
 
 ### `one_of([v1, v2, ...])`
 
