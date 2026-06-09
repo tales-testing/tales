@@ -19,7 +19,7 @@ Tales V1 supports iOS automation through Apple's official tooling and a reposito
   → XCUIApplication(bundleIdentifier: <SUT>)
 ```
 
-The Go provider owns simulator lifecycle, app installation / launch / termination, step serialization per mobile target, implicit waits, and artifact collection. The Swift driver lives under `drivers/apple/TalesAppleDriver/` and exposes a small HTTP/JSON surface for hierarchy, tap, input text, clear text, and screenshot operations.
+The Go provider owns simulator lifecycle, app installation (and `clear_state` uninstall/install) via `simctl`, step serialization per mobile target, implicit waits, and artifact collection. App **launch** and **termination** are driven through the Swift driver (`XCUIApplication.launch()` / `terminate()`) so XCTest keeps a live handle on the app process. The Swift driver lives under `drivers/apple/TalesAppleDriver/` and exposes a small HTTP/JSON surface for hierarchy, tap, input text, clear text, screenshot, launch, and terminate operations.
 
 ## Dependency policy
 
@@ -128,7 +128,7 @@ config {
         bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
         driver = {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
-          port     = 9080
+          port     = 9080 // optional in embedded mode; omit to auto-allocate a free port
           external = false
           // Embedded mode is the default: project/scheme omitted.
           // The driver is extracted from the tales binary and built once.
@@ -305,6 +305,37 @@ driver = {
 
 Tales only health-checks the URL; it never spawns or kills an external driver.
 
+### Driver port
+
+In embedded modes (default and developer override) `driver.port` is **optional**. When omitted,
+Tales auto-allocates a free host port per target at session start. Set it explicitly only when you
+need a fixed port (for example to attach external tooling). In **external** mode the port (and host)
+must point at the already-running driver, so set them explicitly.
+
+This matters for **multiple simulators in parallel**: the simulator binds the driver's HTTP server on
+the host's shared loopback, so two drivers running at once must use distinct ports. Define one target
+per simulator and leave `port` omitted, and each gets a distinct port automatically, with no manual
+bookkeeping:
+
+```hcl
+config {
+  mobile = {
+    targets = {
+      iphone = { platform = "ios", device_name = "iPhone 17", app = env("IOS_APP_PATH"), bundle_id = "com.example.app" }
+      ipad   = { platform = "ios", device_name = "iPad Pro 13-inch (M4)", app = env("IOS_APP_PATH"), bundle_id = "com.example.app" }
+    }
+  }
+}
+```
+
+<Aside type="note">
+	App **launch** and the `terminate {}` step are driven through the XCUITest driver
+	(`XCUIApplication.launch()` / `terminate()`), not `simctl`. This keeps XCTest's automation session
+	bound to the live app process, so scenarios that share a target each get a working UI hierarchy. (A
+	`simctl`-driven launch would leave XCTest pointing at a terminated process and the next scenario's
+	hierarchy fetch would time out.) `clear_state` install/uninstall still uses `simctl`.
+</Aside>
+
 ## Embedded driver cache
 
 ### Location
@@ -383,7 +414,7 @@ Every element used by Tales should have a stable identifier. Duplicate IDs are r
 
 ## Concurrency
 
-The provider serializes mobile step execution per target name. Two scenarios using the same target (for example `iphone`) cannot clear state or terminate the app while each other is tapping or asserting. Different targets may still run in parallel when configured separately.
+The provider serializes mobile step execution per target name. Two scenarios using the same target (for example `iphone`) cannot clear state or terminate the app while each other is tapping or asserting. Different targets may still run in parallel when configured separately, each driving its own simulator on its own auto-allocated [driver port](#driver-port).
 
 ## Failure artifacts
 
@@ -410,7 +441,7 @@ When Tales starts the managed Apple driver, stdout and stderr are written to `bu
 - **Stale CoreSimulator after Xcode upgrade**, run `sudo xcodebuild -runFirstLaunch`, then `xcrun simctl shutdown all`, then `killall -9 com.apple.CoreSimulator.CoreSimulatorService || true`, then `xcrun simctl list devices`. Optionally `make clean-ios-driver-cache` to force a fresh driver build.
 - **Element not found**, verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
 - **No screenshot**, check simulator permissions and fallback `xcrun simctl io screenshot` availability.
-- **Port conflict**, set `IOS_DRIVER_HOST` or update the target driver port in the `.tales` file.
+- **Port conflict**, omit `driver.port` so Tales auto-allocates a free port, or set a different explicit port. See [Driver port](#driver-port).
 
 ## Known limitations
 

@@ -10,7 +10,7 @@ config {
         bundle_id   = env("IOS_BUNDLE_ID", "com.example.MyApp")
         driver = {
           host = env("IOS_DRIVER_HOST", "127.0.0.1")
-          port = 9080
+          # port is optional in embedded mode; omit to auto-allocate a free port
         }
       }
     }
