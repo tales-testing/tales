@@ -44,13 +44,22 @@ func appleSessionBuilder() SessionBuilder {
 			return nil, fmt.Errorf("ensure booted: %w", err)
 		}
 
-		drv, handle, err := lifecycle.EnsureDriver(ctx, device, target)
+		// Resolve the driver port before starting the driver so the Go
+		// client, the TALES_DRIVER_PORT env, and the health URL all agree.
+		// In embedded mode with no explicit port this picks a free host port
+		// so multiple simulators do not collide on the shared loopback.
+		resolved, err := apple.ResolveDriverEndpoint(ctx, target)
+		if err != nil {
+			return nil, fmt.Errorf("resolve driver endpoint: %w", err)
+		}
+
+		drv, handle, err := lifecycle.EnsureDriver(ctx, device, resolved)
 		if err != nil {
 			return nil, fmt.Errorf("ensure driver: %w", err)
 		}
 
 		return &Session{
-			Target:       target,
+			Target:       resolved,
 			UDID:         device.UDID,
 			Driver:       drv,
 			DriverHandle: handle,

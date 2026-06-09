@@ -28,8 +28,13 @@ type Target struct {
 //  1. SourcePath set → dev override (build from a local Swift checkout).
 //  2. unset          → embedded mode (extract the bundled driver source).
 type DriverConfig struct {
-	Host       string
-	Port       int
+	Host string
+	Port int
+	// PortSet reports whether the user explicitly set driver.port. When it
+	// is false in embedded mode, ResolveDriverEndpoint auto-allocates a free
+	// host port so concurrent simulators do not collide on the shared
+	// loopback. External mode never auto-allocates.
+	PortSet    bool
 	External   bool
 	Mode       string
 	SourcePath string
@@ -124,6 +129,7 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 		return driver, fmt.Errorf("port: %w", err)
 	} else if ok {
 		driver.Port = port
+		driver.PortSet = true
 	}
 
 	if external, ok, err := readOptionalBool(driverVal, "external"); err != nil {
