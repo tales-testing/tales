@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/tales-testing/tales/internal/diagnostic"
@@ -29,6 +30,7 @@ const (
 	paramName    = "name"
 	paramValue   = "value"
 	paramPattern = "pattern"
+	paramVersion = "version"
 )
 
 func matcherObject(name string, values map[string]cty.Value) cty.Value {
@@ -126,6 +128,59 @@ func oneOfFunc() function.Function {
 			return matcherObject("one_of", map[string]cty.Value{paramValue: args[0]}), nil
 		},
 	})
+}
+
+// uuidFunc builds the uuid(...) value matcher. It takes an optional version
+// argument: uuid() accepts any official UUID, while uuid("v4") / uuid("4") /
+// uuid("nil") / uuid("max") pin a specific RFC 9562 form. The argument is
+// validated and normalized here so a bad token fails at evaluation time, the
+// way matchesFunc rejects an invalid regex.
+func uuidFunc() function.Function {
+	return function.New(&function.Spec{
+		Params: []function.Parameter{},
+		VarParam: &function.Parameter{
+			Name: paramVersion,
+			Type: cty.String,
+		},
+		Type: function.StaticReturnType(cty.DynamicPseudoType),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			if len(args) > 1 {
+				return cty.NilVal, fmt.Errorf("uuid accepts at most one version argument, got %d", len(args))
+			}
+
+			values := map[string]cty.Value{}
+
+			if len(args) == 1 {
+				version, err := normalizeUUIDVersion(args[0].AsString())
+				if err != nil {
+					return cty.NilVal, err
+				}
+
+				values[paramVersion] = cty.StringVal(version)
+			}
+
+			return matcherObject("uuid", values), nil
+		},
+	})
+}
+
+// normalizeUUIDVersion maps a user-supplied version token to its canonical
+// form. Accepted (case-insensitive): "v1".."v8" and "1".."8" (both collapse to
+// the bare digit), plus the special "nil" and "max" UUID tokens.
+func normalizeUUIDVersion(raw string) (string, error) {
+	token := strings.ToLower(strings.TrimSpace(raw))
+
+	switch token {
+	case "nil", "max":
+		return token, nil
+	}
+
+	switch digits := strings.TrimPrefix(token, "v"); digits {
+	case "1", "2", "3", "4", "5", "6", "7", "8":
+		return digits, nil
+	default:
+		return "", fmt.Errorf("unsupported uuid version %q (want v1..v8, nil, or max)", raw)
+	}
 }
 
 func regexFindFunc() function.Function {
@@ -514,6 +569,7 @@ func baseFunctions() map[string]function.Function {
 		"is_array":         matcherNoArg("is_array"),
 		"is_object":        matcherNoArg("is_object"),
 		"one_of":           oneOfFunc(),
+		"uuid":             uuidFunc(),
 		"can":              matcherSingleArg("can"),
 		"optional":         optionalFunc(),
 		"required":         requiredFunc(),
