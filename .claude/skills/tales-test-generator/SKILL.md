@@ -160,7 +160,7 @@ config {
         bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
         driver = {
           host = env("IOS_DRIVER_HOST", "127.0.0.1")
-          port = 9080
+          # port is optional in embedded mode; omit to auto-allocate a free port
         }
       }
     }
@@ -170,8 +170,11 @@ config {
 
 - `platform` only accepts `"ios"` in V1.
 - `app` must be an iOS Simulator `.app` bundle, not a device build.
-- `driver.host` and `driver.port` are the only fields user-authored suites
-  need. Tales extracts and builds the embedded XCUITest driver on first
+- `driver.host` / `driver.port` are the only driver fields user-authored
+  suites need. `driver.port` is **optional** in embedded mode: omit it and
+  Tales auto-allocates a free host port per target (so multiple simulators run
+  in parallel without colliding); set it explicitly only for a fixed port or in
+  external mode. Tales extracts and builds the embedded XCUITest driver on first
   run.
 
 ### Step shape
