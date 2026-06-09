@@ -526,6 +526,11 @@ Matchers:
 - `is_array()`
 - `is_object()`
 - `one_of(values)`
+- `uuid([version])`: value matcher asserting an RFC 9562 UUID string. `uuid()`
+  accepts any official version; `uuid("v1")`..`uuid("v8")` (or the bare digit
+  `uuid("4")`) pin a version; `uuid("nil")` / `uuid("max")` match the special
+  all-zero / all-`f` UUIDs. The canonical hyphenated form is required
+  (case-insensitive) and the RFC variant is enforced.
 - `can(expression)`
 - `optional(value)`: field-level matcher that passes when the key is absent, or
   when present and the inner expectation matches.
