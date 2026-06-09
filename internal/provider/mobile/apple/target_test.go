@@ -48,6 +48,10 @@ func TestResolveTargetFullyPopulated(t *testing.T) {
 		t.Fatalf("unexpected driver config: %+v", target.Driver)
 	}
 
+	if !target.Driver.PortSet {
+		t.Fatalf("expected PortSet true when port is explicit, got %+v", target.Driver)
+	}
+
 	if target.Driver.Mode != "xctest" {
 		t.Fatalf("expected mode to be set, got %+v", target.Driver)
 	}
@@ -126,6 +130,10 @@ func TestResolveTargetDefaultsDriverHostPort(t *testing.T) {
 
 	if target.Driver.Host != DefaultDriverHost || target.Driver.Port != DefaultDriverPort {
 		t.Fatalf("expected defaults, got %+v", target.Driver)
+	}
+
+	if target.Driver.PortSet {
+		t.Fatalf("expected PortSet false when port is omitted, got %+v", target.Driver)
 	}
 
 	if target.Driver.BaseURL() != "http://127.0.0.1:9080" {
