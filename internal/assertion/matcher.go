@@ -33,6 +33,7 @@ var matcherHandlers = map[string]matcherHandler{
 	"contains":       matchContains,
 	"matches":        matchRegex,
 	"one_of":         matchOneOf,
+	"uuid":           matchUUID,
 	matcherAny:       matchAny,
 	"lt":             matchLt,
 	"lte":            matchLte,
