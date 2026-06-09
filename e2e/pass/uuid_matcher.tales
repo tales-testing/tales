@@ -1,0 +1,67 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+scenario "uuid matcher validates all official UUID versions" {
+  tags = ["matchers", "uuid"]
+
+  step "http" "echo_uuids" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/echo"
+
+      headers = {
+        Content-Type = "application/json"
+      }
+
+      body {
+        json = {
+          v1       = "c232ab00-9414-11ec-b3c8-9e6bdeced846"
+          v4       = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+          v7       = "017f22e2-79b0-7cc3-98c4-dc0c0c07398f"
+          nil_uuid = "00000000-0000-0000-0000-000000000000"
+          max_uuid = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        v1       = uuid("v1")
+        v4       = uuid()
+        v7       = uuid("v7")
+        nil_uuid = uuid("nil")
+        max_uuid = uuid("max")
+      }
+    }
+  }
+
+  step "http" "echo_uuid_bare_digit_alias" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/echo"
+
+      headers = {
+        Content-Type = "application/json"
+      }
+
+      body {
+        json = {
+          id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        id = uuid("4")
+      }
+    }
+  }
+}
