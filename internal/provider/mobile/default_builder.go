@@ -53,7 +53,7 @@ func appleSessionBuilder() SessionBuilder {
 			return nil, fmt.Errorf("resolve driver endpoint: %w", err)
 		}
 
-		drv, handle, err := lifecycle.EnsureDriver(ctx, device, resolved)
+		drv, handle, diagnostics, err := lifecycle.EnsureDriver(ctx, device, resolved)
 		if err != nil {
 			return nil, fmt.Errorf("ensure driver: %w", err)
 		}
@@ -64,6 +64,7 @@ func appleSessionBuilder() SessionBuilder {
 			Driver:       drv,
 			DriverHandle: handle,
 			Lifecycle:    lifecycle,
+			Diagnostics:  diagnostics,
 		}, nil
 	})
 }

@@ -231,7 +231,7 @@ func TestEnsureDriverExternalSkipsXcodebuild(t *testing.T) {
 	drv := &fakeDriver{}
 	lc, _, xc := newLifecycleWithDriver(drv)
 
-	client, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, sampleTarget(true))
+	client, handle, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, sampleTarget(true))
 	if err != nil {
 		t.Fatalf("ensure driver: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestEnsureDriverExternalFailsOnHealth(t *testing.T) {
 	drv := &fakeDriver{healthErr: errors.New("connection refused")}
 	lc, _, _ := newLifecycleWithDriver(drv)
 
-	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, sampleTarget(true))
+	_, _, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, sampleTarget(true))
 	if err == nil || !strings.Contains(err.Error(), "external driver health") {
 		t.Fatalf("expected external driver health error, got %v", err)
 	}
@@ -271,7 +271,7 @@ func TestEnsureDriverEmbeddedModeRequiresManager(t *testing.T) {
 	drv := &fakeDriver{}
 	lc, _, xc := newLifecycleWithDriver(drv)
 
-	_, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, sampleTarget(false))
+	_, _, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, sampleTarget(false))
 	if err == nil || !strings.Contains(err.Error(), "embedded driver manager") {
 		t.Fatalf("expected embedded-manager error, got %v", err)
 	}
@@ -316,7 +316,7 @@ func TestEnsureDriverEmbeddedModeStartsTestWithoutBuilding(t *testing.T) {
 	}}
 	lc.Embedded = em
 
-	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, sampleTarget(false))
+	_, handle, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, sampleTarget(false))
 	if err != nil {
 		t.Fatalf("ensure driver: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestEnsureDriverEmbeddedModeRetriesOnHealthFailure(t *testing.T) {
 	}}
 	lc.Embedded = em
 
-	_, handle, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, sampleTarget(false))
+	_, handle, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA", Runtime: "iOS-18-0"}, sampleTarget(false))
 	if err != nil {
 		t.Fatalf("ensure driver: %v", err)
 	}
