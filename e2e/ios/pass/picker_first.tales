@@ -1,0 +1,89 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+# Covers the iOS PhotosPicker / file importer shape where every cell of
+# a system picker carries the same accessibility identifier as a sibling
+# of the others (no parent-child collapse). The strict resolver fails on
+# this with ErrDuplicate; first = true picks the pre-order first match,
+# mirroring XCUITest's firstMatch and unblocking interaction with the
+# picker.
+scenario "picker first match resolves duplicate siblings" {
+  tags = ["ios", "mobile", "demo", "picker", "first"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
+  step "mobile" "open_picker" {
+    platform = "ios"
+    target   = "iphone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.picker"
+        timeout = "20s"
+      }
+      tap {
+        id = "welcome.picker"
+      }
+      wait_visible {
+        id      = "picker.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  # Three sibling Buttons share id = "picker.cell". The strict default
+  # would reject the resolution with ErrDuplicate; first = true picks
+  # the first cell in pre-order and the status mirror flips to
+  # tapped=0.
+  step "mobile" "tap_first_cell" {
+    depends_on = ["open_picker"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      wait_visible {
+        id      = "picker.cell"
+        first   = true
+        timeout = "10s"
+      }
+      tap {
+        id    = "picker.cell"
+        first = true
+      }
+    }
+
+    expect {
+      text {
+        id      = "picker.status"
+        value   = "tapped=0"
+        timeout = "5s"
+      }
+    }
+  }
+}
