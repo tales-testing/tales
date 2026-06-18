@@ -254,6 +254,34 @@ actions {
 }
 ```
 
+Every element-targeted action AND every expectation block (`visible`,
+`not_visible`, `text`, `value`, `enabled`, `disabled`) accepts
+**`label = "<accessibilityLabel>"`** as an **alternative** to `id`. The
+two are mutually exclusive at the parse layer; setting both is rejected
+with `Conflicting element locator`, setting neither with
+`Missing element locator`. Reach for `label` only when the target
+element exposes an `accessibilityLabel` but no `accessibilityIdentifier`
+— typically iOS system controllers like the `PhotosPicker` /
+`PHPickerViewController` Done button, `UIDocumentPickerViewController`,
+the share sheet, mail / SMS composer, and system alerts.
+
+```hcl
+actions {
+  wait_visible { label = "Done" timeout = "10s" }
+  tap          { label = "Done" }
+}
+
+expect {
+  visible { label = "Done" }
+}
+```
+
+Label matching uses XCUITest's `NSPredicate(format: "label == %@", ...)`
+firstMatch semantics; combining `label` with `first = true` is allowed
+but redundant. The match is exact and case-sensitive, and system labels
+change with the simulator locale (`Done` vs `Terminé`), so prefer `id`
+whenever the app under test defines one.
+
 The step-level `permissions { <service> = "allow" | "deny" }` block sets iOS
 privacy permissions (via `simctl privacy`) after install and before launch.
 Service names are simctl privacy services — `camera`, `photos`, `location`,
