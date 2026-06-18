@@ -6,12 +6,29 @@ import XCTest
 final class TalesRouter {
     static let shared = TalesRouter()
 
+    /// Snapshots run on this dedicated queue, never on the HTTP server queue
+    /// or the runner main thread, so a snapshot that blocks (the app's own
+    /// main thread is busy doing a refresh, so `app.snapshot()` cannot be
+    /// served) can be bounded by a timeout instead of wedging the whole
+    /// driver. Mirrors the background-queue + semaphore pattern the event
+    /// synthesis path already uses to avoid deadlocking the caller.
+    private let snapshotQueue = DispatchQueue(label: "tales.driver.snapshot")
+    private let snapshotStateLock = NSLock()
+    private var snapshotInFlight = false
+
+    /// Upper bound on how long a single `/hierarchy` request waits for a
+    /// snapshot before returning a retryable 503. A healthy snapshot takes
+    /// tens of milliseconds; anything near this means the app under test is
+    /// momentarily unresponsive (mid-transition / blocking its main thread),
+    /// and the Tales provider's poll loop simply retries.
+    private let snapshotTimeout: TimeInterval = 8
+
     func dispatch(request: HTTPRequest) -> HTTPResponse {
         switch (request.method, request.path) {
         case ("GET", "/health"):
             return HTTPResponse.json(["status": "ok"])
         case ("GET", "/hierarchy"):
-            return runOnMain { self.handleHierarchy(request: request) }
+            return self.handleHierarchy(request: request)
         case ("POST", "/tap"):
             return runOnMain { self.handleTap(request: request) }
         case ("POST", "/swipe"):
@@ -54,18 +71,68 @@ final class TalesRouter {
             return HTTPResponse.error("bundleId is required", status: 400)
         }
 
+        // Single-flight: never run two snapshots at once, and never pile a new
+        // one behind a stuck one. If a snapshot is already running, tell the
+        // provider to retry — far cheaper than queueing more work onto an app
+        // that is momentarily unresponsive.
+        snapshotStateLock.lock()
+        if snapshotInFlight {
+            snapshotStateLock.unlock()
+
+            return HTTPResponse.error("snapshot busy; retry", status: 503)
+        }
+
+        snapshotInFlight = true
+        snapshotStateLock.unlock()
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var captured: HTTPResponse?
+
+        // Run the snapshot off the HTTP server queue (and off the runner main
+        // thread) so the wait below can time out while the snapshot keeps
+        // running; clearing the in-flight flag is what lets a later poll
+        // succeed once the app becomes responsive again.
+        snapshotQueue.async { [weak self] in
+            let response = self?.captureHierarchy(bundleID: bundleID)
+                ?? HTTPResponse.error("router released", status: 500)
+
+            self?.snapshotStateLock.lock()
+            self?.snapshotInFlight = false
+            self?.snapshotStateLock.unlock()
+
+            captured = response
+            semaphore.signal()
+        }
+
+        if semaphore.wait(timeout: .now() + snapshotTimeout) == .timedOut {
+            // The snapshot is still running on snapshotQueue (the app's main
+            // thread is busy). Do not block the HTTP server any longer; return
+            // a retryable status. snapshotInFlight stays true until the stuck
+            // snapshot finishes, so further /hierarchy calls get 503 and the
+            // provider keeps polling — it recovers the moment the app frees up.
+            return HTTPResponse.error("snapshot timed out after \(Int(snapshotTimeout))s; retry", status: 503)
+        }
+
+        return captured ?? HTTPResponse.error("snapshot produced no response", status: 500)
+    }
+
+    /// Takes the accessibility snapshot and encodes it. Always runs on
+    /// `snapshotQueue`. A failure is reported as a retryable 503 (not 500) so
+    /// a transient "main thread busy" / mid-transition error makes the provider
+    /// poll again instead of treating the step as a hard failure.
+    private func captureHierarchy(bundleID: String) -> HTTPResponse {
         let app = XCUIApplication(bundleIdentifier: bundleID)
 
         // app.snapshot() can transiently fail while the UI is mid-transition
         // (XCTest reports the accessibility tree as briefly unavailable).
-        // A bounded retry smooths that over instead of surfacing a 500 that
-        // the Tales provider would otherwise treat as a hard error.
+        // A bounded retry smooths that over instead of surfacing an error that
+        // the Tales provider would otherwise treat as a hard failure.
         var lastError: Error?
         for attempt in 0..<hierarchySnapshotAttempts {
             do {
-                let snapshot = try app.snapshot()
+                let root = HierarchyEncoder.encode(snapshot: try app.snapshot())
 
-                return HTTPResponse.json(HierarchyEncoder.encode(snapshot: snapshot))
+                return HTTPResponse.json(root)
             } catch {
                 lastError = error
 
@@ -75,7 +142,7 @@ final class TalesRouter {
             }
         }
 
-        return HTTPResponse.error("snapshot failed: \(lastError.map { "\($0)" } ?? "unknown")", status: 500)
+        return HTTPResponse.error("snapshot failed: \(lastError.map { "\($0)" } ?? "unknown")", status: 503)
     }
 
     private let hierarchySnapshotAttempts = 3
