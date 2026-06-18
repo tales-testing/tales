@@ -274,3 +274,77 @@ func (h *orderHook) EndScenario(_ context.Context, _ *model.Scenario, _ provider
 
 	return nil, nil
 }
+
+// teardownOrderProvider records the order in which the runner executes
+// scenario steps, EndScenario hooks, and teardown steps. It is used to
+// pin the contract that the hook fires AFTER the main steps but BEFORE
+// the teardown steps so a recorder's output is finalized before any
+// teardown assertion can observe it.
+type teardownOrderProvider struct {
+	seq     atomic.Int32
+	stepAt  int32
+	endAt   int32
+	tearAt  int32
+	calls   atomic.Int32
+	mu      sync.Mutex
+	teardow string
+	main    string
+}
+
+func (p *teardownOrderProvider) Type() string { return "http" }
+
+func (p *teardownOrderProvider) Execute(_ context.Context, input provider.Input) (*provider.Output, error) {
+	tick := p.seq.Add(1)
+
+	p.mu.Lock()
+	switch input.Step.Name {
+	case p.main:
+		p.stepAt = tick
+	case p.teardow:
+		p.tearAt = tick
+	}
+	p.mu.Unlock()
+
+	p.calls.Add(1)
+
+	return &provider.Output{Response: map[string]cty.Value{}}, nil
+}
+
+func (p *teardownOrderProvider) BeginScenario(_ context.Context, _ *model.Scenario, _ provider.ScenarioContext) error {
+	return nil
+}
+
+func (p *teardownOrderProvider) EndScenario(_ context.Context, _ *model.Scenario, _ provider.ScenarioContext, _ error) ([]provider.ScenarioArtifact, error) {
+	p.endAt = p.seq.Add(1)
+
+	return nil, nil
+}
+
+func TestScenarioHookEndsBeforeTeardown(t *testing.T) {
+	t.Parallel()
+
+	hook := &teardownOrderProvider{main: "main", teardow: "cleanup"}
+	runner := NewRunner(provider.NewRegistry(hook))
+
+	mainStep := newHTTPStep("main")
+	teardownStep := newHTTPStep("cleanup")
+
+	suite := &model.Suite{Scenarios: []*model.Scenario{{
+		Name:     "ordering",
+		File:     "x.tales",
+		Steps:    []*model.Step{mainStep},
+		Teardown: []*model.Step{teardownStep},
+	}}}
+
+	if _, err := runner.Run(context.Background(), suite, Options{Seed: 1, Parallel: 1}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if hook.stepAt == 0 || hook.endAt == 0 || hook.tearAt == 0 {
+		t.Fatalf("expected every phase to fire: step=%d end=%d teardown=%d", hook.stepAt, hook.endAt, hook.tearAt)
+	}
+
+	if !(hook.stepAt < hook.endAt && hook.endAt < hook.tearAt) {
+		t.Fatalf("expected step (%d) < EndScenario (%d) < teardown (%d)", hook.stepAt, hook.endAt, hook.tearAt)
+	}
+}
