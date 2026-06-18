@@ -54,6 +54,10 @@ type MobileActionExec struct {
 	// Duration is the resolved gesture duration for swipe / scroll /
 	// long_press. Zero means "use the provider default".
 	Duration time.Duration
+	// First opts the action's element resolution into pre-order first-match
+	// semantics (XCUITest firstMatch). Strict ErrDuplicate behavior is kept
+	// when false. Only consulted by actions that resolve an element by id.
+	First bool
 }
 
 // MobileExpectExec groups visibility expectations for the step.

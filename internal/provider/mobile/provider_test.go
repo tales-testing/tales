@@ -379,6 +379,135 @@ func TestExecuteTapFindsCenterAndSends(t *testing.T) {
 	}
 }
 
+// newDuplicateSiblingsHierarchy mirrors the iOS PhotosPicker layout where
+// every grid cell carries the same accessibility identifier and the cells
+// are siblings inside the collection view (no parent-child collapse).
+func newDuplicateSiblingsHierarchy() *tree.ViewNode {
+	return &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{
+				ID:      "PXGGridLayout-Info",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 0, Y: 0, Width: 100, Height: 100},
+			},
+			{
+				ID:      "PXGGridLayout-Info",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 100, Y: 0, Width: 100, Height: 100},
+			},
+			{
+				ID:      "PXGGridLayout-Info",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 200, Y: 0, Width: 100, Height: 100},
+			},
+		},
+	}
+}
+
+func TestExecuteTapFirstResolvesDuplicateSiblings(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newDuplicateSiblingsHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	out, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("tap-first"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, ID: "PXGGridLayout-Info", First: true},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if out == nil {
+		t.Fatal("expected output")
+	}
+
+	if len(drv.taps) != 1 {
+		t.Fatalf("expected 1 tap, got %d", len(drv.taps))
+	}
+
+	// The first sibling sits at (0,0)-(100,100); its center is (50,50).
+	if drv.taps[0].x != 50 || drv.taps[0].y != 50 {
+		t.Fatalf("expected tap on the first sibling at (50,50), got %+v", drv.taps[0])
+	}
+}
+
+func TestExecuteTapDuplicateSiblingsWithoutFirstFails(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newDuplicateSiblingsHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("tap-strict"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, ID: "PXGGridLayout-Info"},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected ErrDuplicate to surface when first is false")
+	}
+
+	if !strings.Contains(err.Error(), "multiple elements share the same id") {
+		t.Fatalf("expected ErrDuplicate message, got %v", err)
+	}
+
+	if len(drv.taps) != 0 {
+		t.Fatalf("expected no taps on ambiguous resolution, got %d", len(drv.taps))
+	}
+}
+
+func TestExecuteWaitVisibleFirstResolvesDuplicateSiblings(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newDuplicateSiblingsHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("wait-first"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{
+					Kind:    model.MobileActionWaitVisible,
+					ID:      "PXGGridLayout-Info",
+					First:   true,
+					Timeout: 50 * time.Millisecond,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected wait_visible first=true to succeed on duplicate siblings, got %v", err)
+	}
+}
+
 func TestExecuteDoubleTapSendsToDriver(t *testing.T) {
 	t.Parallel()
 
