@@ -1,0 +1,112 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+# App Store preview recording. The scenario is intentionally skipped on
+# `make e2e` and `make e2e-ios`: it only runs when TALES_RECORD is set
+# (via `make e2e-ios-record`). The resulting preview.mp4 lives under the
+# per-scenario workspace and is surfaced as a scenario-level artifact in
+# the console, JSONL, JUnit and visual reports.
+scenario "iOS App Store preview" {
+  tags = ["ios", "mobile", "video", "preview"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH", "TALES_RECORD"]
+    reason  = "Set TALES_RECORD=1 (and IOS_APP_PATH) to record an App Store preview video"
+  }
+
+  record {
+    output = "preview.mp4"
+    codec  = "h264"
+    mask   = "black"
+    force  = true
+  }
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    expect {
+      visible {
+        id      = "welcome.signin"
+        timeout = "20s"
+      }
+      text {
+        id    = "welcome.title"
+        value = "Tales Demo"
+      }
+    }
+  }
+
+  step "mobile" "open_login" {
+    depends_on = ["launch"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id      = "login.screen"
+        timeout = "10s"
+      }
+    }
+    expect {
+      visible {
+        id = "login.screen"
+      }
+    }
+  }
+
+  step "mobile" "back_to_welcome" {
+    depends_on = ["open_login"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      press_button {
+        button = "home"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+
+    step "file" "preview_exists" {
+      when = true
+
+      path = "${scenario.workdir}/preview.mp4"
+      expect {
+        exists     = true
+        size_bytes = gt(0)
+      }
+    }
+  }
+}

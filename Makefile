@@ -35,6 +35,7 @@ IOS_DEMO_DERIVED_DATA := $(BUILD_DIR)/ios/demoapp
 IOS_DEMO_APP_PATH_FILE := $(IOS_DEMO_DERIVED_DATA)/app_path.txt
 IOS_PASS_SUITE := ./e2e/ios/pass
 IOS_FAIL_SUITE := ./e2e/ios/fail
+IOS_RECORD_SUITE := ./e2e/ios-record
 
 .PHONY: build tales-bin mock-bin install install-skill
 build: tales-bin mock-bin
@@ -265,6 +266,36 @@ e2e-ios-failure: tales-bin build-ios-demo
 	if [ $$exit_code -ne 1 ]; then echo "expected Tales to exit 1, got $$exit_code"; exit 1; fi; \
 	scripts/verify-ios-failure.sh "$(BUILD_DIR)/reports/e2e-ios-failure.jsonl" "$(BUILD_DIR)/artifacts/mobile" || { echo "iOS failure verification failed. Run \`make doctor-ios\` for diagnostics."; exit 1; }; \
 	scripts/verify-ios-visual.sh "$(BUILD_DIR)/reports/e2e-ios-failure.html" || { echo "visual report verification failed."; exit 1; }
+
+# e2e-ios-record drives the iOS App Store preview scenario. It is opt-in
+# (skip_unless { env_set = ["TALES_RECORD"] }) and not wired into `make e2e`
+# nor `make e2e-ios`; the recording is captured via `xcrun simctl io
+# recordVideo` and surfaced as a scenario-level artifact in the reports.
+.PHONY: e2e-ios-record
+e2e-ios-record: tales-bin build-ios-demo
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/artifacts
+	@set -euo pipefail; \
+	app_path=$$(cat "$(IOS_DEMO_APP_PATH_FILE)" 2>/dev/null || true); \
+	if [ -z "$$app_path" ]; then echo "TalesDemoApp.app was not produced under $(IOS_DEMO_DERIVED_DATA)."; exit 1; fi; \
+	echo "iOS recording configuration:"; \
+	echo "  device:       $(IOS_DEVICE_NAME)"; \
+	echo "  app:          $$app_path"; \
+	echo "  bundle id:    $(IOS_BUNDLE_ID)"; \
+	echo "  driver:       $(IOS_DRIVER_HOST):$(IOS_DRIVER_PORT)"; \
+	echo "  JSONL report: $(BUILD_DIR)/reports/e2e-ios-record.jsonl"; \
+	echo "  JUnit report: $(BUILD_DIR)/reports/e2e-ios-record.junit.xml"; \
+	echo "  HTML report:  $(BUILD_DIR)/reports/e2e-ios-record.html"; \
+	IOS_APP_PATH="$$app_path" \
+	IOS_BUNDLE_ID="$(IOS_BUNDLE_ID)" \
+	IOS_DEVICE_NAME="$(IOS_DEVICE_NAME)" \
+	IOS_DRIVER_HOST="$(IOS_DRIVER_HOST)" \
+	IOS_DRIVER_PORT="$(IOS_DRIVER_PORT)" \
+	TALES_RECORD=1 \
+	$(TALES_BIN) test --seed 1234 --parallel 1 \
+		--report-junit $(BUILD_DIR)/reports/e2e-ios-record.junit.xml \
+		--report-jsonl $(BUILD_DIR)/reports/e2e-ios-record.jsonl \
+		--report-html $(BUILD_DIR)/reports/e2e-ios-record.html \
+		$(IOS_RECORD_SUITE)
 
 .PHONY: e2e-load
 e2e-load: build
