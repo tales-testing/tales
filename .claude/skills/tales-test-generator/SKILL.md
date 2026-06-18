@@ -236,6 +236,24 @@ strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
 - `wait_visible { id = "..." }` — explicit wait until the element is visible.
 - `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
 
+Every element-targeted action above (`tap`, `double_tap`, `long_press`,
+`input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`,
+`wait_not_visible`) accepts an optional **`first = true`** attribute. The
+strict default is unchanged — two distinct sibling matches surface
+`multiple elements share the same id`. `first = true` opts the resolver
+into XCUITest-style `firstMatch` semantics (pre-order DFS, first node
+wins), which is the only way to interact with iOS system pickers
+(`PhotosPicker`, file importer) whose cells share an accessibility
+identifier as siblings. `first` is **not** accepted on `expect` blocks:
+assertions intentionally keep the uniqueness guarantee.
+
+```hcl
+actions {
+  wait_visible { id = "PXGGridLayout-Info" first = true timeout = "15s" }
+  tap          { id = "PXGGridLayout-Info" first = true }
+}
+```
+
 The step-level `permissions { <service> = "allow" | "deny" }` block sets iOS
 privacy permissions (via `simctl privacy`) after install and before launch.
 Service names are simctl privacy services — `camera`, `photos`, `location`,

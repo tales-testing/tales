@@ -115,3 +115,27 @@ scenario "iOS register happy path" {
     }
   }
 }
+
+# System-picker pattern: every cell of an iOS PhotosPicker / file
+# importer shares the same accessibility identifier as a sibling, so the
+# strict resolver fails with `multiple elements share the same id`.
+# Opt every element-targeted action into pre-order first-match with
+# `first = true` to interact with the first cell. Do NOT use `first` in
+# `expect` blocks — assertions keep the uniqueness guarantee on purpose.
+scenario "iOS PhotosPicker first cell" {
+  step "mobile" "pick_first_photo" {
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      wait_visible {
+        id      = "PXGGridLayout-Info"
+        first   = true
+        timeout = "15s"
+      }
+      tap {
+        id    = "PXGGridLayout-Info"
+        first = true
+      }
+    }
+  }
+}
