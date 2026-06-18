@@ -32,12 +32,21 @@ type Report struct {
 
 // Scenario is one .tales scenario projected for the visual replay.
 type Scenario struct {
-	Name       string `json:"name"`
-	File       string `json:"file"`
-	Status     string `json:"status"`
-	DurationMS int64  `json:"duration_ms"`
-	SkipReason string `json:"skip_reason,omitempty"`
-	Steps      []Step `json:"steps"`
+	Name       string     `json:"name"`
+	File       string     `json:"file"`
+	Status     string     `json:"status"`
+	DurationMS int64      `json:"duration_ms"`
+	SkipReason string     `json:"skip_reason,omitempty"`
+	Steps      []Step     `json:"steps"`
+	Artifacts  []Artifact `json:"artifacts,omitempty"`
+}
+
+// Artifact is one scenario-wide file (e.g. a screen recording) produced by
+// a provider's ScenarioHook implementation. Step-level artifacts continue
+// to live on the Action / Step view.
+type Artifact struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
 }
 
 // Step is one step within a scenario. Provider is preserved so the timeline
@@ -114,6 +123,7 @@ func buildScenario(sc *report.ScenarioResult, htmlDir string) Scenario {
 		DurationMS: sc.Duration.Milliseconds(),
 		SkipReason: sc.SkipReason,
 		Steps:      make([]Step, 0, len(sc.Steps)+len(sc.Teardown)),
+		Artifacts:  buildScenarioArtifacts(sc.Artifacts, htmlDir),
 	}
 
 	// The runner sorts sc.Steps alphabetically for stable console / JSONL
@@ -201,6 +211,27 @@ func buildAction(a *report.ActionResult, htmlDir string) Action {
 
 	if a.Error != nil {
 		out.Error = a.Error.Message
+	}
+
+	return out
+}
+
+// buildScenarioArtifacts copies the scenario-level artifacts produced by
+// ScenarioHook implementations into the visual payload, rewriting paths to
+// be relative to the destination HTML directory so the report stays
+// portable when shipped alongside its build/artifacts/ tree.
+func buildScenarioArtifacts(in []report.Artifact, htmlDir string) []Artifact {
+	if len(in) == 0 {
+		return nil
+	}
+
+	out := make([]Artifact, 0, len(in))
+
+	for _, a := range in {
+		out = append(out, Artifact{
+			Type: a.Type,
+			Path: relativeArtifactPath(a.Path, htmlDir),
+		})
 	}
 
 	return out

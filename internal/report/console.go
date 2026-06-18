@@ -180,6 +180,12 @@ func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *c
 		}
 	}
 
+	for _, art := range scenario.Artifacts {
+		if _, err := fmt.Fprintf(out, "  %s: %s\n", art.Type, art.Path); err != nil {
+			return fmt.Errorf("print scenario artifact: %w", err)
+		}
+	}
+
 	if scenario.Failure != nil && findFirstFailedStep(scenario) == nil {
 		if _, err := fmt.Fprintf(out, "  scenario failure:\n"); err != nil {
 			return fmt.Errorf("print scenario failure title: %w", err)

@@ -136,6 +136,10 @@ func encodeScenarioEvent(encoder *json.Encoder, seed int64, scenario *ScenarioRe
 		event["skip_reason"] = scenario.SkipReason
 	}
 
+	if len(scenario.Artifacts) > 0 {
+		event["artifacts"] = scenario.Artifacts
+	}
+
 	if err := encoder.Encode(event); err != nil {
 		return fmt.Errorf("encode scenario event %q: %w", scenario.Name, err)
 	}
