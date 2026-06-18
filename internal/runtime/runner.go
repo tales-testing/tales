@@ -202,8 +202,25 @@ func (r *Runner) closeProviders() {
 	}
 }
 
-func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *model.Scenario, config map[string]cty.Value, opts Options) (*report.ScenarioResult, error) {
-	sResult := &report.ScenarioResult{File: scenario.File, Name: scenario.Name, Tags: scenario.Tags, Status: report.StatusPass}
+// scenarioHooks returns every registered provider that implements the
+// optional ScenarioHook capability. The order matches Registry.All() and is
+// stable per-Runner; the runner invokes BeginScenario in that order and
+// EndScenario in reverse so per-hook resources are released LIFO.
+func (r *Runner) scenarioHooks() []provider.ScenarioHook {
+	all := r.providers.All()
+	hooks := make([]provider.ScenarioHook, 0, len(all))
+
+	for _, p := range all {
+		if hook, ok := p.(provider.ScenarioHook); ok {
+			hooks = append(hooks, hook)
+		}
+	}
+
+	return hooks
+}
+
+func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *model.Scenario, config map[string]cty.Value, opts Options) (sResult *report.ScenarioResult, runErr error) {
+	sResult = &report.ScenarioResult{File: scenario.File, Name: scenario.Name, Tags: scenario.Tags, Status: report.StatusPass}
 	start := time.Now()
 	seed := opts.Seed
 
@@ -251,6 +268,38 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 
 	if handled := applyScenarioSkip(evaluator, scenario, sResult, state, config, start); handled {
 		return sResult, nil
+	}
+
+	hooks := r.scenarioHooks()
+	hctx := provider.ScenarioContext{
+		Workdir:      workdir,
+		ArtifactsDir: artifactsDir,
+		ProjectDir:   opts.ProjectDir,
+	}
+
+	beganHooks := 0
+	defer func() {
+		for i := beganHooks - 1; i >= 0; i-- {
+			artifacts, _ := hooks[i].EndScenario(ctx, scenario, hctx, runErr)
+			for _, a := range artifacts {
+				sResult.Artifacts = append(sResult.Artifacts, report.Artifact{Type: a.Type, Path: a.Path})
+			}
+		}
+	}()
+
+	for i, hook := range hooks {
+		if err := hook.BeginScenario(ctx, scenario, hctx); err != nil {
+			sResult.Status = report.StatusFail
+			sResult.Failure = &report.ErrorDetail{
+				Kind:    "hook",
+				Message: fmt.Sprintf("scenario hook BeginScenario failed: %s", err),
+			}
+			sResult.Duration = time.Since(start)
+
+			return sResult, nil
+		}
+
+		beganHooks = i + 1
 	}
 
 	tracker := newDepTracker()
