@@ -846,8 +846,10 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 
 	var found *tree.ViewNode
 
+	locator := elementLocator{ID: action.ID, Label: action.Label, First: action.First}
+
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, action.ID, action.First)
+		node, ok, err := findElement(pollCtx, session, locator)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -861,7 +863,7 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 		return pollResult{}, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("element %q was not visible after %s: %w", action.ID, opts.Timeout, err)
+		return nil, fmt.Errorf("element %s was not visible after %s: %w", locator, opts.Timeout, err)
 	}
 
 	return found, nil
@@ -912,8 +914,10 @@ func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v pr
 
 	var found bool
 
+	locator := elementLocator{ID: v.ID, Label: v.Label, First: first}
+
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, v.ID, first)
+		node, ok, err := findElement(pollCtx, session, locator)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -935,13 +939,13 @@ func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v pr
 
 	if want {
 		if !found {
-			return fmt.Errorf("element %q not found after %s: %w", v.ID, opts.Timeout, err)
+			return fmt.Errorf("element %s not found after %s: %w", locator, opts.Timeout, err)
 		}
 
-		return fmt.Errorf("element %q was not visible after %s: %w", v.ID, opts.Timeout, err)
+		return fmt.Errorf("element %s was not visible after %s: %w", locator, opts.Timeout, err)
 	}
 
-	return fmt.Errorf("element %q was still visible after %s: %w", v.ID, opts.Timeout, err)
+	return fmt.Errorf("element %s was still visible after %s: %w", locator, opts.Timeout, err)
 }
 
 func (p *Provider) waitForText(ctx context.Context, session *Session, v provider.MobileValueExpectationExec) error {
@@ -960,8 +964,10 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 		found bool
 	)
 
+	locator := elementLocator{ID: v.ID, Label: v.Label}
+
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, v.ID, false)
+		node, ok, err := findElement(pollCtx, session, locator)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -974,7 +980,8 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 		got = extract(node)
 
 		res := pollResult{Done: true}
-		if mismatch := assertion.Equal(kind+"."+v.ID, v.Expected, cty.StringVal(got)); mismatch != nil {
+		assertionLabel := kind + "." + locator.String()
+		if mismatch := assertion.Equal(assertionLabel, v.Expected, cty.StringVal(got)); mismatch != nil {
 			res = pollResult{Mismatch: mismatch}
 		}
 
@@ -985,12 +992,12 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 	}
 
 	if !found {
-		return fmt.Errorf("element %q not found after %s: %w", v.ID, opts.Timeout, err)
+		return fmt.Errorf("element %s not found after %s: %w", locator, opts.Timeout, err)
 	}
 
 	want := diagnostic.ScalarString(v.Expected)
 
-	return fmt.Errorf("%s mismatch for %q after %s: want=%q got=%q: %w", kind, v.ID, opts.Timeout, want, got, err)
+	return fmt.Errorf("%s mismatch for %s after %s: want=%q got=%q: %w", kind, locator, opts.Timeout, want, got, err)
 }
 
 func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provider.MobileStateExpectationExec, want bool) error {
@@ -1001,8 +1008,10 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 		lastSeen bool
 	)
 
+	locator := elementLocator{ID: v.ID, Label: v.Label}
+
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, v.ID, false)
+		node, ok, err := findElement(pollCtx, session, locator)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -1018,14 +1027,14 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 			return pollResult{Done: true}, nil
 		}
 
-		return pollResult{Mismatch: fmt.Errorf("element %q enabled=%t, want=%t", v.ID, node.Enabled, want)}, nil
+		return pollResult{Mismatch: fmt.Errorf("element %s enabled=%t, want=%t", locator, node.Enabled, want)}, nil
 	})
 	if err == nil {
 		return nil
 	}
 
 	if !found {
-		return fmt.Errorf("element %q not found after %s: %w", v.ID, opts.Timeout, err)
+		return fmt.Errorf("element %s not found after %s: %w", locator, opts.Timeout, err)
 	}
 
 	state := "enabled"
@@ -1033,7 +1042,7 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 		state = "disabled"
 	}
 
-	return fmt.Errorf("element %q was not %s after %s (last seen enabled=%t): %w", v.ID, state, opts.Timeout, lastSeen, err)
+	return fmt.Errorf("element %s was not %s after %s (last seen enabled=%t): %w", locator, state, opts.Timeout, lastSeen, err)
 }
 
 // PollOptions configures a single poll() invocation.
@@ -1110,14 +1119,34 @@ func poll(ctx context.Context, opts PollOptions, fn func(context.Context) (pollR
 	}
 }
 
-func findElementByID(ctx context.Context, session *Session, id string, first bool) (*tree.ViewNode, bool, error) {
+// elementLocator carries the per-call resolution mode for findElement.
+// Exactly one of ID or Label is non-empty (parser-enforced). First is
+// only honored when ID is set: label resolution is always firstMatch.
+type elementLocator struct {
+	ID    string
+	Label string
+	First bool
+}
+
+// String returns a user-facing rendering of the locator for error
+// messages, so a missing element cites label="Done" rather than a bare
+// (and possibly empty) id.
+func (l elementLocator) String() string {
+	if l.Label != "" {
+		return fmt.Sprintf("label=%q", l.Label)
+	}
+
+	return fmt.Sprintf("id=%q", l.ID)
+}
+
+func findElement(ctx context.Context, session *Session, locator elementLocator) (*tree.ViewNode, bool, error) {
 	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID)
 	if err != nil {
 		return nil, false, fmt.Errorf("fetch hierarchy: %w", err)
 	}
 
-	if first {
-		node, ok, err := tree.FindFirstByID(hierarchy, id)
+	if locator.Label != "" {
+		node, ok, err := tree.FindFirstByLabel(hierarchy, locator.Label)
 		if err != nil {
 			return nil, false, fmt.Errorf("find element: %w", err)
 		}
@@ -1125,7 +1154,16 @@ func findElementByID(ctx context.Context, session *Session, id string, first boo
 		return node, ok, nil
 	}
 
-	node, ok, err := tree.FindByID(hierarchy, id)
+	if locator.First {
+		node, ok, err := tree.FindFirstByID(hierarchy, locator.ID)
+		if err != nil {
+			return nil, false, fmt.Errorf("find element: %w", err)
+		}
+
+		return node, ok, nil
+	}
+
+	node, ok, err := tree.FindByID(hierarchy, locator.ID)
 	if err != nil {
 		return nil, false, fmt.Errorf("find element: %w", err)
 	}

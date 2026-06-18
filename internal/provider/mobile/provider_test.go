@@ -511,6 +511,128 @@ func TestExecuteWaitVisibleFirstResolvesDuplicateSiblings(t *testing.T) {
 	}
 }
 
+// newSystemPickerHierarchy mirrors an iOS PHPickerViewController shape:
+// a "Done" button with empty accessibilityIdentifier and a non-empty
+// accessibilityLabel. The strict id-based path cannot reach it; label
+// resolution is the only way.
+func newSystemPickerHierarchy() *tree.ViewNode {
+	return &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{
+				ID:      "",
+				Label:   "Done",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 200, Y: 40, Width: 80, Height: 30},
+			},
+		},
+	}
+}
+
+func TestExecuteTapByLabelResolvesEmptyID(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newSystemPickerHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	out, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("tap-label"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, Label: "Done"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if out == nil {
+		t.Fatal("expected output")
+	}
+
+	if len(drv.taps) != 1 {
+		t.Fatalf("expected 1 tap, got %d", len(drv.taps))
+	}
+
+	tap := drv.taps[0]
+
+	if tap.label != "Done" {
+		t.Fatalf("expected driver to receive label=\"Done\", got %q", tap.label)
+	}
+
+	if tap.id != "" {
+		t.Fatalf("expected driver to receive empty id when matching by label, got %q", tap.id)
+	}
+
+	// Center of (200,40)-(280,70).
+	if tap.x != 240 || tap.y != 55 {
+		t.Fatalf("expected tap on Done button center (240,55), got %+v", tap)
+	}
+}
+
+func TestExecuteExpectVisibleByLabel(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newSystemPickerHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("visible-label"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Visible: []provider.MobileVisibilityExec{
+					{Label: "Done", Timeout: 50 * time.Millisecond},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected visible expectation to succeed via label snapshot, got %v", err)
+	}
+}
+
+func TestExecuteTapByMissingLabelSurfacesLocatorInError(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newSystemPickerHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("tap-missing-label"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, Label: "Missing", Timeout: 30 * time.Millisecond},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when label does not resolve")
+	}
+
+	if !strings.Contains(err.Error(), `label="Missing"`) {
+		t.Fatalf("expected error to surface the label, got: %v", err)
+	}
+}
+
 func TestExecuteDoubleTapSendsToDriver(t *testing.T) {
 	t.Parallel()
 
@@ -1272,7 +1394,7 @@ func TestExecuteTextExpectationFailsCleanly(t *testing.T) {
 			},
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), `text mismatch for "welcome.register"`) {
+	if err == nil || !strings.Contains(err.Error(), `text mismatch for id="welcome.register"`) {
 		t.Fatalf("expected text mismatch, got %v", err)
 	}
 }
@@ -1303,7 +1425,7 @@ func TestExecuteTextExpectationReportsElementNotFound(t *testing.T) {
 	}
 
 	msg := err.Error()
-	if !strings.Contains(msg, `element "welcome.register" not found after`) {
+	if !strings.Contains(msg, `element id="welcome.register" not found after`) {
 		t.Fatalf("expected not-found message, got %v", msg)
 	}
 
@@ -1348,7 +1470,7 @@ func TestExecuteTextExpectationPreservesMatcherMessageOnTimeout(t *testing.T) {
 	}
 
 	msg := err.Error()
-	if !strings.Contains(msg, `text mismatch for "welcome.register"`) {
+	if !strings.Contains(msg, `text mismatch for id="welcome.register"`) {
 		t.Fatalf("expected mismatch summary, got %v", msg)
 	}
 
