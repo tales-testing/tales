@@ -215,7 +215,7 @@ func TestClientTapSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.Tap(context.Background(), "com.example.MyApp", "", 12.5, 34.25); err != nil {
+	if err := client.Tap(context.Background(), "com.example.MyApp", "", "", 12.5, 34.25); err != nil {
 		t.Fatalf("tap: %v", err)
 	}
 
@@ -272,7 +272,7 @@ func TestClientLongPressSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.LongPress(context.Background(), "com.example.MyApp", "menu.item", 5, 6, 1.5); err != nil {
+	if err := client.LongPress(context.Background(), "com.example.MyApp", "menu.item", "", 5, 6, 1.5); err != nil {
 		t.Fatalf("longPress: %v", err)
 	}
 
@@ -299,7 +299,7 @@ func TestClientDoubleTapSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.DoubleTap(context.Background(), "com.example.MyApp", "feed.item", 7, 8); err != nil {
+	if err := client.DoubleTap(context.Background(), "com.example.MyApp", "feed.item", "", 7, 8); err != nil {
 		t.Fatalf("doubleTap: %v", err)
 	}
 
@@ -399,7 +399,7 @@ func TestClientTapIncludesIDWhenProvided(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.Tap(context.Background(), "com.example.MyApp", "auth.signup.accept_terms", 12.5, 34.25); err != nil {
+	if err := client.Tap(context.Background(), "com.example.MyApp", "auth.signup.accept_terms", "", 12.5, 34.25); err != nil {
 		t.Fatalf("tap: %v", err)
 	}
 
@@ -425,7 +425,7 @@ func TestClientInputTextSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.InputText(context.Background(), "com.example.MyApp", "", "hello@example.com", false); err != nil {
+	if err := client.InputText(context.Background(), "com.example.MyApp", "", "", "hello@example.com", false); err != nil {
 		t.Fatalf("inputText: %v", err)
 	}
 
@@ -455,7 +455,7 @@ func TestClientInputTextIncludesIDAndPasteWhenSet(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.InputText(context.Background(), "com.example.MyApp", "auth.signup.password", "p@ssw0rd!", true); err != nil {
+	if err := client.InputText(context.Background(), "com.example.MyApp", "auth.signup.password", "", "p@ssw0rd!", true); err != nil {
 		t.Fatalf("inputText: %v", err)
 	}
 
@@ -465,6 +465,58 @@ func TestClientInputTextIncludesIDAndPasteWhenSet(t *testing.T) {
 
 	if captured["paste"] != true {
 		t.Fatalf("payload missing paste=true, got %v", captured)
+	}
+}
+
+func TestClientTapIncludesLabelWhenSet(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/tap" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.Tap(context.Background(), "com.example.MyApp", "", "Done", 10, 20); err != nil {
+		t.Fatalf("tap: %v", err)
+	}
+
+	if captured["label"] != "Done" {
+		t.Fatalf("payload missing label=\"Done\", got %v", captured)
+	}
+
+	if _, hasID := captured["id"]; hasID {
+		t.Fatalf("payload should omit empty id, got %v", captured)
+	}
+}
+
+func TestClientInputTextIncludesLabelWhenSet(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.InputText(context.Background(), "com.example.MyApp", "", "Search", "needle", false); err != nil {
+		t.Fatalf("inputText: %v", err)
+	}
+
+	if captured["label"] != "Search" {
+		t.Fatalf("payload missing label, got %v", captured)
 	}
 }
 

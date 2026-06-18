@@ -43,13 +43,13 @@ func (d *recordingDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode
 	return d.hierarchy, nil
 }
 
-func (d *recordingDriver) Tap(_ context.Context, _, _ string, _, _ float64) error {
+func (d *recordingDriver) Tap(_ context.Context, _, _, _ string, _, _ float64) error {
 	d.tappedAtLeastOne.Add(1)
 
 	return d.tapErr
 }
 
-func (d *recordingDriver) InputText(_ context.Context, _, _, _ string, _ bool) error {
+func (d *recordingDriver) InputText(_ context.Context, _, _, _, _ string, _ bool) error {
 	return d.inputTextErr
 }
 

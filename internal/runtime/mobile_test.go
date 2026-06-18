@@ -31,12 +31,12 @@ type stubMobileDriver struct {
 func (s *stubMobileDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
 	return s.hierarchy, nil
 }
-func (s *stubMobileDriver) Tap(_ context.Context, _, _ string, _, _ float64) error {
+func (s *stubMobileDriver) Tap(_ context.Context, _, _, _ string, _, _ float64) error {
 	s.taps.Add(1)
 
 	return nil
 }
-func (s *stubMobileDriver) InputText(_ context.Context, _, _, t string, _ bool) error {
+func (s *stubMobileDriver) InputText(_ context.Context, _, _, _, t string, _ bool) error {
 	s.inputs = append(s.inputs, t)
 
 	return nil

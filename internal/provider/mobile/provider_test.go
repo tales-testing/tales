@@ -19,12 +19,14 @@ import (
 )
 
 type fakeTap struct {
-	id   string
-	x, y float64
+	id    string
+	label string
+	x, y  float64
 }
 
 type fakeInput struct {
 	id    string
+	label string
 	text  string
 	paste bool
 }
@@ -37,6 +39,7 @@ type fakeSwipe struct {
 
 type fakeLongPress struct {
 	id       string
+	label    string
 	x, y     float64
 	duration float64
 }
@@ -138,11 +141,11 @@ func (f *fakeDriverAll) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, 
 	return node, nil
 }
 
-func (f *fakeDriverAll) Tap(_ context.Context, _, id string, x, y float64) error {
+func (f *fakeDriverAll) Tap(_ context.Context, _, id, label string, x, y float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.taps = append(f.taps, fakeTap{id: id, x: x, y: y})
+	f.taps = append(f.taps, fakeTap{id: id, label: label, x: x, y: y})
 
 	return f.tapErr
 }
@@ -158,20 +161,20 @@ func (f *fakeDriverAll) Swipe(_ context.Context, _ string, startX, startY, endX,
 	return nil
 }
 
-func (f *fakeDriverAll) LongPress(_ context.Context, _, id string, x, y, duration float64) error {
+func (f *fakeDriverAll) LongPress(_ context.Context, _, id, label string, x, y, duration float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.longPresses = append(f.longPresses, fakeLongPress{id: id, x: x, y: y, duration: duration})
+	f.longPresses = append(f.longPresses, fakeLongPress{id: id, label: label, x: x, y: y, duration: duration})
 
 	return nil
 }
 
-func (f *fakeDriverAll) DoubleTap(_ context.Context, _, id string, x, y float64) error {
+func (f *fakeDriverAll) DoubleTap(_ context.Context, _, id, label string, x, y float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.doubleTaps = append(f.doubleTaps, fakeTap{id: id, x: x, y: y})
+	f.doubleTaps = append(f.doubleTaps, fakeTap{id: id, label: label, x: x, y: y})
 
 	return nil
 }
@@ -203,11 +206,11 @@ func (f *fakeDriverAll) SetOrientation(_ context.Context, orientation string) er
 	return nil
 }
 
-func (f *fakeDriverAll) InputText(_ context.Context, _, id, text string, paste bool) error {
+func (f *fakeDriverAll) InputText(_ context.Context, _, id, label, text string, paste bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.inputs = append(f.inputs, fakeInput{id: id, text: text, paste: paste})
+	f.inputs = append(f.inputs, fakeInput{id: id, label: label, text: text, paste: paste})
 
 	return nil
 }

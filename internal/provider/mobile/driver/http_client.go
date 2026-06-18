@@ -115,10 +115,14 @@ func (c *Client) Hierarchy(ctx context.Context, bundleID string) (*tree.ViewNode
 }
 
 // Tap posts to /tap.
-func (c *Client) Tap(ctx context.Context, bundleID, id string, x, y float64) error {
+func (c *Client) Tap(ctx context.Context, bundleID, id, label string, x, y float64) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y}
 	if id != "" {
 		payload["id"] = id
+	}
+
+	if label != "" {
+		payload["label"] = label
 	}
 
 	return c.postJSON(ctx, "/tap", payload)
@@ -139,20 +143,28 @@ func (c *Client) Swipe(ctx context.Context, bundleID string, startX, startY, end
 }
 
 // LongPress posts to /longPress.
-func (c *Client) LongPress(ctx context.Context, bundleID, id string, x, y, duration float64) error {
+func (c *Client) LongPress(ctx context.Context, bundleID, id, label string, x, y, duration float64) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y, payloadDurationKey: duration}
 	if id != "" {
 		payload["id"] = id
+	}
+
+	if label != "" {
+		payload["label"] = label
 	}
 
 	return c.postJSON(ctx, "/longPress", payload)
 }
 
 // DoubleTap posts to /doubleTap.
-func (c *Client) DoubleTap(ctx context.Context, bundleID, id string, x, y float64) error {
+func (c *Client) DoubleTap(ctx context.Context, bundleID, id, label string, x, y float64) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y}
 	if id != "" {
 		payload["id"] = id
+	}
+
+	if label != "" {
+		payload["label"] = label
 	}
 
 	return c.postJSON(ctx, "/doubleTap", payload)
@@ -174,10 +186,14 @@ func (c *Client) SetOrientation(ctx context.Context, orientation string) error {
 }
 
 // InputText posts to /inputText.
-func (c *Client) InputText(ctx context.Context, bundleID, id, text string, paste bool) error {
+func (c *Client) InputText(ctx context.Context, bundleID, id, label, text string, paste bool) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "text": text}
 	if id != "" {
 		payload["id"] = id
+	}
+
+	if label != "" {
+		payload["label"] = label
 	}
 
 	if paste {

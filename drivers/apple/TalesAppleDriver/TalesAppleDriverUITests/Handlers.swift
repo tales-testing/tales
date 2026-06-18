@@ -158,6 +158,31 @@ final class TalesRouter {
 
         let app = XCUIApplication(bundleIdentifier: bundleID)
         let id = (payload["id"] as? String) ?? ""
+        let label = (payload["label"] as? String) ?? ""
+
+        // Prefer label-based resolution when set — iOS system controllers
+        // (PHPickerViewController, UIDocumentPickerViewController, share
+        // sheet, mail composer, ...) expose `accessibilityLabel` but leave
+        // `accessibilityIdentifier` empty, which the id path below cannot
+        // reach. NSPredicate `label == %@` mirrors the XCUITest native
+        // matcher; firstMatch is implicit and gracefully accepts cells that
+        // share a label across system sheets.
+        if !label.isEmpty {
+            let element = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", label))
+                .firstMatch
+            if element.exists {
+                if keyboardObscures(element, in: app) {
+                    dismissKeyboardIfPresent(in: app)
+                }
+
+                if waitForHittable(element, timeout: 1.5) {
+                    tapResolvedElement(element)
+
+                    return HTTPResponse.json(["ok": true])
+                }
+            }
+        }
 
         // Prefer element-based tap when an accessibility id is provided.
         // The coordinate fallback below keeps backward compatibility with
@@ -235,7 +260,21 @@ final class TalesRouter {
         }
 
         let id = (payload["id"] as? String) ?? ""
+        let label = (payload["label"] as? String) ?? ""
         let duration = doubleField(payload["duration"]) ?? 1.0
+
+        // Label-based long press: same rationale as handleTap.
+        if !label.isEmpty {
+            let app = XCUIApplication(bundleIdentifier: bundleID)
+            let element = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", label))
+                .firstMatch
+            if element.exists, waitForHittable(element, timeout: 1.5) {
+                element.press(forDuration: duration)
+
+                return HTTPResponse.json(["ok": true])
+            }
+        }
 
         // Element-based press when the id resolves to a hittable element —
         // precise and consistent with handleTap. Falls back to a
@@ -268,6 +307,20 @@ final class TalesRouter {
         }
 
         let id = (payload["id"] as? String) ?? ""
+        let label = (payload["label"] as? String) ?? ""
+
+        // Label-based double tap: same rationale as handleTap.
+        if !label.isEmpty {
+            let app = XCUIApplication(bundleIdentifier: bundleID)
+            let element = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", label))
+                .firstMatch
+            if element.exists, waitForHittable(element, timeout: 1.5) {
+                element.doubleTap()
+
+                return HTTPResponse.json(["ok": true])
+            }
+        }
 
         if !id.isEmpty {
             let app = XCUIApplication(bundleIdentifier: bundleID)
@@ -411,16 +464,27 @@ final class TalesRouter {
 
         let app = XCUIApplication(bundleIdentifier: bundleID)
         let id = (payload["id"] as? String) ?? ""
+        let label = (payload["label"] as? String) ?? ""
         let paste = (payload["paste"] as? Bool) ?? false
 
         if paste {
-            guard !id.isEmpty else {
-                return HTTPResponse.error("paste mode requires an element id", status: 400)
+            guard !id.isEmpty || !label.isEmpty else {
+                return HTTPResponse.error("paste mode requires an element id or label", status: 400)
             }
 
-            let element = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            // Label takes precedence over id, matching the other handlers.
+            let element: XCUIElement
+            if !label.isEmpty {
+                element = app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label == %@", label))
+                    .firstMatch
+            } else {
+                element = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            }
+
             guard element.exists else {
-                return HTTPResponse.error("element \(id) not found", status: 404)
+                let locator = label.isEmpty ? id : label
+                return HTTPResponse.error("element \(locator) not found", status: 404)
             }
 
             // SecureField(.newPassword) is the canonical case where every
@@ -465,7 +529,8 @@ final class TalesRouter {
                 }
 
                 landed = valueCharacterCount(element)
-                NSLog("[tales-driver] inputText id=\(id) attempt=\(attempt) expected=\(expectedLength) landed=\(landed)")
+                let locatorLog = label.isEmpty ? "id=\(id)" : "label=\"\(label)\""
+                NSLog("[tales-driver] inputText \(locatorLog) attempt=\(attempt) expected=\(expectedLength) landed=\(landed)")
 
                 if landed < 0 || landed >= expectedLength {
                     break
