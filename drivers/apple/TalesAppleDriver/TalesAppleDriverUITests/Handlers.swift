@@ -47,6 +47,8 @@ final class TalesRouter {
             return runOnMain { self.handleInputText(request: request) }
         case ("POST", "/eraseText"):
             return runOnMain { self.handleEraseText(request: request) }
+        case ("POST", "/dismissKeyboard"):
+            return runOnMain { self.handleDismissKeyboard(request: request) }
         case ("GET", "/screenshot"):
             return runOnMain { self.handleScreenshot(request: request) }
         case ("POST", "/launch"):
@@ -120,6 +122,22 @@ final class TalesRouter {
     /// `snapshotQueue`. A failure is reported as a retryable 503 (not 500) so
     /// a transient "main thread busy" / mid-transition error makes the provider
     /// poll again instead of treating the step as a hard failure.
+    ///
+    /// The snapshot is scoped to the app's first window
+    /// (`app.windows.firstMatch.snapshot()`) rather than the full application
+    /// (`app.snapshot()`). The application snapshot pulls in every connected
+    /// accessory the runner can reach, including the iOS keyboard daemon
+    /// (a separate process) whose accessibility tree on a focused SwiftUI
+    /// TextField is enormous: predictive bar, every key, modifiers,
+    /// hardware-key passthroughs. On a tall SwiftUI form with the keyboard
+    /// up, that subtree alone can push a single `XCUIElement.snapshot()`
+    /// past 8s and trip the bounded snapshot guard — exactly the stall
+    /// reported on iOS 26.5 `BusinessOnboardingView`. Scoping to the
+    /// window stays inside the app's own process and avoids the keyboard
+    /// daemon tree entirely. Modal sheets and SwiftUI `.sheet`-presented
+    /// content all live inside that same window, so locators on them
+    /// keep resolving. UIAlertController-style alerts also live under
+    /// the same window via the presentation hierarchy.
     private func captureHierarchy(bundleID: String) -> HTTPResponse {
         let app = XCUIApplication(bundleIdentifier: bundleID)
 
@@ -130,7 +148,7 @@ final class TalesRouter {
         var lastError: Error?
         for attempt in 0..<hierarchySnapshotAttempts {
             do {
-                let root = HierarchyEncoder.encode(snapshot: try app.snapshot())
+                let root = HierarchyEncoder.encode(snapshot: try captureRootSnapshot(app: app))
 
                 return HTTPResponse.json(root)
             } catch {
@@ -143,6 +161,21 @@ final class TalesRouter {
         }
 
         return HTTPResponse.error("snapshot failed: \(lastError.map { "\($0)" } ?? "unknown")", status: 503)
+    }
+
+    /// Returns the snapshot the provider should walk to find elements.
+    /// Prefers a window-scoped snapshot to skip the keyboard daemon tree
+    /// (see captureHierarchy). Falls back to the full-application snapshot
+    /// when no window is exposed yet (e.g. between `terminate` and the
+    /// next `launch`, or while the app is mid-launch and the runner has
+    /// not attached a window to it yet).
+    private func captureRootSnapshot(app: XCUIApplication) throws -> XCUIElementSnapshot {
+        let window = app.windows.firstMatch
+        if window.exists {
+            return try window.snapshot()
+        }
+
+        return try app.snapshot()
     }
 
     private let hierarchySnapshotAttempts = 3
@@ -352,6 +385,22 @@ final class TalesRouter {
             return HTTPResponse.error("unsupported key \(key)", status: 400)
         }
 
+        // For return / enter, prefer tapping the soft keyboard's submit
+        // button (Return / Done / Send / ...) when a keyboard is up. The
+        // text-input synthesis path with XCUIKeyboardKey.return is unsafe
+        // while a SwiftUI TextField is the first responder on iOS 26.x:
+        // it crashes the XCTest runner with no stack trace, killing the
+        // driver socket and breaking the rest of the scenario (Tales bug
+        // report: iOS 26.5 form snapshot stall + press_key crash). The
+        // keyboard-button path is also semantically more correct: it
+        // fires the field's `submitLabel` action and dismisses the
+        // keyboard in one move, which is what callers actually want.
+        if let bundleID = payload["bundleId"] as? String,
+           Self.keyboardSubmitKeys.contains(key),
+           tapKeyboardSubmitButton(bundleID: bundleID) {
+            return HTTPResponse.json(["ok": true])
+        }
+
         // A keyboard key is fed through the same text-input synthesis path
         // as typing — the XCUIKeyboardKey raw value is the character the
         // daemon expects.
@@ -367,6 +416,32 @@ final class TalesRouter {
 
         return HTTPResponse.json(["ok": true])
     }
+
+    /// Taps the soft keyboard's submit / return button when one is up.
+    /// Returns true when a tap was actually performed so the caller can
+    /// skip the dangerous synth-path fallback. Mirrors
+    /// dismissKeyboardIfPresent's multi-locale label sweep but does NOT
+    /// wait for the keyboard to disappear afterwards — callers who want
+    /// dismissal use /dismissKeyboard.
+    private func tapKeyboardSubmitButton(bundleID: String) -> Bool {
+        let app = XCUIApplication(bundleIdentifier: bundleID)
+        guard app.keyboards.firstMatch.exists else { return false }
+
+        for label in TalesRouter.keyboardDismissLabels {
+            let btn = app.keyboards.buttons[label]
+            if btn.exists && btn.isHittable {
+                btn.tap()
+
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /// Keys that should prefer the keyboard's submit button when a soft
+    /// keyboard is up (see handlePressKey).
+    private static let keyboardSubmitKeys: Set<String> = ["return", "enter"]
 
     private func handlePressButton(request: HTTPRequest) -> HTTPResponse {
         guard let payload = jsonObject(request.body),
@@ -744,6 +819,22 @@ final class TalesRouter {
 
             Thread.sleep(forTimeInterval: 0.05)
         }
+    }
+
+    /// Dismisses the soft keyboard via the existing dismissKeyboardIfPresent
+    /// helper. Idempotent: returns ok even when no keyboard is up so
+    /// scenarios can pre-emptively call dismiss_keyboard before a snapshot
+    /// without having to reason about UI state.
+    private func handleDismissKeyboard(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String else {
+            return HTTPResponse.error("expected {bundleId}", status: 400)
+        }
+
+        let app = XCUIApplication(bundleIdentifier: bundleID)
+        dismissKeyboardIfPresent(in: app)
+
+        return HTTPResponse.json(["ok": true])
     }
 
     private func handleEraseText(request: HTTPRequest) -> HTTPResponse {
