@@ -627,15 +627,15 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 
 	switch action.Kind {
 	case model.MobileActionTap:
-		return executeTap(ctx, session, node)
+		return executeTap(ctx, session, action.Label, node)
 	case model.MobileActionDoubleTap:
-		return executeDoubleTap(ctx, session, node)
+		return executeDoubleTap(ctx, session, action.Label, node)
 	case model.MobileActionLongPress:
 		return executeLongPress(ctx, session, action, node)
 	case model.MobileActionInputText:
 		return executeInputText(ctx, session, action, node)
 	case model.MobileActionClearText:
-		return executeClearText(ctx, session, node)
+		return executeClearText(ctx, session, action.Label, node)
 	case model.MobileActionSwipe:
 		return executeSwipe(ctx, session, action, node, false)
 	case model.MobileActionScroll:
@@ -683,18 +683,18 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	return false, nil
 }
 
-func executeTap(ctx context.Context, session *Session, node *tree.ViewNode) error {
+func executeTap(ctx context.Context, session *Session, label string, node *tree.ViewNode) error {
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, label, x, y); err != nil {
 		return fmt.Errorf("tap: %w", err)
 	}
 
 	return nil
 }
 
-func executeDoubleTap(ctx context.Context, session *Session, node *tree.ViewNode) error {
+func executeDoubleTap(ctx context.Context, session *Session, label string, node *tree.ViewNode) error {
 	x, y := tree.Center(node)
-	if err := session.Driver.DoubleTap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+	if err := session.Driver.DoubleTap(ctx, session.Target.BundleID, node.ID, label, x, y); err != nil {
 		return fmt.Errorf("double tap: %w", err)
 	}
 
@@ -709,7 +709,7 @@ func executeLongPress(ctx context.Context, session *Session, action provider.Mob
 		duration = defaultLongPressDuration
 	}
 
-	if err := session.Driver.LongPress(ctx, session.Target.BundleID, node.ID, x, y, duration.Seconds()); err != nil {
+	if err := session.Driver.LongPress(ctx, session.Target.BundleID, node.ID, action.Label, x, y, duration.Seconds()); err != nil {
 		return fmt.Errorf("long press: %w", err)
 	}
 
@@ -718,7 +718,7 @@ func executeLongPress(ctx context.Context, session *Session, action provider.Mob
 
 func executeInputText(ctx context.Context, session *Session, action provider.MobileActionExec, node *tree.ViewNode) error {
 	if usePasteInput(node) {
-		if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, true); err != nil {
+		if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Label, action.Value, true); err != nil {
 			return fmt.Errorf("input text: %w", err)
 		}
 
@@ -726,18 +726,18 @@ func executeInputText(ctx context.Context, session *Session, action provider.Mob
 	}
 
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, action.Label, x, y); err != nil {
 		return fmt.Errorf("focus element: %w", err)
 	}
 
-	if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Value, false); err != nil {
+	if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Label, action.Value, false); err != nil {
 		return fmt.Errorf("input text: %w", err)
 	}
 
 	return nil
 }
 
-func executeClearText(ctx context.Context, session *Session, node *tree.ViewNode) error {
+func executeClearText(ctx context.Context, session *Session, label string, node *tree.ViewNode) error {
 	count := len([]rune(tree.Value(node)))
 
 	// SecureField on iOS exposes its value as one "•" per typed
@@ -752,7 +752,7 @@ func executeClearText(ctx context.Context, session *Session, node *tree.ViewNode
 	}
 
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, label, x, y); err != nil {
 		return fmt.Errorf("focus element: %w", err)
 	}
 
