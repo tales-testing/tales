@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,12 @@ import (
 const (
 	artifactTypeKey = "type"
 	artifactPathKey = "path"
+
+	// Artifact type strings, surfaced verbatim in the visual / JSONL
+	// reports and the cty `request.artifacts[*].type` namespace.
+	artifactTypeDriverLog      = "driver_log"
+	artifactTypeXCResultDir    = "xcresult_dir"
+	artifactTypeDriverBuildLog = "driver_build_log"
 )
 
 // defaultPollInterval is the wait between two hierarchy fetches during mobile
@@ -220,6 +227,22 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	if err := p.executeMobile(ctx, input, session, output); err != nil {
 		p.writeFailureArtifacts(ctx, input, session, output)
 		output.Duration = time.Since(start)
+
+		// When the failure looks like the XCUITest process died
+		// mid-scenario (connect: connection refused, EOF on a POST,
+		// broken pipe, ...), append the on-disk paths Tales just
+		// allocated for this session so users land on driver.log and
+		// the .xcresult bundle directly instead of just seeing a
+		// transport-level error from net/http. The matching artifacts
+		// also get attached to the step report so the visual / JSONL
+		// surfaces can render clickable links to the same files.
+		if looksLikeDriverDeath(err) {
+			if extras := driverDeathArtifacts(session.Diagnostics); len(extras) > 0 {
+				appendArtifactsToOutput(output, extras)
+			}
+
+			return output, wrapDriverDeathError(err, session)
+		}
 
 		return output, err
 	}
@@ -1327,7 +1350,142 @@ func driverLogArtifactFromError(err error) (Artifact, bool) {
 		return Artifact{}, false
 	}
 
-	return Artifact{Type: "driver_log", Path: startErr.LogPath}, true
+	return Artifact{Type: artifactTypeDriverLog, Path: startErr.LogPath}, true
+}
+
+// looksLikeDriverDeath reports whether err's chain contains the
+// transport-level patterns Go's net/http surfaces when the driver
+// process is gone. We match on the well-known string fragments
+// rather than typed errors because url.Error wraps everything once
+// the connection is reset.
+//
+// Patterns:
+//   - "connection refused": the next dial after the listener closed.
+//   - "EOF": the listener closed mid-response, so the client got no
+//     body and bubbled io.EOF up through net/http.
+//   - "broken pipe": writing the POST body while the listener died.
+//   - "context deadline exceeded" while reading: half-dead listener,
+//     also worth flagging.
+func looksLikeDriverDeath(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := err.Error()
+
+	return strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, ": EOF") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "connection reset")
+}
+
+// wrapDriverDeathError appends diagnostic-file hints to err when the
+// failure looks like the driver process died mid-scenario (connection
+// refused / EOF on POST / broken pipe). The hints quote the exact paths
+// of driver.log + the .xcresult bundle dir + the build.log so users can
+// open them directly in Xcode (`open <xcresult dir>/*.xcresult`) and
+// read XCTest's full post-mortem (SIGABRT, XCTest API Violation, runaway
+// accessibility queries, ...). No-op when the session has no
+// diagnostics (external driver: Tales does not own the runner) or when
+// err does not look like a transport-level driver death.
+func wrapDriverDeathError(err error, session *Session) error {
+	if err == nil || session == nil || !looksLikeDriverDeath(err) {
+		return err
+	}
+
+	diag := session.Diagnostics
+
+	if diag.DriverLog == "" && diag.XCResultDir == "" && diag.BuildLog == "" {
+		return err
+	}
+
+	var hints []string
+
+	if diag.DriverLog != "" {
+		hints = append(hints, fmt.Sprintf("driver log: %s", diag.DriverLog))
+	}
+
+	if diag.XCResultDir != "" {
+		hints = append(hints, fmt.Sprintf("xcresult bundle dir: %s (open <path>/*.xcresult in Xcode for the full XCTest crash report)", diag.XCResultDir))
+	}
+
+	if diag.BuildLog != "" {
+		hints = append(hints, fmt.Sprintf("build log: %s", diag.BuildLog))
+	}
+
+	return fmt.Errorf("%w\ndriver process appears to have terminated mid-scenario; diagnostic files:\n  %s",
+		err, strings.Join(hints, "\n  "))
+}
+
+// appendArtifactsToOutput merges extras into output.Response["artifacts"],
+// preserving any artifacts that prior writeFailureArtifacts paths already
+// recorded (screenshots, hierarchy JSON, action recordings). Idempotent
+// on the (Type, Path) pair so two driver-death wraps from the same
+// session do not double-list the same files.
+func appendArtifactsToOutput(output *provider.Output, extras []Artifact) {
+	if output == nil || len(extras) == 0 {
+		return
+	}
+
+	existing := output.Response["artifacts"]
+	seen := map[string]bool{}
+	merged := make([]cty.Value, 0)
+
+	if existing.IsKnown() && !existing.IsNull() && existing.Type().IsListType() {
+		for it := existing.ElementIterator(); it.Next(); {
+			_, v := it.Element()
+			if v.Type().IsObjectType() && v.Type().HasAttribute(artifactTypeKey) && v.Type().HasAttribute(artifactPathKey) {
+				typ := v.GetAttr(artifactTypeKey).AsString()
+				path := v.GetAttr(artifactPathKey).AsString()
+				seen[typ+"\x00"+path] = true
+			}
+
+			merged = append(merged, v)
+		}
+	}
+
+	for _, a := range extras {
+		key := a.Type + "\x00" + a.Path
+		if seen[key] {
+			continue
+		}
+
+		seen[key] = true
+
+		merged = append(merged, cty.ObjectVal(map[string]cty.Value{
+			artifactTypeKey: cty.StringVal(a.Type),
+			artifactPathKey: cty.StringVal(a.Path),
+		}))
+	}
+
+	if len(merged) == 0 {
+		return
+	}
+
+	output.Response["artifacts"] = cty.ListVal(merged)
+}
+
+// driverDeathArtifacts builds the visual / JSONL report Artifacts that
+// surface the same diagnostic file paths as wrapDriverDeathError. The
+// reporter writes them under output.ActionResults so a user looking at
+// build/reports/e2e-ios.html sees a clickable link to the .xcresult
+// bundle directly next to the failed step.
+func driverDeathArtifacts(diag apple.DriverDiagnostics) []Artifact {
+	var out []Artifact
+
+	if diag.DriverLog != "" {
+		out = append(out, Artifact{Type: artifactTypeDriverLog, Path: diag.DriverLog})
+	}
+
+	if diag.XCResultDir != "" {
+		out = append(out, Artifact{Type: artifactTypeXCResultDir, Path: diag.XCResultDir})
+	}
+
+	if diag.BuildLog != "" {
+		out = append(out, Artifact{Type: artifactTypeDriverBuildLog, Path: diag.BuildLog})
+	}
+
+	return out
 }
 
 // defaultSessionBuilder returns a builder that errors out clearly. Callers
