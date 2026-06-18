@@ -444,12 +444,58 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 		return decodeWaitBlock(path, block, model.MobileActionWaitNotVisible)
 	case string(model.MobileActionDismissKeyboard):
 		return decodeDismissKeyboardBlock(path, block)
+	case string(model.MobileActionScrollTo):
+		return decodeScrollToBlock(path, block)
 	default:
 		blockRange := block.DefRange()
-		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, dismiss_keyboard, wait_visible, or wait_not_visible.", block.Type), &blockRange))
+		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, dismiss_keyboard, scroll_to, wait_visible, or wait_not_visible.", block.Type), &blockRange))
 
 		return nil, diags
 	}
+}
+
+// decodeScrollToBlock parses a `scroll_to { id | label }` action. The
+// locator is XOR-validated like every other element-targeted action;
+// no other attributes are accepted (no timeout / interval — the driver
+// resolves the element synchronously and scrolls in one drag, there is
+// no polling loop to bound).
+func decodeScrollToBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0, len(block.Body.Attributes)+len(block.Body.Blocks))
+
+	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, "scroll_to")
+	diags = append(diags, locatorDiags...)
+
+	for name, attr := range block.Body.Attributes {
+		if name == "id" || name == mobileLabelAttr {
+			continue
+		}
+
+		attrRange := attr.Range()
+		diags = append(diags, diagError(
+			"Unknown scroll_to attribute",
+			fmt.Sprintf("scroll_to attribute %q is not supported; allowed: id, label.", name),
+			&attrRange,
+		))
+	}
+
+	for _, sub := range block.Body.Blocks {
+		subRange := sub.DefRange()
+		diags = append(diags, diagError(
+			"Unknown scroll_to block",
+			fmt.Sprintf("scroll_to takes no nested blocks; remove %q.", sub.Type),
+			&subRange,
+		))
+	}
+
+	action := &model.MobileAction{
+		Kind:  model.MobileActionScrollTo,
+		File:  path,
+		Line:  block.DefRange().Start.Line,
+		ID:    expr(path, idExpr),
+		Label: expr(path, labelExpr),
+	}
+
+	return action, diags
 }
 
 // decodeDismissKeyboardBlock parses an empty `dismiss_keyboard {}` action.

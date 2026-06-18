@@ -217,6 +217,20 @@ func (c *Client) DismissKeyboard(ctx context.Context, bundleID string) error {
 	return c.postJSON(ctx, "/dismissKeyboard", map[string]any{payloadBundleIDKey: bundleID})
 }
 
+// ScrollTo posts to /scrollTo.
+func (c *Client) ScrollTo(ctx context.Context, bundleID, id, label string) error {
+	payload := map[string]any{payloadBundleIDKey: bundleID}
+	if id != "" {
+		payload["id"] = id
+	}
+
+	if label != "" {
+		payload["label"] = label
+	}
+
+	return c.postJSON(ctx, "/scrollTo", payload)
+}
+
 // Screenshot fetches GET /screenshot returning the raw PNG bytes.
 func (c *Client) Screenshot(ctx context.Context) ([]byte, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/screenshot", nil)

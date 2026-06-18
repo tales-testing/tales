@@ -51,6 +51,9 @@ func (NoopDriver) EraseText(_ context.Context, _ string, _ int) error { return n
 // DismissKeyboard does nothing.
 func (NoopDriver) DismissKeyboard(_ context.Context, _ string) error { return nil }
 
+// ScrollTo does nothing.
+func (NoopDriver) ScrollTo(_ context.Context, _, _, _ string) error { return nil }
+
 // Screenshot returns an empty image.
 func (NoopDriver) Screenshot(_ context.Context) ([]byte, error) { return []byte{}, nil }
 

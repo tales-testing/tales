@@ -74,6 +74,16 @@ type Driver interface {
 	// without having to query UI state first.
 	DismissKeyboard(ctx context.Context, bundleID string) error
 
+	// ScrollTo scrolls the element identified by id or label into the
+	// viewport so a follow-up tap / input_text can hit it. label takes
+	// precedence over id, matching every other element-targeted call.
+	// Idempotent: a no-op when the element is already in the safe area.
+	// Returns an error when no element matches the locator (the driver
+	// surfaces a 404). Internally drags the app window via XCUICoordinate
+	// because SwiftUI Form does not expose an XCUIElement scrollView and
+	// the typed swipeUp/swipeDown helpers would no-op there.
+	ScrollTo(ctx context.Context, bundleID, id, label string) error
+
 	// Screenshot captures a PNG-encoded screenshot of the active screen.
 	Screenshot(ctx context.Context) ([]byte, error)
 

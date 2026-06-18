@@ -44,6 +44,11 @@ type fakeLongPress struct {
 	duration float64
 }
 
+type fakeScrollTo struct {
+	id    string
+	label string
+}
+
 type fakeDriverAll struct {
 	driver.NoopDriver
 
@@ -61,6 +66,7 @@ type fakeDriverAll struct {
 	inputs          []fakeInput
 	erases          []int
 	dismissals      []string
+	scrollTos       []fakeScrollTo
 	launches        []string
 	terminatesDrv   []string
 	screenshotPNG   []byte
@@ -230,6 +236,15 @@ func (f *fakeDriverAll) DismissKeyboard(_ context.Context, bundleID string) erro
 	defer f.mu.Unlock()
 
 	f.dismissals = append(f.dismissals, bundleID)
+
+	return nil
+}
+
+func (f *fakeDriverAll) ScrollTo(_ context.Context, _, id, label string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.scrollTos = append(f.scrollTos, fakeScrollTo{id: id, label: label})
 
 	return nil
 }
@@ -1071,6 +1086,48 @@ func TestExecuteSurfacesDriverDeathDiagnostics(t *testing.T) {
 		if !gotTypes[want] {
 			t.Errorf("expected artifact of type %q in output, got %v", want, gotTypes)
 		}
+	}
+}
+
+func TestExecuteScrollToDispatchesLocatorToDriver(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "form",
+		Step:     newStep("scroll"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionScrollTo, ID: "form.identifier_value"},
+				{Kind: model.MobileActionScrollTo, Label: "Done"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.scrollTos) != 2 {
+		t.Fatalf("expected 2 scroll_to dispatches, got %d", len(drv.scrollTos))
+	}
+
+	if drv.scrollTos[0].id != "form.identifier_value" || drv.scrollTos[0].label != "" {
+		t.Fatalf("first scroll_to: expected id-only locator, got %+v", drv.scrollTos[0])
+	}
+
+	if drv.scrollTos[1].label != "Done" || drv.scrollTos[1].id != "" {
+		t.Fatalf("second scroll_to: expected label-only locator, got %+v", drv.scrollTos[1])
+	}
+
+	// scroll_to is a device action: no element resolution, no tap.
+	if len(drv.taps) != 0 {
+		t.Fatalf("scroll_to should not tap, got %d taps", len(drv.taps))
 	}
 }
 
