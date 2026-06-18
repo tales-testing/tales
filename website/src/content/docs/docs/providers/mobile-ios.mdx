@@ -440,6 +440,8 @@ When Tales starts the managed Apple driver, stdout and stderr are written to `bu
 - **Driver health timeout**, Tales auto-retries once with a rebuilt cache. If it still fails, inspect the runtime log at `build/artifacts/mobile/driver/<target>/driver.log`.
 - **Stale CoreSimulator after Xcode upgrade**, run `sudo xcodebuild -runFirstLaunch`, then `xcrun simctl shutdown all`, then `killall -9 com.apple.CoreSimulator.CoreSimulatorService || true`, then `xcrun simctl list devices`. Optionally `make clean-ios-driver-cache` to force a fresh driver build.
 - **Element not found**, verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
+- **Toolbar / navigation-bar button "not found"** even though it is on screen, SwiftUI exposes a `.topBarLeading` / `.topBarTrailing` toolbar item under one identifier twice (an `other` wrapper and the inner `button`). Tales collapses that nested pair to a single element, so a unique id resolves; only two genuinely separate elements sharing an id are rejected as a duplicate.
+- **Step times out on a screen that does a heavy refresh**, while the app's main thread is blocked it cannot serve accessibility snapshots, so `/hierarchy` returns a retryable error and Tales keeps polling until the app frees up. Give such a step a `timeout` (or `retry`) comfortably above the refresh duration; the driver no longer wedges or drops other requests while one snapshot is slow.
 - **No screenshot**, check simulator permissions and fallback `xcrun simctl io screenshot` availability.
 - **Port conflict**, omit `driver.port` so Tales auto-allocates a free port, or set a different explicit port. See [Driver port](#driver-port).
 
