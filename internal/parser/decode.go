@@ -117,6 +117,9 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 		skipRules, scSkipDiags := decodeSkipRules(path, sc.SkipIf, sc.SkipUnless)
 		diags = append(diags, scSkipDiags...)
 
+		record, recordDiags := decodeScenarioRecord(path, sc.Record, scenarioBody)
+		diags = append(diags, recordDiags...)
+
 		suite.Scenarios = append(suite.Scenarios, &model.Scenario{
 			Name:      sc.Name,
 			Tags:      sc.Tags,
@@ -124,6 +127,7 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 			Steps:     normalSteps,
 			Teardown:  teardownSteps,
 			SkipRules: skipRules,
+			Record:    record,
 		})
 	}
 
