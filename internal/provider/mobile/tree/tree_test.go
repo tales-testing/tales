@@ -132,6 +132,109 @@ func TestFindByIDNestedSameIDCollapses(t *testing.T) {
 	}
 }
 
+func TestFindFirstByIDRoot(t *testing.T) {
+	t.Parallel()
+
+	root := sample()
+
+	node, ok, err := FindFirstByID(root, "root")
+	if err != nil || !ok || node == nil {
+		t.Fatalf("expected to find root, got (%v, %v, %v)", node, ok, err)
+	}
+}
+
+func TestFindFirstByIDSiblings(t *testing.T) {
+	t.Parallel()
+
+	// Sibling cells sharing one identifier — mirrors the iOS PhotosPicker
+	// grid where every PXGGridLayout-Info cell carries the same id.
+	root := &ViewNode{
+		ID: "root",
+		Children: []*ViewNode{
+			{ID: "PXGGridLayout-Info", Value: "first"},
+			{ID: "PXGGridLayout-Info", Value: "second"},
+			{ID: "PXGGridLayout-Info", Value: "third"},
+		},
+	}
+
+	node, ok, err := FindFirstByID(root, "PXGGridLayout-Info")
+	if err != nil || !ok || node == nil {
+		t.Fatalf("expected first sibling match, got (%v, %v, %v)", node, ok, err)
+	}
+
+	if node.Value != "first" {
+		t.Fatalf("expected pre-order first match (Value=first), got %q", node.Value)
+	}
+}
+
+func TestFindFirstByIDMissing(t *testing.T) {
+	t.Parallel()
+
+	node, ok, err := FindFirstByID(sample(), "does.not.exist")
+	if err != nil || ok || node != nil {
+		t.Fatalf("expected miss, got (%v, %v, %v)", node, ok, err)
+	}
+}
+
+func TestFindFirstByIDNested(t *testing.T) {
+	t.Parallel()
+
+	// Pre-order: the outermost wrapper wins, just like FindByID's collapse,
+	// but FindFirstByID stops at the first match without ever scanning the
+	// inner duplicate, so the result is the same here.
+	root := &ViewNode{
+		ID: "navigation_bar",
+		Children: []*ViewNode{
+			{
+				ID:   "toolbar.button",
+				Type: "other",
+				Children: []*ViewNode{
+					{ID: "toolbar.button", Type: "button"},
+				},
+			},
+		},
+	}
+
+	node, ok, err := FindFirstByID(root, "toolbar.button")
+	if err != nil || !ok || node == nil {
+		t.Fatalf("expected outermost match, got (%v, %v, %v)", node, ok, err)
+	}
+
+	if node.Type != "other" {
+		t.Fatalf("expected outermost wrapper, got type %q", node.Type)
+	}
+}
+
+func TestFindFirstByIDNeverErrDuplicate(t *testing.T) {
+	t.Parallel()
+
+	root := &ViewNode{
+		ID: "root",
+		Children: []*ViewNode{
+			{ID: "dup"},
+			{ID: "dup"},
+		},
+	}
+
+	node, ok, err := FindFirstByID(root, "dup")
+	if err != nil {
+		t.Fatalf("FindFirstByID must never return an error on duplicates, got %v", err)
+	}
+
+	if !ok || node == nil {
+		t.Fatalf("expected first duplicate match, got (%v, %v)", node, ok)
+	}
+}
+
+func TestFindFirstByIDEmptyID(t *testing.T) {
+	t.Parallel()
+
+	node, ok, err := FindFirstByID(sample(), "")
+	if err != nil || ok || node != nil {
+		t.Fatalf("expected empty-id miss, got (%v, %v, %v)", node, ok, err)
+	}
+}
+
 func TestCenter(t *testing.T) {
 	t.Parallel()
 

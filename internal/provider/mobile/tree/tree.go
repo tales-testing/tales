@@ -61,6 +61,42 @@ func FindByID(root *ViewNode, id string) (*ViewNode, bool, error) {
 	}
 }
 
+// FindFirstByID returns the first node matching id in pre-order depth-first
+// traversal. It returns (nil, false, nil) when no node matches and never
+// reports ErrDuplicate, mirroring XCUITest's
+// descendants(matching:).matching(identifier:).firstMatch semantics. Useful
+// for system pickers (PhotosPicker, file importer) whose cells share an
+// accessibility identifier and aren't parent-child.
+func FindFirstByID(root *ViewNode, id string) (*ViewNode, bool, error) {
+	if root == nil || id == "" {
+		return nil, false, nil
+	}
+
+	if node := firstByID(root, id); node != nil {
+		return node, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func firstByID(node *ViewNode, id string) *ViewNode {
+	if node == nil {
+		return nil
+	}
+
+	if node.ID == id {
+		return node
+	}
+
+	for _, child := range node.Children {
+		if found := firstByID(child, id); found != nil {
+			return found
+		}
+	}
+
+	return nil
+}
+
 func collectByID(node *ViewNode, id string, out *[]*ViewNode) {
 	if node == nil {
 		return
