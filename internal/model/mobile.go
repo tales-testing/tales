@@ -65,6 +65,12 @@ type MobileAction struct {
 	File     string
 	Line     int
 	ID       Expression
+	// Label locates the element by accessibilityLabel instead of
+	// accessibilityIdentifier. Mutually exclusive with ID; parser
+	// enforces XOR. Reserved for iOS system controllers whose buttons
+	// expose a label but leave the identifier empty
+	// (PHPickerViewController, document picker, share sheet, ...).
+	Label    Expression
 	Value    Expression
 	Secure   Expression
 	Timeout  Expression
@@ -99,6 +105,7 @@ type MobileExpect struct {
 // MobileVisibility describes one element visibility expectation with optional polling timeout.
 type MobileVisibility struct {
 	ID       Expression
+	Label    Expression
 	Timeout  Expression
 	Interval Expression
 }
@@ -106,6 +113,7 @@ type MobileVisibility struct {
 // MobileValueExpectation compares text/value content for an element.
 type MobileValueExpectation struct {
 	ID       Expression
+	Label    Expression
 	Expected Expression
 	Timeout  Expression
 	Interval Expression
@@ -114,6 +122,7 @@ type MobileValueExpectation struct {
 // MobileStateExpectation checks enabled / disabled state for an element.
 type MobileStateExpectation struct {
 	ID       Expression
+	Label    Expression
 	Timeout  Expression
 	Interval Expression
 }

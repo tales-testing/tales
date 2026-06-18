@@ -513,36 +513,42 @@ func decodeBrowserExpect(path string, expect *expectBlock, out *model.BrowserExp
 
 	for _, v := range expect.Visible {
 		diags = append(diags, rejectMobileID(v.ID, "visible")...)
+		diags = append(diags, rejectMobileLabel(v.Label, "visible")...)
 
 		out.Visible = append(out.Visible, browserVisibilityFromBlock(path, v))
 	}
 
 	for _, v := range expect.NotVisible {
 		diags = append(diags, rejectMobileID(v.ID, "not_visible")...)
+		diags = append(diags, rejectMobileLabel(v.Label, "not_visible")...)
 
 		out.NotVisible = append(out.NotVisible, browserVisibilityFromBlock(path, v))
 	}
 
 	for _, v := range expect.Text {
 		diags = append(diags, rejectMobileID(v.ID, "text")...)
+		diags = append(diags, rejectMobileLabel(v.Label, "text")...)
 
 		out.Text = append(out.Text, browserValueExpectationFromBlock(path, v))
 	}
 
 	for _, v := range expect.Value {
 		diags = append(diags, rejectMobileID(v.ID, "value")...)
+		diags = append(diags, rejectMobileLabel(v.Label, "value")...)
 
 		out.Value = append(out.Value, browserValueExpectationFromBlock(path, v))
 	}
 
 	for _, v := range expect.Enabled {
 		diags = append(diags, rejectMobileID(v.ID, "enabled")...)
+		diags = append(diags, rejectMobileLabel(v.Label, "enabled")...)
 
 		out.Enabled = append(out.Enabled, browserStateExpectationFromBlock(path, v))
 	}
 
 	for _, v := range expect.Disabled {
 		diags = append(diags, rejectMobileID(v.ID, "disabled")...)
+		diags = append(diags, rejectMobileLabel(v.Label, "disabled")...)
 
 		out.Disabled = append(out.Disabled, browserStateExpectationFromBlock(path, v))
 	}
@@ -602,6 +608,22 @@ func rejectMobileID(id hcl.Expression, blockName string) hcl.Diagnostics {
 	return hcl.Diagnostics{diagError(
 		"Unexpected id attribute",
 		fmt.Sprintf("browser %s block uses selector (CSS), not id. Did you mean to use provider \"mobile\"?", blockName),
+		&rng,
+	)}
+}
+
+// rejectMobileLabel emits a diag when a browser expect block uses the
+// mobile-style "label" attribute (accessibilityLabel locator).
+func rejectMobileLabel(label hcl.Expression, blockName string) hcl.Diagnostics {
+	if !exprIsSet(label) {
+		return nil
+	}
+
+	rng := label.Range()
+
+	return hcl.Diagnostics{diagError(
+		"Unexpected label attribute",
+		fmt.Sprintf("browser %s block uses selector (CSS), not label. Did you mean to use provider \"mobile\"?", blockName),
 		&rng,
 	)}
 }
