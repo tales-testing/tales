@@ -487,6 +487,34 @@ The file hash prevents collisions when two files contain scenarios with the same
 
 When Tales starts the managed Apple driver, stdout and stderr are written to `build/artifacts/mobile/driver/<target>/driver.log`. If the driver does not become healthy, the failure message includes this log path and suggests `make doctor-ios`.
 
+### Driver died mid-scenario
+
+When the XCUITest runner crashes during an action (the driver socket closes, the next Tales request sees `connect: connection refused` / `EOF` / `broken pipe`), the failure message switches to the **diagnostic-files form**: the original transport-level error is preserved, then Tales appends the absolute paths of the three files that hold the real post-mortem information:
+
+```text
+… connect: connection refused
+driver process appears to have terminated mid-scenario; diagnostic files:
+  driver log: build/artifacts/mobile/driver/iphone/driver.log
+  xcresult bundle dir: ~/Library/Caches/tales/apple-driver/<key>/derived-data/Logs/Test (open <path>/*.xcresult in Xcode for the full XCTest crash report)
+  build log: ~/Library/Caches/tales/apple-driver/<key>/logs/build.log
+```
+
+The same paths are attached to the step report as `driver_log`, `xcresult_dir`, and `driver_build_log` artifacts (JSONL + visual HTML report).
+
+- **`driver.log`** holds the live Swift driver log, including the request log
+  added in this release. Each handled HTTP request now emits
+  `[tales-driver] request: METHOD /path` + `[tales-driver] response: METHOD /path status=<n> elapsed=<ms>ms`, so the last request before XCTest tore down is the
+  one that triggered the crash.
+- **`<xcresult dir>/*.xcresult`** is the Xcode test results bundle.
+  `open ~/Library/Caches/tales/apple-driver/<key>/derived-data/Logs/Test/*.xcresult` opens it in Xcode where you get the full failure chain, including
+  XCTest API violations, SIGABRT, runaway accessibility-engine queries, and any
+  `Test Suite … failed` line with its underlying reason.
+- **`build.log`** is only useful when the runner died because the embedded
+  driver build was wrong, which is rare but cheap to expose.
+
+External drivers (`driver.external = true`) skip every Tales-owned path: the
+diagnostic block is omitted because Tales does not control the runner there.
+
 ## Troubleshooting
 
 - Run `tales doctor` (or `make doctor-ios`) to collect system, Xcode, runtime, device, and environment diagnostics.
