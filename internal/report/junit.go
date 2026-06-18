@@ -26,6 +26,7 @@ type testcaseXML struct {
 	Time      string      `xml:"time,attr"`
 	Failure   *failureXML `xml:"failure,omitempty"`
 	Skipped   *skippedXML `xml:"skipped,omitempty"`
+	SystemOut string      `xml:"system-out,omitempty"`
 }
 
 type failureXML struct {
@@ -55,8 +56,10 @@ func WriteJUnit(path string, result *SuiteResult) error {
 
 			tc.Skipped = &skippedXML{Message: scenario.SkipReason}
 		case StatusPass, StatusUnknown:
-			// nothing to add — clean run is the empty case
+			// nothing to add. A clean run is the empty case.
 		}
+
+		tc.SystemOut = buildJUnitSystemOut(scenario)
 
 		x.TestCases = append(x.TestCases, tc)
 	}
@@ -133,6 +136,18 @@ func buildJUnitFailure(seed int64, scenario *ScenarioResult) (string, string) {
 	_, _ = fmt.Fprintf(&body, "replay: tales test --seed %d --scenario %q %s\n", seed, scenario.Name, scenario.File)
 
 	return message, body.String()
+}
+
+// buildJUnitSystemOut renders the scenario-level artifacts as a system-out
+// payload so CI systems that surface JUnit attachments expose the recording
+// path. Returns an empty string when no artifacts are attached so the field
+// stays omitted in XML.
+func buildJUnitSystemOut(scenario *ScenarioResult) string {
+	if len(scenario.Artifacts) == 0 {
+		return ""
+	}
+
+	return renderArtifactsForJUnit(scenario.Artifacts)
 }
 
 func renderArtifactsForJUnit(artifacts []Artifact) string {
