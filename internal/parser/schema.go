@@ -28,6 +28,20 @@ type scenarioBlock struct {
 	Teardowns  []teardownDef `hcl:"teardown,block"`
 	SkipIf     []skipBlock   `hcl:"skip_if,block"`
 	SkipUnless []skipBlock   `hcl:"skip_unless,block"`
+	Record     *recordBlock  `hcl:"record,block"`
+}
+
+// recordBlock declares scenario-level screen recording. V1 is wired to the
+// iOS mobile provider via the ScenarioHook capability; other providers ignore
+// it. output is required; codec / mask / display / target / force are
+// optional passthroughs to `xcrun simctl io recordVideo`.
+type recordBlock struct {
+	Output  hcl.Expression `hcl:"output,optional"`
+	Codec   hcl.Expression `hcl:"codec,optional"`
+	Mask    hcl.Expression `hcl:"mask,optional"`
+	Display hcl.Expression `hcl:"display,optional"`
+	Target  hcl.Expression `hcl:"target,optional"`
+	Force   hcl.Expression `hcl:"force,optional"`
 }
 
 type teardownDef struct {
