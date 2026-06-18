@@ -60,6 +60,7 @@ type fakeDriverAll struct {
 	orientations    []string
 	inputs          []fakeInput
 	erases          []int
+	dismissals      []string
 	launches        []string
 	terminatesDrv   []string
 	screenshotPNG   []byte
@@ -220,6 +221,15 @@ func (f *fakeDriverAll) EraseText(_ context.Context, _ string, count int) error 
 	defer f.mu.Unlock()
 
 	f.erases = append(f.erases, count)
+
+	return nil
+}
+
+func (f *fakeDriverAll) DismissKeyboard(_ context.Context, bundleID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.dismissals = append(f.dismissals, bundleID)
 
 	return nil
 }
@@ -895,6 +905,40 @@ func TestExecuteDeviceActionsDispatchWithoutElement(t *testing.T) {
 	// Device actions never resolve an element, so no tap was issued.
 	if len(drv.taps) != 0 {
 		t.Fatalf("device actions should not tap an element, got %d taps", len(drv.taps))
+	}
+}
+
+func TestExecuteDismissKeyboardDispatchesToDriver(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "form",
+		Step:     newStep("dismiss"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionDismissKeyboard},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.dismissals) != 1 || drv.dismissals[0] != sampleProviderTarget().BundleID {
+		t.Fatalf("expected one dismiss_keyboard call carrying the target bundle id, got %v", drv.dismissals)
+	}
+
+	// dismiss_keyboard never resolves an element, so no tap / hierarchy
+	// fetch is issued.
+	if len(drv.taps) != 0 {
+		t.Fatalf("dismiss_keyboard should not tap, got %d taps", len(drv.taps))
 	}
 }
 

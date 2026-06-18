@@ -641,7 +641,8 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 	case model.MobileActionScroll:
 		return executeSwipe(ctx, session, action, node, true)
 	case model.MobileActionWaitVisible, model.MobileActionWaitNotVisible,
-		model.MobileActionPressKey, model.MobileActionPressButton, model.MobileActionSetOrientation:
+		model.MobileActionPressKey, model.MobileActionPressButton, model.MobileActionSetOrientation,
+		model.MobileActionDismissKeyboard:
 		// Handled before element resolution (wait_* and the device-level
 		// actions); never reached here.
 		return nil
@@ -675,6 +676,14 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	if action.Kind == model.MobileActionSetOrientation {
 		if err := session.Driver.SetOrientation(ctx, action.Value); err != nil {
 			return true, fmt.Errorf("set orientation: %w", err)
+		}
+
+		return true, nil
+	}
+
+	if action.Kind == model.MobileActionDismissKeyboard {
+		if err := session.Driver.DismissKeyboard(ctx, session.Target.BundleID); err != nil {
+			return true, fmt.Errorf("dismiss keyboard: %w", err)
 		}
 
 		return true, nil

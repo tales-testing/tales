@@ -28,6 +28,12 @@ const (
 	MobileActionPressButton MobileActionKind = "press_button"
 	// MobileActionSetOrientation changes the device orientation.
 	MobileActionSetOrientation MobileActionKind = "set_orientation"
+	// MobileActionDismissKeyboard tells the driver to dismiss the soft
+	// keyboard if one is up. Idempotent: a no-op when no keyboard is
+	// present. Useful before a /hierarchy snapshot on screens whose
+	// keyboard subtree makes the full-application snapshot exceed the
+	// driver's bounded timeout.
+	MobileActionDismissKeyboard MobileActionKind = "dismiss_keyboard"
 )
 
 // MobileStep is the provider-specific payload attached to a Step when Provider == "mobile".

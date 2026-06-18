@@ -202,7 +202,8 @@ func evalMobileLaunch(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioN
 func isDeviceAction(kind model.MobileActionKind) bool {
 	return kind == model.MobileActionPressKey ||
 		kind == model.MobileActionPressButton ||
-		kind == model.MobileActionSetOrientation
+		kind == model.MobileActionSetOrientation ||
+		kind == model.MobileActionDismissKeyboard
 }
 
 // deviceActionAttrNames maps each device-level action to the DSL
