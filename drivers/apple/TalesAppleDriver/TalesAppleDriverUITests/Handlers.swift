@@ -24,40 +24,63 @@ final class TalesRouter {
     private let snapshotTimeout: TimeInterval = 8
 
     func dispatch(request: HTTPRequest) -> HTTPResponse {
+        // Skip /health: it is polled once a second by Tales' background
+        // health-checker and would otherwise drown the driver log under
+        // useless lines. Every state-changing route is logged so that
+        // when XCTest crashes mid-scenario, the very last
+        // `[tales-driver] request:` line is the request that triggered
+        // the death. Pair with the response-side timing log below; the
+        // gap between the two is the request that XCTest could not
+        // complete before tearing down.
+        let logRoute = !(request.method == "GET" && request.path == "/health")
+        let started = Date()
+
+        if logRoute {
+            NSLog("[tales-driver] request: \(request.method) \(request.path)")
+        }
+
+        let response: HTTPResponse
         switch (request.method, request.path) {
         case ("GET", "/health"):
-            return HTTPResponse.json(["status": "ok"])
+            response = HTTPResponse.json(["status": "ok"])
         case ("GET", "/hierarchy"):
-            return self.handleHierarchy(request: request)
+            response = self.handleHierarchy(request: request)
         case ("POST", "/tap"):
-            return runOnMain { self.handleTap(request: request) }
+            response = runOnMain { self.handleTap(request: request) }
         case ("POST", "/swipe"):
-            return runOnMain { self.handleSwipe(request: request) }
+            response = runOnMain { self.handleSwipe(request: request) }
         case ("POST", "/longPress"):
-            return runOnMain { self.handleLongPress(request: request) }
+            response = runOnMain { self.handleLongPress(request: request) }
         case ("POST", "/doubleTap"):
-            return runOnMain { self.handleDoubleTap(request: request) }
+            response = runOnMain { self.handleDoubleTap(request: request) }
         case ("POST", "/pressKey"):
-            return runOnMain { self.handlePressKey(request: request) }
+            response = runOnMain { self.handlePressKey(request: request) }
         case ("POST", "/pressButton"):
-            return runOnMain { self.handlePressButton(request: request) }
+            response = runOnMain { self.handlePressButton(request: request) }
         case ("POST", "/orientation"):
-            return runOnMain { self.handleSetOrientation(request: request) }
+            response = runOnMain { self.handleSetOrientation(request: request) }
         case ("POST", "/inputText"):
-            return runOnMain { self.handleInputText(request: request) }
+            response = runOnMain { self.handleInputText(request: request) }
         case ("POST", "/eraseText"):
-            return runOnMain { self.handleEraseText(request: request) }
+            response = runOnMain { self.handleEraseText(request: request) }
         case ("POST", "/dismissKeyboard"):
-            return runOnMain { self.handleDismissKeyboard(request: request) }
+            response = runOnMain { self.handleDismissKeyboard(request: request) }
         case ("GET", "/screenshot"):
-            return runOnMain { self.handleScreenshot(request: request) }
+            response = runOnMain { self.handleScreenshot(request: request) }
         case ("POST", "/launch"):
-            return runOnMain { self.handleLaunch(request: request) }
+            response = runOnMain { self.handleLaunch(request: request) }
         case ("POST", "/terminate"):
-            return runOnMain { self.handleTerminate(request: request) }
+            response = runOnMain { self.handleTerminate(request: request) }
         default:
-            return HTTPResponse.error("route not found", status: 404)
+            response = HTTPResponse.error("route not found", status: 404)
         }
+
+        if logRoute {
+            let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+            NSLog("[tales-driver] response: \(request.method) \(request.path) status=\(response.status) elapsed=\(elapsedMs)ms")
+        }
+
+        return response
     }
 
     private func runOnMain(_ work: @escaping () -> HTTPResponse) -> HTTPResponse {
