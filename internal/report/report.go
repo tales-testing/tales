@@ -50,6 +50,10 @@ type ScenarioResult struct {
 	// SkipReason is set when Status == StatusSkip. Populated by scenario-
 	// level skip_if / skip_unless rules in the runtime; empty otherwise.
 	SkipReason string
+	// Artifacts holds scenario-wide files produced by ScenarioHook
+	// implementations (e.g. a screen recording for the whole scenario).
+	// Step-level artifacts continue to live on StepResult.Artifacts.
+	Artifacts []Artifact
 }
 
 // StepResult contains one step execution.
