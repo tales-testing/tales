@@ -930,6 +930,7 @@ struct ProfileView: View {
 /// strict default fails with ErrDuplicate.
 struct PickerView: View {
     @State private var tapped: Int? = nil
+    @State private var doneTapped = false
 
     private let labels = ["First", "Second", "Third"]
 
@@ -960,6 +961,20 @@ struct PickerView: View {
             Text("tapped=\(tapped.map(String.init) ?? "none")")
                 .monospaced()
                 .accessibilityIdentifier("picker.status")
+
+            // Mirrors the PHPickerViewController "Done" button: SwiftUI
+            // derives an accessibilityLabel from the title string but does
+            // NOT set an accessibilityIdentifier — exactly the iOS system
+            // pattern that the new label = "..." DSL attribute exists to
+            // reach. NO .accessibilityIdentifier(...) here on purpose.
+            Button("Done") {
+                doneTapped = true
+            }
+            .buttonStyle(.borderedProminent)
+
+            Text("done=\(doneTapped ? "1" : "0")")
+                .monospaced()
+                .accessibilityIdentifier("picker.done.status")
 
             Spacer()
         }
