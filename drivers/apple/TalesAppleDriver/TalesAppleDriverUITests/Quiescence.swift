@@ -56,6 +56,21 @@ enum Quiescence {
             return true
         }
 
+        // Xcode 26+ added a usingActivity variant that the older swizzles
+        // miss. Without this, fresh iOS 26 simulators block on the implicit
+        // quiescence wait and every /hierarchy fetch trips a Tales-side
+        // `context deadline exceeded`.
+        let usingActivity = NSSelectorFromString(
+            "waitForQuiescenceIncludingAnimationsIdle:usingActivity:isPreEvent:"
+        )
+        if let method = class_getInstanceMethod(cls, usingActivity) {
+            let block: @convention(block) (NSObject, ObjCBool, AnyObject?, ObjCBool) -> Void = { _, _, _, _ in }
+            method_setImplementation(method, imp_implementationWithBlock(block))
+            NSLog("[tales-driver] Quiescence: implicit wait disabled (usingActivity selector)")
+
+            return true
+        }
+
         NSLog("[tales-driver] Quiescence: no known wait selector on XCUIApplicationProcess")
 
         return false
