@@ -210,6 +210,15 @@ struct WelcomeView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("welcome.permissions")
+
+            NavigationLink {
+                StallView()
+            } label: {
+                Text("Stall")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("welcome.stall")
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -899,5 +908,70 @@ struct ProfileView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+// MARK: - Stall repro
+
+/// Reproduces the iOS 26 `/hierarchy` snapshot stall reported against the
+/// Sealway app. It recreates the shape that triggers it: a screen pushed onto
+/// a NavigationStack whose root carries a `.topBarLeading` toolbar item and a
+/// permanently-attached `.sheet`, and — crucially — a synchronous block of the
+/// app's main thread on first appearance, simulating the "refresh on org
+/// switch" Sealway runs. While the app's main thread is blocked it cannot
+/// serve XCUITest accessibility snapshots, so `app.snapshot()` blocks/throws.
+/// That used to wedge the driver's single-queue HTTP server and cascade into
+/// `POST /tap: EOF`; the driver now bounds the snapshot and recovers once the
+/// app frees up.
+struct StallView: View {
+    @State private var showSheet = false
+    @State private var refreshCount = 0
+
+    /// How long the simulated refresh blocks the main thread. Kept under the
+    /// scenario's wait timeout so a correctly-behaving driver recovers and the
+    /// screen becomes queryable once the block ends.
+    private let refreshBlockSeconds: TimeInterval = 9
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Stall repro")
+                .font(.title.bold())
+                .accessibilityIdentifier("stall.screen")
+
+            Text("refreshed=\(refreshCount)")
+                .monospaced()
+                .accessibilityIdentifier("stall.status")
+
+            Button {
+                refreshCount += 1
+                // Block the main thread AFTER the screen (and its toolbar) have
+                // laid out — exactly like a refresh that runs synchronously on
+                // the main actor. XCUITest cannot snapshot the app while this
+                // runs; the driver must bound the snapshot and recover after.
+                Thread.sleep(forTimeInterval: refreshBlockSeconds)
+            } label: {
+                Text("Refresh")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("stall.refresh")
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemBackground))
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showSheet = true
+                } label: {
+                    Image(systemName: "building.2")
+                }
+                .accessibilityIdentifier("stall.toolbar.button")
+            }
+        }
+        .sheet(isPresented: $showSheet) {
+            Text("Sheet")
+                .accessibilityIdentifier("stall.sheet")
+        }
     }
 }
