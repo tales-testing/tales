@@ -208,7 +208,37 @@ func (l *Lifecycle) TerminateDriverRunner(ctx context.Context, udid string) erro
 	return nil
 }
 
-// EnsureDriver returns a driver client connected to the running driver.
+// DriverDiagnostics carries the on-disk paths that hold the most useful
+// post-mortem information when the driver process dies mid-scenario.
+// Populated by EnsureDriver and threaded into the mobile session so the
+// provider can mention them in transport-level error messages
+// (`connect: connection refused`, `EOF` on a POST, etc.). External-driver
+// mode leaves every field empty: Tales does not own the runner there,
+// so no Tales-managed log exists.
+type DriverDiagnostics struct {
+	// DriverLog is the stdout+stderr capture of the
+	// `xcodebuild test-without-building` invocation that hosts the
+	// XCUITest driver. Already populated by xcodebuild.Options.LogPath
+	// today; surfaced here so error messages can quote the path.
+	DriverLog string
+	// XCResultDir is the directory under derivedData where xcodebuild
+	// writes the .xcresult bundle for the test session. The bundle
+	// itself is named with a timestamp by Xcode at the end of the
+	// run, so users have to glob the directory; pointing at the
+	// directory is enough to let them run `open <path>/*.xcresult`
+	// in Xcode and read the full crash report (SIGABRT, XCTest
+	// API Violation, accessibility-engine bailouts, ...).
+	XCResultDir string
+	// BuildLog is the embedded driver's build-for-testing log (under
+	// the cache directory). Less useful for live-run crashes but
+	// surfaces here when the runner died because the build itself was
+	// broken (rare, but cheap to expose).
+	BuildLog string
+}
+
+// EnsureDriver returns a driver client connected to the running driver
+// along with the diagnostic paths Tales just allocated for it. Paths
+// are empty when the driver is external (Tales doesn't own its files).
 //
 // Resolution order:
 //  1. driver.external = true → only health-check the configured URL.
@@ -220,35 +250,40 @@ func (l *Lifecycle) TerminateDriverRunner(ctx context.Context, udid string) erro
 // driver fails to answer /health: the cached build is invalidated and
 // rebuilt from scratch before the second attempt, in case Xcode has
 // upgraded between Tales runs in a way the cache key did not capture.
-func (l *Lifecycle) EnsureDriver(ctx context.Context, device Device, target Target) (driver.Driver, DriverHandle, error) {
+func (l *Lifecycle) EnsureDriver(ctx context.Context, device Device, target Target) (driver.Driver, DriverHandle, DriverDiagnostics, error) {
 	if l.NewDriver == nil {
-		return nil, nil, errors.New("driver factory is not configured")
+		return nil, nil, DriverDiagnostics{}, errors.New("driver factory is not configured")
 	}
 
 	client := l.NewDriver(target.Driver.BaseURL())
 
 	if target.Driver.External {
 		if err := client.Health(ctx); err != nil {
-			return nil, nil, fmt.Errorf("external driver health: %w", err)
+			return nil, nil, DriverDiagnostics{}, fmt.Errorf("external driver health: %w", err)
 		}
 
-		return client, nil, nil
+		return client, nil, DriverDiagnostics{}, nil
 	}
 
 	return l.startEmbeddedDriver(ctx, device, target, client)
 }
 
-func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, target Target, client driver.Driver) (driver.Driver, DriverHandle, error) {
+func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, target Target, client driver.Driver) (driver.Driver, DriverHandle, DriverDiagnostics, error) {
 	if l.Embedded == nil {
-		return nil, nil, fmt.Errorf("config.mobile.targets.%s.driver: embedded driver manager is not configured on the apple.Lifecycle (set driver.external = true to connect to an already-running driver)", target.Name)
+		return nil, nil, DriverDiagnostics{}, fmt.Errorf("config.mobile.targets.%s.driver: embedded driver manager is not configured on the apple.Lifecycle (set driver.external = true to connect to an already-running driver)", target.Name)
 	}
 
 	prepared, err := l.Embedded.Prepare(ctx, target.Driver.SourcePath, device.Runtime)
 	if err != nil {
-		return nil, nil, fmt.Errorf("prepare embedded driver: %w", err)
+		return nil, nil, DriverDiagnostics{}, fmt.Errorf("prepare embedded driver: %w", err)
 	}
 
 	logPath := driverLogPath(target.Name)
+	diagnostics := DriverDiagnostics{
+		DriverLog:   logPath,
+		XCResultDir: filepath.Join(prepared.DerivedData, "Logs", "Test"),
+		BuildLog:    prepared.BuildLogPath,
+	}
 	opts := xcodebuild.Options{
 		UDID:          device.UDID,
 		XCTestRunPath: prepared.XCTestRunPath,
@@ -260,7 +295,7 @@ func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, targ
 
 	handle, startErr := l.Xcodebuild.Start(ctx, opts, client)
 	if startErr == nil {
-		return client, handle, nil
+		return client, handle, diagnostics, nil
 	}
 
 	// Retry once: invalidate the cached build, force a rebuild, and try
@@ -270,22 +305,24 @@ func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, targ
 	fmt.Fprintf(os.Stderr, "embedded driver failed to start (%v); invalidating cache %q and rebuilding\n", startErr, prepared.CacheKey)
 
 	if invErr := l.Embedded.InvalidateBuild(prepared.CacheKey); invErr != nil {
-		return nil, nil, fmt.Errorf("start xcuitest driver: %w (cache invalidation also failed: %w)", startErr, invErr)
+		return nil, nil, diagnostics, fmt.Errorf("start xcuitest driver: %w (cache invalidation also failed: %w)", startErr, invErr)
 	}
 
 	rebuilt, prepErr := l.Embedded.Prepare(ctx, target.Driver.SourcePath, device.Runtime)
 	if prepErr != nil {
-		return nil, nil, fmt.Errorf("start xcuitest driver: %w (rebuild after invalidation failed: %w)", startErr, prepErr)
+		return nil, nil, diagnostics, fmt.Errorf("start xcuitest driver: %w (rebuild after invalidation failed: %w)", startErr, prepErr)
 	}
 
 	opts.XCTestRunPath = rebuilt.XCTestRunPath
+	diagnostics.XCResultDir = filepath.Join(rebuilt.DerivedData, "Logs", "Test")
+	diagnostics.BuildLog = rebuilt.BuildLogPath
 
 	retryHandle, retryErr := l.Xcodebuild.Start(ctx, opts, client)
 	if retryErr != nil {
-		return nil, nil, fmt.Errorf("start xcuitest driver after rebuild: %w (first attempt: %w)", retryErr, startErr)
+		return nil, nil, diagnostics, fmt.Errorf("start xcuitest driver after rebuild: %w (first attempt: %w)", retryErr, startErr)
 	}
 
-	return client, retryHandle, nil
+	return client, retryHandle, diagnostics, nil
 }
 
 func driverEnv(cfg DriverConfig) map[string]string {

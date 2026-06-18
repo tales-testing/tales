@@ -17,6 +17,13 @@ type Session struct {
 	Driver       driver.Driver
 	DriverHandle apple.DriverHandle
 	Lifecycle    *apple.Lifecycle
+	// Diagnostics carries the on-disk paths most useful when the driver
+	// process dies mid-scenario (driver.log, xcresult bundle dir, build
+	// log). The provider quotes them in transport-level error messages
+	// so users land directly on the file that holds the XCTest crash
+	// report instead of just seeing "connect: connection refused".
+	// Empty for external drivers (Tales doesn't own their files).
+	Diagnostics apple.DriverDiagnostics
 }
 
 // SessionBuilder builds (or rebuilds) a session for one target.
