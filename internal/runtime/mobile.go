@@ -233,14 +233,27 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 		exec := provider.MobileActionExec{Kind: action.Kind, File: action.File, Line: action.Line}
 
 		// Device-level actions (press_key, press_button, set_orientation)
-		// target the device, not an element, so they carry no id.
+		// target the device, not an element, so they carry no id or label.
+		// Element-targeted actions carry exactly one of id / label (parser-
+		// enforced); evaluate whichever is set.
 		if !isDeviceAction(action.Kind) {
-			id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].id", i), action.ID)
-			if err != nil {
-				return nil, err
+			if !action.ID.Empty() {
+				id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].id", i), action.ID)
+				if err != nil {
+					return nil, err
+				}
+
+				exec.ID = id
 			}
 
-			exec.ID = id
+			if !action.Label.Empty() {
+				label, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].label", i), action.Label)
+				if err != nil {
+					return nil, err
+				}
+
+				exec.Label = label
+			}
 		}
 
 		if !action.Timeout.Empty() {
@@ -461,13 +474,40 @@ func evalMobileExpect(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioN
 	return out, nil
 }
 
+// evalMobileLocator evaluates the id-XOR-label locator of an expect block.
+// Parser enforces exactly one of id / label is set; here we just resolve
+// whichever the user wrote so the provider can route element resolution.
+func evalMobileLocator(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, exprPath string, idExpr, labelExpr model.Expression) (string, string, error) {
+	var id, label string
+
+	if !idExpr.Empty() {
+		v, err := evalStringAttr(evaluator, scope, scenarioName, stepName, exprPath+".id", idExpr)
+		if err != nil {
+			return "", "", err
+		}
+
+		id = v
+	}
+
+	if !labelExpr.Empty() {
+		v, err := evalStringAttr(evaluator, scope, scenarioName, stepName, exprPath+".label", labelExpr)
+		if err != nil {
+			return "", "", err
+		}
+
+		label = v
+	}
+
+	return id, label, nil
+}
+
 func evalMobileVisibility(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, exprPath string, v model.MobileVisibility) (provider.MobileVisibilityExec, error) {
-	id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, exprPath+".id", v.ID)
+	id, label, err := evalMobileLocator(evaluator, scope, scenarioName, step.Name, exprPath, v.ID, v.Label)
 	if err != nil {
 		return provider.MobileVisibilityExec{}, err
 	}
 
-	exec := provider.MobileVisibilityExec{ID: id}
+	exec := provider.MobileVisibilityExec{ID: id, Label: label}
 
 	if !v.Timeout.Empty() {
 		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".timeout", v.Timeout)
@@ -491,7 +531,7 @@ func evalMobileVisibility(evaluator *lang.Evaluator, scope lang.ScopeData, scena
 }
 
 func evalMobileValueExpectation(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, exprPath string, v model.MobileValueExpectation) (provider.MobileValueExpectationExec, error) {
-	id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, exprPath+".id", v.ID)
+	id, label, err := evalMobileLocator(evaluator, scope, scenarioName, step.Name, exprPath, v.ID, v.Label)
 	if err != nil {
 		return provider.MobileValueExpectationExec{}, err
 	}
@@ -505,7 +545,7 @@ func evalMobileValueExpectation(evaluator *lang.Evaluator, scope lang.ScopeData,
 		return provider.MobileValueExpectationExec{}, fmt.Errorf("%s.value: %w", exprPath, err)
 	}
 
-	exec := provider.MobileValueExpectationExec{ID: id, Expected: expected}
+	exec := provider.MobileValueExpectationExec{ID: id, Label: label, Expected: expected}
 
 	if !v.Timeout.Empty() {
 		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".timeout", v.Timeout)
@@ -529,12 +569,12 @@ func evalMobileValueExpectation(evaluator *lang.Evaluator, scope lang.ScopeData,
 }
 
 func evalMobileStateExpectation(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, exprPath string, v model.MobileStateExpectation) (provider.MobileStateExpectationExec, error) {
-	id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, exprPath+".id", v.ID)
+	id, label, err := evalMobileLocator(evaluator, scope, scenarioName, step.Name, exprPath, v.ID, v.Label)
 	if err != nil {
 		return provider.MobileStateExpectationExec{}, err
 	}
 
-	exec := provider.MobileStateExpectationExec{ID: id}
+	exec := provider.MobileStateExpectationExec{ID: id, Label: label}
 
 	if !v.Timeout.Empty() {
 		duration, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, exprPath+".timeout", v.Timeout)
