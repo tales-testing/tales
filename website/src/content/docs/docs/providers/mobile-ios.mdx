@@ -350,7 +350,7 @@ Attributes (all forwarded to `simctl io recordVideo` unchanged when set):
 The recording is wired through a generic provider capability (`ScenarioHook`), so:
 
 - It is **not** started until the first `step "mobile"` runs in the scenario, which is the earliest point where the simulator is guaranteed booted and a UDID is known.
-- It is stopped at the end of the scenario, including on failures and panics, via a defer. The recorder sends `SIGINT` only and waits for simctl to flush the MP4 moov atom; a forceful kill would leave the file unplayable.
+- It is stopped after the main steps complete and **before** any `teardown { step ... }` runs, so the recording shows the app under test (not the `terminate {}` / cleanup that closes it) and so a teardown step can assert on the produced file. The recorder sends `SIGINT` only and waits for simctl to flush the MP4 moov atom; a forceful kill would leave the file unplayable. A panic or early return falls back to a defer so the recorder is always stopped.
 - The resulting path is surfaced as a scenario-level artifact (`type = "recording"`) in console, JSONL (`scenario.artifacts[]`), JUnit (`<system-out>`), and the embedded JSON payload of the visual HTML report.
 
 ### Skip / opt-in pattern

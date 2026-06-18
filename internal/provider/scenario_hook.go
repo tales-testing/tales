@@ -41,12 +41,15 @@ type ScenarioArtifact struct {
 // runs; EndScenario still fires so partially-initialized resources are
 // released.
 //
-// EndScenario fires once via defer at scenario teardown: after the main
-// steps AND after the teardown steps, on success, failure, and panic. The
-// runErr argument is the first error captured by the runner (or nil on
-// success); hooks may use it to decide whether to attach a partial artifact
-// or to skip cleanup. Returned artifacts are appended to the scenario
-// result in the order hooks were invoked.
+// EndScenario fires once between the main steps and the teardown steps,
+// so a hook can finalize side effects (e.g. flush a screen recording) in
+// time for teardown assertions to observe them. It also fires from a
+// defer as a panic / early-return safety net; the runner guarantees a
+// single invocation per scenario regardless of which path triggered it.
+// The runErr argument is the first error captured by the runner (or nil
+// on success); hooks may use it to decide whether to attach a partial
+// artifact or to skip cleanup. Returned artifacts are appended to the
+// scenario result in the order hooks were invoked.
 type ScenarioHook interface {
 	BeginScenario(ctx context.Context, scenario *model.Scenario, hctx ScenarioContext) error
 	EndScenario(ctx context.Context, scenario *model.Scenario, hctx ScenarioContext, runErr error) ([]ScenarioArtifact, error)

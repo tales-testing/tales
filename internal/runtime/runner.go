@@ -278,14 +278,28 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	}
 
 	beganHooks := 0
-	defer func() {
+	hooksEnded := false
+	endHooks := func() {
+		if hooksEnded {
+			return
+		}
+
+		hooksEnded = true
+
 		for i := beganHooks - 1; i >= 0; i-- {
 			artifacts, _ := hooks[i].EndScenario(ctx, scenario, hctx, runErr)
 			for _, a := range artifacts {
 				sResult.Artifacts = append(sResult.Artifacts, report.Artifact{Type: a.Type, Path: a.Path})
 			}
 		}
-	}()
+	}
+
+	// Defer is a safety net for panics and early returns. The happy path
+	// calls endHooks explicitly right after the steps so the teardown can
+	// observe finalized artifacts (e.g. the screen recording file flushed
+	// by simctl SIGINT) and so the recording does not cover the cleanup
+	// steps that close the app.
+	defer endHooks()
 
 	for i, hook := range hooks {
 		if err := hook.BeginScenario(ctx, scenario, hctx); err != nil {
@@ -315,6 +329,8 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	}
 
 	r.runScenarioSteps(ctx, scenario, sResult, depsByStep, tracker, evaluator, suite, config, state)
+
+	endHooks()
 
 	for _, step := range scenario.Teardown {
 		stepResult := r.executeTeardownStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
