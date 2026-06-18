@@ -48,6 +48,9 @@ func (NoopDriver) InputText(_ context.Context, _, _, _, _ string, _ bool) error 
 // EraseText does nothing.
 func (NoopDriver) EraseText(_ context.Context, _ string, _ int) error { return nil }
 
+// DismissKeyboard does nothing.
+func (NoopDriver) DismissKeyboard(_ context.Context, _ string) error { return nil }
+
 // Screenshot returns an empty image.
 func (NoopDriver) Screenshot(_ context.Context) ([]byte, error) { return []byte{}, nil }
 

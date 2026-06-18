@@ -442,12 +442,49 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 		return decodeWaitBlock(path, block, model.MobileActionWaitVisible)
 	case string(model.MobileActionWaitNotVisible):
 		return decodeWaitBlock(path, block, model.MobileActionWaitNotVisible)
+	case string(model.MobileActionDismissKeyboard):
+		return decodeDismissKeyboardBlock(path, block)
 	default:
 		blockRange := block.DefRange()
-		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, wait_visible, or wait_not_visible.", block.Type), &blockRange))
+		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, dismiss_keyboard, wait_visible, or wait_not_visible.", block.Type), &blockRange))
 
 		return nil, diags
 	}
+}
+
+// decodeDismissKeyboardBlock parses an empty `dismiss_keyboard {}` action.
+// It takes no element locator (no id / label / value / direction) — the
+// driver targets the focused first responder. Accepts no attributes; any
+// content surfaces an actionable diagnostic so authors don't silently
+// pass timeouts on a fire-and-forget op.
+func decodeDismissKeyboardBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0, len(block.Body.Attributes)+len(block.Body.Blocks))
+
+	for name, attr := range block.Body.Attributes {
+		attrRange := attr.Range()
+		diags = append(diags, diagError(
+			"Unknown dismiss_keyboard attribute",
+			fmt.Sprintf("dismiss_keyboard takes no attributes; remove %q.", name),
+			&attrRange,
+		))
+	}
+
+	for _, sub := range block.Body.Blocks {
+		subRange := sub.DefRange()
+		diags = append(diags, diagError(
+			"Unknown dismiss_keyboard block",
+			fmt.Sprintf("dismiss_keyboard takes no nested blocks; remove %q.", sub.Type),
+			&subRange,
+		))
+	}
+
+	action := &model.MobileAction{
+		Kind: model.MobileActionDismissKeyboard,
+		File: path,
+		Line: block.DefRange().Start.Line,
+	}
+
+	return action, diags
 }
 
 func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {

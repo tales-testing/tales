@@ -696,6 +696,76 @@ scenario "expect-missing" {
 	}
 }
 
+func TestLoadPathMobileDismissKeyboardActionDecodes(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "form" {
+  step "mobile" "fill" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      input_text {
+        id    = "form.name"
+        value = "Alice"
+      }
+      dismiss_keyboard {}
+      wait_visible {
+        id = "form.submit"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Mobile.Actions
+	if len(actions) != 3 {
+		t.Fatalf("expected 3 actions, got %d", len(actions))
+	}
+
+	if actions[1].Kind != model.MobileActionDismissKeyboard {
+		t.Fatalf("expected dismiss_keyboard action, got %q", actions[1].Kind)
+	}
+
+	if !actions[1].ID.Empty() || !actions[1].Label.Empty() || !actions[1].Value.Empty() {
+		t.Fatal("dismiss_keyboard must carry no locator or value expression")
+	}
+}
+
+func TestLoadPathMobileDismissKeyboardRejectsAttributes(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "form" {
+  step "mobile" "fill" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      dismiss_keyboard {
+        timeout = "5s"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics when dismiss_keyboard carries an attribute")
+	}
+
+	if !strings.Contains(diags.Error(), "Unknown dismiss_keyboard attribute") {
+		t.Fatalf("expected Unknown dismiss_keyboard attribute diagnostic, got: %s", diags.Error())
+	}
+}
+
 func TestLoadPathMobileRejectsMobileFieldsOnHTTPStep(t *testing.T) {
 	t.Parallel()
 

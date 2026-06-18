@@ -498,6 +498,32 @@ func TestClientTapIncludesLabelWhenSet(t *testing.T) {
 	}
 }
 
+func TestClientDismissKeyboardSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/dismissKeyboard" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.DismissKeyboard(context.Background(), "com.example.MyApp"); err != nil {
+		t.Fatalf("dismissKeyboard: %v", err)
+	}
+
+	if captured["bundleId"] != "com.example.MyApp" {
+		t.Fatalf("expected bundleId in payload, got %v", captured)
+	}
+}
+
 func TestClientInputTextIncludesLabelWhenSet(t *testing.T) {
 	t.Parallel()
 

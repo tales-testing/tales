@@ -212,6 +212,11 @@ func (c *Client) EraseText(ctx context.Context, bundleID string, characters int)
 	return c.postJSON(ctx, "/eraseText", map[string]any{payloadBundleIDKey: bundleID, "characters": characters})
 }
 
+// DismissKeyboard posts to /dismissKeyboard.
+func (c *Client) DismissKeyboard(ctx context.Context, bundleID string) error {
+	return c.postJSON(ctx, "/dismissKeyboard", map[string]any{payloadBundleIDKey: bundleID})
+}
+
 // Screenshot fetches GET /screenshot returning the raw PNG bytes.
 func (c *Client) Screenshot(ctx context.Context) ([]byte, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/screenshot", nil)

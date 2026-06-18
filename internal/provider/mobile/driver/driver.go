@@ -68,6 +68,12 @@ type Driver interface {
 	// element.
 	EraseText(ctx context.Context, bundleID string, characters int) error
 
+	// DismissKeyboard dismisses the soft keyboard if one is currently up.
+	// Idempotent: returns nil whether or not a keyboard was actually
+	// dismissed, so scenarios can call it before a snapshot-heavy step
+	// without having to query UI state first.
+	DismissKeyboard(ctx context.Context, bundleID string) error
+
 	// Screenshot captures a PNG-encoded screenshot of the active screen.
 	Screenshot(ctx context.Context) ([]byte, error)
 
