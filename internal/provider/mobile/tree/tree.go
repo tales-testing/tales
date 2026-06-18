@@ -36,9 +36,12 @@ type ViewNode struct {
 // ErrDuplicate is returned by FindByID when two or more nodes share the same id.
 var ErrDuplicate = errors.New("multiple elements share the same id")
 
-// FindByID searches the tree for the first node whose ID matches.
+// FindByID searches the tree for the node whose ID matches.
 // It returns (node, true, nil) on success, (nil, false, nil) when no node is
-// found, and (nil, false, ErrDuplicate) when more than one match exists.
+// found, and (nil, false, ErrDuplicate) when two elements in separate subtrees
+// share the id. A node and a descendant that share the id are treated as one
+// logical element (the outermost match wins), since UI frameworks routinely
+// double-encode a single control under one identifier.
 func FindByID(root *ViewNode, id string) (*ViewNode, bool, error) {
 	if root == nil || id == "" {
 		return nil, false, nil
@@ -65,6 +68,16 @@ func collectByID(node *ViewNode, id string, out *[]*ViewNode) {
 
 	if node.ID == id {
 		*out = append(*out, node)
+
+		// Stop descending into a matched node's subtree. SwiftUI (and UIKit)
+		// commonly expose one logical control under a single accessibility
+		// identifier on both a wrapper and its inner element — e.g. a
+		// `.topBarLeading` toolbar item surfaces as an `other` container *and*
+		// the `button` it wraps, both carrying the same id. Those nested
+		// same-id nodes are one element, not an ambiguous duplicate, so collapse
+		// them to the outermost match. Two elements in genuinely separate
+		// subtrees still produce multiple matches and are reported as duplicates.
+		return
 	}
 
 	for _, child := range node.Children {

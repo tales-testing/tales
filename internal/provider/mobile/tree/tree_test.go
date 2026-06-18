@@ -100,6 +100,38 @@ func TestFindByIDDuplicate(t *testing.T) {
 	}
 }
 
+func TestFindByIDNestedSameIDCollapses(t *testing.T) {
+	t.Parallel()
+
+	// A SwiftUI .topBarLeading toolbar item double-encodes one logical control
+	// under a single identifier: an `other` wrapper containing the `button`,
+	// both carrying the id. That is one element, not an ambiguous duplicate, so
+	// FindByID returns the outermost match instead of ErrDuplicate.
+	root := &ViewNode{
+		ID: "navigation_bar",
+		Children: []*ViewNode{
+			{
+				ID:      "toolbar.button",
+				Type:    "other",
+				Visible: true,
+				Bounds:  Rect{X: 76, Y: 66, Width: 36, Height: 36},
+				Children: []*ViewNode{
+					{ID: "toolbar.button", Type: "button", Visible: true},
+				},
+			},
+		},
+	}
+
+	node, ok, err := FindByID(root, "toolbar.button")
+	if err != nil || !ok || node == nil {
+		t.Fatalf("expected nested same-id to collapse to one match, got (%v, %v, %v)", node, ok, err)
+	}
+
+	if node.Type != "other" {
+		t.Fatalf("expected the outermost (wrapper) match, got type %q", node.Type)
+	}
+}
+
 func TestCenter(t *testing.T) {
 	t.Parallel()
 
