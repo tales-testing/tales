@@ -65,6 +65,8 @@ final class TalesRouter {
             response = runOnMain { self.handleEraseText(request: request) }
         case ("POST", "/dismissKeyboard"):
             response = runOnMain { self.handleDismissKeyboard(request: request) }
+        case ("POST", "/scrollTo"):
+            response = runOnMain { self.handleScrollTo(request: request) }
         case ("GET", "/screenshot"):
             response = runOnMain { self.handleScreenshot(request: request) }
         case ("POST", "/launch"):
@@ -598,8 +600,24 @@ final class TalesRouter {
             // No pasteboard fiddling, no contextual menu probing — both
             // were observed to either fail silently or paste partially on
             // iOS 26.
-            element.tap()
-            _ = app.keyboards.firstMatch.waitForExistence(timeout: 2.0)
+            //
+            // Hard precondition: the synth path must NEVER run unless a
+            // keyboard is actually up. If the tap fails to focus (the
+            // element is offscreen, covered, or wrapped in a container
+            // the tap landed on instead), the synth path raises
+            // "Failed to synthesize event: Neither element nor any
+            // descendant has keyboard focus" — an unrecoverable XCTest
+            // API violation that tears down the test runner mid-scenario
+            // and Tales then sees `connect: connection refused` on every
+            // subsequent request. We bail with a 500 instead, so the
+            // runner stays alive and the user gets an actionable error.
+            if !focusElementForTextInput(element, in: app) {
+                let locator = label.isEmpty ? "id=\(id)" : "label=\"\(label)\""
+                return HTTPResponse.error(
+                    "input text: \(locator) did not gain keyboard focus after tap+scroll. The element may be offscreen, covered, or non-focusable. Add a scroll_to action before input_text, or verify the locator targets a focusable text field.",
+                    status: 500
+                )
+            }
 
             // Verify-and-retry: after each synthesis pass, read the field
             // value back. SecureField exposes one bullet per stored
@@ -616,7 +634,14 @@ final class TalesRouter {
             for attempt in 1...inputTextMaxAttempts {
                 if attempt > 1 {
                     clearFocusedField(app, characters: max(landed, 0) + inputTextClearPadding)
-                    element.tap()
+                    // Re-tap to restore focus, and re-check the keyboard
+                    // before entering the synth path. Same rationale as
+                    // the pre-loop focus check: a retry that lost focus
+                    // would otherwise drop us into the synth path with
+                    // no first responder and tear the runner down.
+                    if !focusElementForTextInput(element, in: app) {
+                        break
+                    }
                     Thread.sleep(forTimeInterval: 0.3)
                 }
 
@@ -842,6 +867,146 @@ final class TalesRouter {
 
             Thread.sleep(forTimeInterval: 0.05)
         }
+    }
+
+    /// Taps `element` to focus it, then waits for the keyboard. If the
+    /// keyboard does not appear, attempts one scroll-into-view followed by
+    /// a single retap. Returns true when a keyboard is up after the
+    /// sequence, false otherwise. The caller MUST bail with a 500 when
+    /// this returns false: entering the synth path without a focused
+    /// element triggers an XCTest API violation that tears down the
+    /// runner (see handleInputText).
+    private func focusElementForTextInput(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        element.tap()
+
+        if app.keyboards.firstMatch.waitForExistence(timeout: 2.0) {
+            return true
+        }
+
+        // No keyboard means the tap did not focus a text input. The
+        // most common cause on a tall SwiftUI form is the element being
+        // offscreen: XCUITest reports it as `exists` (it is in the a11y
+        // tree) and isHittable can even be true for the bounding rect,
+        // but a tap at its frame center misses because the actual input
+        // affordance is scrolled past the viewport. One scroll-into-
+        // view + retap is enough to recover in practice; if the second
+        // attempt still fails the element is genuinely non-focusable
+        // (covered by a modal, disabled, ...) and the caller surfaces
+        // an actionable error to the user.
+        _ = scrollElementIntoView(element, in: app)
+        element.tap()
+
+        return app.keyboards.firstMatch.waitForExistence(timeout: 2.0)
+    }
+
+    /// Scrolls `element` into the viewport by dragging the app's window
+    /// in the direction that brings the element closer to the safe
+    /// center area. Returns true when a drag was actually performed,
+    /// false when no scroll was needed (element already in safe area)
+    /// or when the geometry could not be resolved.
+    ///
+    /// Implementation detail: we drag the window via XCUICoordinate
+    /// rather than calling swipeUp/swipeDown on a `XCUIElement.scrollView`
+    /// because SwiftUI `Form` does NOT expose an XCUIElement of type
+    /// scrollView, so the typed swipe helpers no-op. The window-level
+    /// drag works for every scrollable container (Form, ScrollView,
+    /// List, etc.) because UIKit routes the touch sequence to whatever
+    /// scrolls under the coordinate.
+    @discardableResult
+    private func scrollElementIntoView(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        let elementFrame = element.frame
+        guard !elementFrame.isEmpty else { return false }
+
+        let window = app.windows.firstMatch
+        guard window.exists else { return false }
+
+        let windowFrame = window.frame
+        guard !windowFrame.isEmpty else { return false }
+
+        // Leave generous safe-area margins: a soft keyboard occupies
+        // roughly the bottom 40% of an iPhone screen on portrait, so
+        // anything in the bottom ~330pt risks being covered when typing.
+        // The top inset keeps the element clear of the status / nav bar.
+        let safeTopInset: CGFloat = 100
+        let safeBottomInset: CGFloat = 60
+        let safeBottomY = windowFrame.maxY - safeBottomInset
+
+        var deltaY: CGFloat = 0
+
+        if elementFrame.maxY > safeBottomY {
+            // Element is below the safe bottom: scroll content UP so
+            // the element rises into view. Drag direction is up
+            // (negative dy), distance = how far below the safe area.
+            deltaY = -(elementFrame.maxY - safeBottomY + 24)
+        } else if elementFrame.minY < safeTopInset {
+            // Element is above the safe top: scroll content DOWN so
+            // the element drops into view.
+            deltaY = safeTopInset - elementFrame.minY + 24
+        }
+
+        if deltaY == 0 {
+            return false
+        }
+
+        // Drag from the window's vertical mid-point by `deltaY` pixels.
+        // Coordinates are normalized; we apply absolute pixel offsets
+        // via withOffset so the drag is independent of device size.
+        let startY = windowFrame.midY
+        let endY = startY + deltaY
+        let centerX = windowFrame.midX
+
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: centerX, dy: startY))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: centerX, dy: endY))
+
+        // Short hold before drag, then drag. The hold gives SwiftUI
+        // gesture recognizers time to attach to the scroll view; a
+        // 0-duration press behaves like a flick and can cancel.
+        start.press(forDuration: 0.05, thenDragTo: end)
+
+        // Let the scroll settle before the caller queries the element
+        // frame again or re-taps.
+        Thread.sleep(forTimeInterval: 0.2)
+
+        return true
+    }
+
+    /// Resolves an element by label-first then identifier, and scrolls
+    /// it into the viewport. Idempotent: a no-op when the element is
+    /// already in the safe area. Returns 404 when no element matches
+    /// the locator.
+    private func handleScrollTo(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String else {
+            return HTTPResponse.error("expected {bundleId}", status: 400)
+        }
+
+        let id = (payload["id"] as? String) ?? ""
+        let label = (payload["label"] as? String) ?? ""
+
+        guard !id.isEmpty || !label.isEmpty else {
+            return HTTPResponse.error("scroll_to requires an element id or label", status: 400)
+        }
+
+        let app = XCUIApplication(bundleIdentifier: bundleID)
+        let element: XCUIElement
+        if !label.isEmpty {
+            element = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", label))
+                .firstMatch
+        } else {
+            element = app.descendants(matching: .any).matching(identifier: id).firstMatch
+        }
+
+        guard element.exists else {
+            let locator = label.isEmpty ? id : label
+            return HTTPResponse.error("element \(locator) not found", status: 404)
+        }
+
+        _ = scrollElementIntoView(element, in: app)
+
+        return HTTPResponse.json(["ok": true])
     }
 
     /// Dismisses the soft keyboard via the existing dismissKeyboardIfPresent
