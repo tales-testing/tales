@@ -77,6 +77,13 @@ type MobileAction struct {
 	Distance Expression
 	// Duration is the gesture duration for swipe / scroll / long_press.
 	Duration Expression
+	// First requests pre-order first-match resolution for the action's
+	// element id, mirroring XCUITest's firstMatch. When true, sibling
+	// elements that share the id no longer error with ErrDuplicate; the
+	// first match in DFS order is used. Only consulted by actions that
+	// resolve an element by id; the strict default is preserved when the
+	// expression is unset or evaluates to false.
+	First Expression
 }
 
 // MobileExpect groups visibility expectations for a mobile step.

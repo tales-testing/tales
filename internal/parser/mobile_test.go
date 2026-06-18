@@ -368,6 +368,122 @@ scenario "missing-id" {
 	}
 }
 
+func TestLoadPathMobileActionsFirstAttribute(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "system-picker" {
+  step "mobile" "pick" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      wait_visible {
+        id      = "PXGGridLayout-Info"
+        first   = true
+        timeout = "10s"
+      }
+      tap {
+        id    = "PXGGridLayout-Info"
+        first = true
+      }
+      double_tap {
+        id    = "system-cell"
+        first = true
+      }
+      long_press {
+        id       = "system-cell"
+        first    = true
+        duration = "1s"
+      }
+      input_text {
+        id    = "system-cell"
+        value = "v"
+        first = true
+      }
+      clear_text {
+        id    = "system-cell"
+        first = true
+      }
+      swipe {
+        id        = "PXGGridLayout-Info"
+        direction = "up"
+        first     = true
+      }
+      scroll {
+        id        = "PXGGridLayout-Info"
+        direction = "down"
+        first     = true
+      }
+      wait_not_visible {
+        id    = "loading"
+        first = true
+      }
+      tap {
+        id = "no-first"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Mobile.Actions
+	if len(actions) != 10 {
+		t.Fatalf("expected 10 actions, got %d", len(actions))
+	}
+
+	for i := range 9 {
+		if actions[i].First.Empty() {
+			t.Fatalf("action %d (%s): expected First expression to be captured", i, actions[i].Kind)
+		}
+	}
+
+	if !actions[9].First.Empty() {
+		t.Fatal("expected the last tap (no first attribute) to leave First empty")
+	}
+}
+
+func TestLoadPathMobileRejectsUnknownFirstSibling(t *testing.T) {
+	t.Parallel()
+
+	// Regression: error messages must list "first" in the allowed set so the
+	// hint stays accurate after the attribute was added.
+	content := `version = 1
+
+scenario "bad-attr" {
+  step "mobile" "do" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      tap {
+        id    = "x"
+        nopes = true
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics for unknown tap attribute")
+	}
+
+	got := diags.Error()
+	if !strings.Contains(got, "Unknown tap attribute") {
+		t.Fatalf("expected unknown-attribute diagnostic, got: %s", got)
+	}
+
+	if !strings.Contains(got, "first") {
+		t.Fatalf("expected the allowed-attributes hint to list 'first', got: %s", got)
+	}
+}
+
 func TestLoadPathMobileRejectsMobileFieldsOnHTTPStep(t *testing.T) {
 	t.Parallel()
 
