@@ -1,0 +1,107 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+# Regression guard for the iOS 26 /hierarchy snapshot stall. The screen carries
+# a .topBarLeading toolbar item and a permanently-attached sheet (the Sealway
+# shape) and a "Refresh" button that synchronously blocks the app main thread
+# for ~9s — exactly like the refresh Sealway runs on org switch. While the app
+# main thread is blocked, XCUITest cannot snapshot it, which used to wedge the
+# driver's single-queue HTTP server (every /hierarchy then timing out with
+# `context deadline exceeded`, cascading into `POST /tap: EOF`). The driver now
+# bounds each snapshot and recovers the moment the app frees up.
+scenario "iOS hierarchy snapshot survives a busy transition screen" {
+  tags = ["ios", "mobile", "demo", "stall"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
+  # Sanity: with no main-thread block, the screen and its .topBarLeading toolbar
+  # item are present and visible. This isolates "toolbar capture" from "recovery
+  # after a main-thread block" below.
+  step "mobile" "open_stall" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    actions {
+      wait_visible {
+        id      = "welcome.stall"
+        timeout = "20s"
+      }
+      tap {
+        id = "welcome.stall"
+      }
+      wait_visible {
+        id      = "stall.screen"
+        timeout = "15s"
+      }
+    }
+    expect {
+      visible {
+        id      = "stall.toolbar.button"
+        timeout = "10s"
+      }
+      text {
+        id    = "stall.status"
+        value = "refreshed=0"
+      }
+    }
+  }
+
+  # Trigger the main-thread-blocking refresh, then assert the driver recovered:
+  # the status reflects the refresh and the toolbar item is still queryable. At
+  # baseline a stuck snapshot wedged the server here; now it just retries until
+  # the app frees up.
+  step "mobile" "trigger_refresh" {
+    depends_on = ["open_stall"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      tap {
+        id = "stall.refresh"
+      }
+    }
+    expect {
+      text {
+        id      = "stall.status"
+        value   = "refreshed=1"
+        timeout = "30s"
+      }
+      visible {
+        id      = "stall.toolbar.button"
+        timeout = "10s"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when     = true
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}
