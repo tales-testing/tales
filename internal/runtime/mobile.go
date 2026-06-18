@@ -287,6 +287,21 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 			}
 		}
 
+		if !action.First.Empty() {
+			first, err := evaluator.Eval(action.First, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: fmt.Sprintf("mobile.actions[%d].first", i)})
+			if err != nil {
+				return nil, fmt.Errorf("mobile.actions[%d].first: %w", i, err)
+			}
+
+			if !first.IsNull() {
+				if first.Type() != cty.Bool {
+					return nil, fmt.Errorf("mobile.actions[%d].first: must be a boolean", i)
+				}
+
+				exec.First = first.True()
+			}
+		}
+
 		if err := evalMobileGestureAttrs(evaluator, scope, scenarioName, step, i, action, &exec); err != nil {
 			return nil, err
 		}

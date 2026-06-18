@@ -607,11 +607,11 @@ func applyPermissions(ctx context.Context, session *Session, permissions []provi
 
 func (p *Provider) handleAction(ctx context.Context, session *Session, action provider.MobileActionExec) error {
 	if action.Kind == model.MobileActionWaitVisible {
-		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, true)
+		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, true, action.First)
 	}
 
 	if action.Kind == model.MobileActionWaitNotVisible {
-		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, false)
+		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, false, action.First)
 	}
 
 	// Device-level actions target no element, so they skip the
@@ -847,7 +847,7 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 	var found *tree.ViewNode
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, action.ID)
+		node, ok, err := findElementByID(pollCtx, session, action.ID, action.First)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -869,13 +869,13 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 
 func (p *Provider) handleExpect(ctx context.Context, session *Session, expect provider.MobileExpectExec) error {
 	for _, v := range expect.Visible {
-		if err := p.waitForVisibility(ctx, session, v, true); err != nil {
+		if err := p.waitForVisibility(ctx, session, v, true, false); err != nil {
 			return err
 		}
 	}
 
 	for _, v := range expect.NotVisible {
-		if err := p.waitForVisibility(ctx, session, v, false); err != nil {
+		if err := p.waitForVisibility(ctx, session, v, false, false); err != nil {
 			return err
 		}
 	}
@@ -907,13 +907,13 @@ func (p *Provider) handleExpect(ctx context.Context, session *Session, expect pr
 	return nil
 }
 
-func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v provider.MobileVisibilityExec, want bool) error {
+func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v provider.MobileVisibilityExec, want, first bool) error {
 	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
 
 	var found bool
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, v.ID)
+		node, ok, err := findElementByID(pollCtx, session, v.ID, first)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -961,7 +961,7 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 	)
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, v.ID)
+		node, ok, err := findElementByID(pollCtx, session, v.ID, false)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -1002,7 +1002,7 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 	)
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElementByID(pollCtx, session, v.ID)
+		node, ok, err := findElementByID(pollCtx, session, v.ID, false)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -1110,10 +1110,19 @@ func poll(ctx context.Context, opts PollOptions, fn func(context.Context) (pollR
 	}
 }
 
-func findElementByID(ctx context.Context, session *Session, id string) (*tree.ViewNode, bool, error) {
+func findElementByID(ctx context.Context, session *Session, id string, first bool) (*tree.ViewNode, bool, error) {
 	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID)
 	if err != nil {
 		return nil, false, fmt.Errorf("fetch hierarchy: %w", err)
+	}
+
+	if first {
+		node, ok, err := tree.FindFirstByID(hierarchy, id)
+		if err != nil {
+			return nil, false, fmt.Errorf("find element: %w", err)
+		}
+
+		return node, ok, nil
 	}
 
 	node, ok, err := tree.FindByID(hierarchy, id)
