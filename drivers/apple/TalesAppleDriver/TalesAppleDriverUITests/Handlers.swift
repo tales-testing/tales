@@ -677,10 +677,56 @@ final class TalesRouter {
             return HTTPResponse.json(["ok": true])
         }
 
+        // Non-paste branch (regular TextField). Same XCTest API
+        // violation pattern as paste mode: app.typeText() requires a
+        // first responder, and crashes the runner with
+        // `Failed to synthesize event: Neither element nor any
+        // descendant has keyboard focus` when none is set. The
+        // sealway BusinessOnboardingView repro hits this on offscreen
+        // form fields where the Go-side focus tap missed. Guard the
+        // synth path the same way as the paste branch: if a locator
+        // is provided, resolve it, focus-and-scroll if needed, and
+        // bail with 500 instead of entering app.typeText with no
+        // first responder. When no locator is provided (the legacy
+        // "type into whatever is focused" use case, e.g. after a
+        // press_key brought up a search bar), keep the existing
+        // app.typeText path so we do not regress that intent.
+        if !id.isEmpty || !label.isEmpty {
+            let element = resolveLocatorElement(in: app, id: id, label: label)
+            guard element.exists else {
+                let locator = label.isEmpty ? id : label
+                return HTTPResponse.error("element \(locator) not found", status: 404)
+            }
+
+            if !focusElementForTextInput(element, in: app) {
+                let locator = label.isEmpty ? "id=\(id)" : "label=\"\(label)\""
+                return HTTPResponse.error(
+                    "input text: \(locator) did not gain keyboard focus after tap+scroll. The element may be offscreen, covered, or non-focusable. Add a scroll_to action before input_text, or verify the locator targets a focusable text field.",
+                    status: 500
+                )
+            }
+        }
+
         app.typeText(text)
         dismissKeyboardIfPresent(in: app)
 
         return HTTPResponse.json(["ok": true])
+    }
+
+    /// Resolves an XCUIElement reference from the (id, label) pair,
+    /// label-first so callers that pass both end up with the label
+    /// matcher (same precedence as every other locator-aware
+    /// handler). Returns a placeholder XCUIElement whose `.exists` is
+    /// false when nothing matches; the caller is expected to guard on
+    /// `.exists` before using it.
+    private func resolveLocatorElement(in app: XCUIApplication, id: String, label: String) -> XCUIElement {
+        if !label.isEmpty {
+            return app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", label))
+                .firstMatch
+        }
+
+        return app.descendants(matching: .any).matching(identifier: id).firstMatch
     }
 
     /// Maximum synthesis attempts for one input_text in paste mode.
