@@ -674,7 +674,7 @@ make e2e
 - `internal/assertion`: matcher and JSON assertion logic.
 - `internal/provider/http`: HTTP execution provider (including multipart, Basic auth).
 - `internal/provider/sql`: SQL provider (PostgreSQL + MySQL).
-- `internal/provider/mobile`: iOS XCUITest provider with embedded driver.
+- `internal/provider/mobile`: iOS XCUITest provider with embedded driver. Supports scenario-level screen recording via `record { }` (see [providers/mobile-ios#recording](https://taleslabs.org/docs/providers/mobile-ios/#recording)).
 - `internal/provider/keyword`: reusable-flow pseudo-provider.
 - `internal/report`: console / JUnit / JSONL / visual HTML reporting.
 - `e2e/mockserver`: in-memory test API used by E2E.

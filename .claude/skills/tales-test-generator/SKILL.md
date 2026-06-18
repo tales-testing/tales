@@ -387,6 +387,41 @@ step "mobile" "fill" {
 - Validation: prefer `tales test ./suite --seed 1234 --parallel 1` for mobile
   suites; bump parallelism only when targets are distinct.
 
+### Scenario-level recording
+
+When the user wants a screen recording for the whole scenario (App Store preview, repro capture), use a scenario-level `record { }` block. The block is provider-agnostic on the parser side but only the iOS mobile provider honors it in V1 via `xcrun simctl io recordVideo`. The recording starts at the first mobile step and stops when the scenario finishes (success, failure, or panic), then surfaces under `scenario.artifacts[]` as `type = "recording"`.
+
+```hcl
+scenario "ios_app_store_preview" {
+  tags = ["video"]
+
+  skip_unless {
+    env_set = ["TALES_RECORD"]
+    reason  = "Set TALES_RECORD=1 to record an App Store preview"
+  }
+
+  record {
+    output = "preview.mp4"   # required, relative to scenario.workdir
+    codec  = "h264"          # optional: h264 (default) | hevc
+    mask   = "black"         # optional: ignored (default) | alpha | black
+    # display = "internal"   # optional: internal | external
+    # target  = "iphone"     # optional: pin to a specific mobile target
+    force  = true            # optional, default true (overwrite stale file)
+  }
+
+  step "mobile" "intro" { ... }
+  step "mobile" "feature" { ... }
+}
+```
+
+Authoring rules:
+- The block is **optional and scenario-level only**. There is no per-step recording.
+- Always pair it with `skip_unless { env_set = ["TALES_RECORD"] }` (or a similar gate) so plain `make e2e` / `make e2e-ios` runs do not try to spawn simctl.
+- The output path is rerouted through the scenario workspace resolver: keep it relative (e.g. `preview.mp4`) and never escape `scenario.workdir`.
+- Recording only works on macOS with iOS simulators (`platform = "ios"`).
+- Concurrent scenarios cannot record on the same simulator UDID; the provider rejects the second start. Use `--parallel 1` (or `--scenario "..."`) when authoring video scenarios.
+- The raw simctl output is **not** App Store submittable; post-process the MP4 with `ffmpeg` for dimensions / framerate / audio if needed.
+
 ### Mobile step skeleton
 
 ```hcl
