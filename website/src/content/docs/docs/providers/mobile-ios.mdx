@@ -187,11 +187,20 @@ Element-targeted actions:
 
 Device-level actions take no `id`:
 
-- `press_key { key = "return" }`, presses a hardware keyboard key. `key` is one of `return`, `enter`, `tab`, `space`, `escape`, `delete`.
+- `press_key { key = "return" }`, presses a hardware keyboard key. `key` is one of `return`, `enter`, `tab`, `space`, `escape`, `delete`. When `key` is `return` or `enter` and a soft keyboard is up, the driver routes the press to the keyboard's submit button (`Return` / `Done` / `Send` / locale variants) rather than the text-input event-synthesis path — synthesizing `\r` while a SwiftUI `TextField` is the first responder crashes the XCTest runner on iOS 26.x, so the keyboard-button path is both safer and semantically more accurate (it fires the field's `submitLabel`).
 - `press_button { button = "home" }`, presses a device button (`home` or `lock`).
 - `set_orientation { orientation = "landscape_left" }`, rotates the device. `orientation` is one of `portrait`, `landscape_left`, `landscape_right`, `upside_down`.
+- `dismiss_keyboard {}`, dismisses the soft keyboard if one is up. Idempotent (a no-op when no keyboard is present). Useful before a snapshot-heavy step on a tall SwiftUI form: see [Snapshot scope](#snapshot-scope) for why dismissing the keyboard first matters on iOS 26.x.
 
 Actions have an implicit wait of `10s` with `250ms` polling. Each action may set a per-call `timeout`.
+
+### Snapshot scope
+
+Hierarchy snapshots are scoped to the app's first window (`app.windows.firstMatch.snapshot()`) rather than the full application (`app.snapshot()`). The application snapshot pulls in every connected accessory the runner can reach, **including the iOS keyboard daemon process**, whose accessibility tree on a focused SwiftUI `TextField` is enormous (predictive bar, every key, modifiers, hardware-key passthroughs). On tall SwiftUI forms with the keyboard up, that subtree alone can push a single `XCUIElement.snapshot()` past the driver's 8s bounded timeout. Scoping to the window stays inside the app's own process and skips the keyboard daemon tree.
+
+Modal sheets, SwiftUI `.sheet` content, and `UIAlertController`-style alerts all live inside that same window via the presentation hierarchy, so locators on them keep resolving. Window-scoped snapshot falls back to `app.snapshot()` when no window is exposed yet (between `terminate` and the next `launch`, or while the app is mid-launch).
+
+If your scenario types into a long form and then needs a hierarchy snapshot, insert a `dismiss_keyboard {}` before the next assertion — it removes the keyboard from the window subtree and unbounds the snapshot time for follow-up steps.
 
 ### Duplicate-id sibling resolution (`first = true`)
 

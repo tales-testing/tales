@@ -163,3 +163,36 @@ scenario "iOS PhotosPicker Done button" {
     }
   }
 }
+
+# Long-form scenario: type into several fields then assert on a control
+# that lives below the keyboard. The iOS soft keyboard's a11y subtree
+# can push hierarchy snapshots past the driver's bounded timeout —
+# dismiss it explicitly before the assertion phase.
+scenario "iOS long form with dismiss_keyboard" {
+  step "mobile" "fill_form" {
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "form.first_name"
+        value = "Alice"
+      }
+      input_text {
+        id    = "form.last_name"
+        value = "Adams"
+      }
+      input_text {
+        id    = "form.email"
+        value = "alice@example.com"
+      }
+      dismiss_keyboard {}
+      wait_visible {
+        id      = "form.submit"
+        timeout = "5s"
+      }
+      tap {
+        id = "form.submit"
+      }
+    }
+  }
+}
