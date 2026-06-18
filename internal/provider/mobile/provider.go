@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/tales-testing/tales/internal/provider"
 	"github.com/tales-testing/tales/internal/provider/artifacts"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/simrecord"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 	"github.com/zclconf/go-cty/cty"
@@ -85,6 +87,12 @@ type Provider struct {
 
 	artifactsBase string
 	captureMode   CaptureMode
+
+	// recorderSpawner overrides the simctl recordVideo spawner used by the
+	// scenario-level record hook. Nil falls back to simrecord.ExecSpawner{}.
+	recorderSpawner simrecord.Spawner
+	recordOnce      sync.Once
+	recording       *recordController
 }
 
 // Option configures the Provider.
@@ -109,6 +117,16 @@ func WithArtifactsBase(dir string) Option {
 func WithCaptureMode(mode CaptureMode) Option {
 	return func(p *Provider) {
 		p.captureMode = mode
+	}
+}
+
+// WithRecorderSpawner overrides the spawner used by the scenario-level
+// record hook. Production callers omit this option so simrecord.ExecSpawner{}
+// is used; tests inject a fake Spawner so unit coverage does not require an
+// iOS simulator.
+func WithRecorderSpawner(spawner simrecord.Spawner) Option {
+	return func(p *Provider) {
+		p.recorderSpawner = spawner
 	}
 }
 
@@ -222,6 +240,14 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		output.Duration = time.Since(start)
 
 		return output, fmt.Errorf("acquire session: %w", err)
+	}
+
+	// Best-effort: start the scenario-level recording on the first mobile
+	// step. A failure here is logged via the artifact channel but does not
+	// fail the step itself: the user's mobile assertions still take
+	// precedence over a recording mishap.
+	if recErr := p.maybeStartRecording(ctx, input.Scenario, session); recErr != nil {
+		fmt.Fprintf(os.Stderr, "mobile: %v\n", recErr)
 	}
 
 	if err := p.executeMobile(ctx, input, session, output); err != nil {
