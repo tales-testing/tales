@@ -363,8 +363,8 @@ scenario "missing-id" {
 		t.Fatal("expected diagnostics for tap without id")
 	}
 
-	if !strings.Contains(diags.Error(), "Missing tap attribute") {
-		t.Fatalf("expected missing id diagnostic, got: %s", diags.Error())
+	if !strings.Contains(diags.Error(), "Missing element locator") {
+		t.Fatalf("expected missing element locator diagnostic, got: %s", diags.Error())
 	}
 }
 
@@ -481,6 +481,218 @@ scenario "bad-attr" {
 
 	if !strings.Contains(got, "first") {
 		t.Fatalf("expected the allowed-attributes hint to list 'first', got: %s", got)
+	}
+}
+
+func TestLoadPathMobileActionsLabelAttribute(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "system-picker" {
+  step "mobile" "pick" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      wait_visible {
+        label   = "Done"
+        timeout = "10s"
+      }
+      tap {
+        label = "Done"
+      }
+      double_tap {
+        label = "Done"
+      }
+      long_press {
+        label    = "Done"
+        duration = "1s"
+      }
+      input_text {
+        label = "Done"
+        value = "v"
+      }
+      clear_text {
+        label = "Done"
+      }
+      swipe {
+        label     = "Done"
+        direction = "up"
+      }
+      scroll {
+        label     = "Done"
+        direction = "down"
+      }
+      wait_not_visible {
+        label = "Done"
+      }
+    }
+    expect {
+      visible {
+        label = "Done"
+      }
+      not_visible {
+        label = "Cancel"
+      }
+      text {
+        label = "Done"
+        value = "Done"
+      }
+      value {
+        label = "Done"
+        value = "Done"
+      }
+      enabled {
+        label = "Done"
+      }
+      disabled {
+        label = "Done"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	mobile := suite.Scenarios[0].Steps[0].Mobile
+	if len(mobile.Actions) != 9 {
+		t.Fatalf("expected 9 actions, got %d", len(mobile.Actions))
+	}
+
+	for i, action := range mobile.Actions {
+		if action.Label.Empty() {
+			t.Fatalf("action %d (%s): expected Label expression to be captured", i, action.Kind)
+		}
+
+		if !action.ID.Empty() {
+			t.Fatalf("action %d (%s): expected ID expression to be empty when only label is set", i, action.Kind)
+		}
+	}
+
+	if len(mobile.Expect.Visible) != 1 || mobile.Expect.Visible[0].Label.Empty() || !mobile.Expect.Visible[0].ID.Empty() {
+		t.Fatalf("expected visible expect to carry Label and empty ID, got %+v", mobile.Expect.Visible)
+	}
+
+	if mobile.Expect.Text[0].Label.Empty() || mobile.Expect.Value[0].Label.Empty() {
+		t.Fatal("expected text/value expects to carry Label")
+	}
+
+	if mobile.Expect.Enabled[0].Label.Empty() || mobile.Expect.Disabled[0].Label.Empty() {
+		t.Fatal("expected enabled/disabled expects to carry Label")
+	}
+}
+
+func TestLoadPathMobileRejectsIDAndLabelTogether(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "conflict" {
+  step "mobile" "do" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      tap {
+        id    = "welcome.signin"
+        label = "Sign in"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics when both id and label are set")
+	}
+
+	if !strings.Contains(diags.Error(), "Conflicting element locator") {
+		t.Fatalf("expected Conflicting element locator diagnostic, got: %s", diags.Error())
+	}
+}
+
+func TestLoadPathMobileRejectsMissingLocator(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "missing" {
+  step "mobile" "do" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      tap {}
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics when neither id nor label is set")
+	}
+
+	if !strings.Contains(diags.Error(), "Missing element locator") {
+		t.Fatalf("expected Missing element locator diagnostic, got: %s", diags.Error())
+	}
+}
+
+func TestLoadPathMobileExpectRejectsIDAndLabelTogether(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "expect-conflict" {
+  step "mobile" "do" {
+    platform = "ios"
+    target = "iphone"
+    expect {
+      visible {
+        id    = "welcome.signin"
+        label = "Sign in"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics when both id and label are set in an expect block")
+	}
+
+	if !strings.Contains(diags.Error(), "Conflicting element locator") {
+		t.Fatalf("expected Conflicting element locator diagnostic, got: %s", diags.Error())
+	}
+}
+
+func TestLoadPathMobileExpectRejectsMissingLocator(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "expect-missing" {
+  step "mobile" "do" {
+    platform = "ios"
+    target = "iphone"
+    expect {
+      visible {}
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics when neither id nor label is set in an expect block")
+	}
+
+	if !strings.Contains(diags.Error(), "Missing element locator") {
+		t.Fatalf("expected Missing element locator diagnostic, got: %s", diags.Error())
 	}
 }
 

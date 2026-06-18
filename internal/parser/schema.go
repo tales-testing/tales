@@ -220,11 +220,13 @@ type webPerfBlock struct {
 	Body hcl.Body `hcl:",remain"`
 }
 
-// visibleBlock describes a visibility expectation. ID is used by the mobile
-// provider; Selector is used by the browser provider. The decoder validates
-// that exactly the expected locator is set per provider.
+// visibleBlock describes a visibility expectation. ID / Label are used by the
+// mobile provider (mutually exclusive); Selector is used by the browser
+// provider. The decoder validates that exactly the expected locator is set
+// per provider.
 type visibleBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
+	Label    hcl.Expression `hcl:"label,optional"`
 	Selector hcl.Expression `hcl:"selector,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
 	Interval hcl.Expression `hcl:"interval,optional"`
@@ -232,6 +234,7 @@ type visibleBlock struct {
 
 type valueBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
+	Label    hcl.Expression `hcl:"label,optional"`
 	Selector hcl.Expression `hcl:"selector,optional"`
 	Value    hcl.Expression `hcl:"value,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
@@ -240,6 +243,7 @@ type valueBlock struct {
 
 type stateBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
+	Label    hcl.Expression `hcl:"label,optional"`
 	Selector hcl.Expression `hcl:"selector,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
 	Interval hcl.Expression `hcl:"interval,optional"`
