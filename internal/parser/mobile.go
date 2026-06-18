@@ -19,6 +19,7 @@ const mobileTimeoutAttr = "timeout"
 const mobileIntervalAttr = "interval"
 const mobileValueAttr = "value"
 const mobileDurationAttr = "duration"
+const mobileFirstAttr = "first"
 
 // decodeMobileStep builds a model.MobileStep from a parsed step block when any
 // mobile-specific attribute or block is present. It returns nil when the step
@@ -407,6 +408,7 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 
 	timeoutExpr := hcl.Expression(nil)
 	intervalExpr := hcl.Expression(nil)
+	firstExpr := hcl.Expression(nil)
 
 	for name, attr := range block.Body.Attributes {
 		if name == "id" {
@@ -425,8 +427,14 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 			continue
 		}
 
+		if name == mobileFirstAttr {
+			firstExpr = attr.Expr
+
+			continue
+		}
+
 		attrRange := attr.Range()
-		diags = append(diags, diagError("Unknown tap attribute", fmt.Sprintf("tap attribute %q is not supported; allowed: id, timeout, interval.", name), &attrRange))
+		diags = append(diags, diagError("Unknown tap attribute", fmt.Sprintf("tap attribute %q is not supported; allowed: id, timeout, interval, first.", name), &attrRange))
 	}
 
 	action := &model.MobileAction{
@@ -436,6 +444,7 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 		ID:       expr(path, idExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
+		First:    expr(path, firstExpr),
 	}
 
 	return action, diags
@@ -454,6 +463,7 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		secureExpr   hcl.Expression
 		timeoutExpr  hcl.Expression
 		intervalExpr hcl.Expression
+		firstExpr    hcl.Expression
 	)
 
 	for name, attr := range block.Body.Attributes {
@@ -466,9 +476,11 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			timeoutExpr = attr.Expr
 		case mobileIntervalAttr:
 			intervalExpr = attr.Expr
+		case mobileFirstAttr:
+			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown input_text attribute", fmt.Sprintf("input_text attribute %q is not supported; allowed: id, value, secure, timeout, interval.", name), &attrRange))
+			diags = append(diags, diagError("Unknown input_text attribute", fmt.Sprintf("input_text attribute %q is not supported; allowed: id, value, secure, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -481,6 +493,7 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		Secure:   expr(path, secureExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
+		First:    expr(path, firstExpr),
 	}
 
 	return action, diags
@@ -494,6 +507,7 @@ func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 
 	timeoutExpr := hcl.Expression(nil)
 	intervalExpr := hcl.Expression(nil)
+	firstExpr := hcl.Expression(nil)
 
 	for name, attr := range block.Body.Attributes {
 		if name == "id" {
@@ -512,8 +526,14 @@ func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			continue
 		}
 
+		if name == mobileFirstAttr {
+			firstExpr = attr.Expr
+
+			continue
+		}
+
 		attrRange := attr.Range()
-		diags = append(diags, diagError("Unknown clear_text attribute", fmt.Sprintf("clear_text attribute %q is not supported; allowed: id, timeout, interval.", name), &attrRange))
+		diags = append(diags, diagError("Unknown clear_text attribute", fmt.Sprintf("clear_text attribute %q is not supported; allowed: id, timeout, interval, first.", name), &attrRange))
 	}
 
 	action := &model.MobileAction{
@@ -523,6 +543,7 @@ func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		ID:       expr(path, idExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
+		First:    expr(path, firstExpr),
 	}
 
 	return action, diags
@@ -537,6 +558,7 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 
 	timeoutExpr := hcl.Expression(nil)
 	intervalExpr := hcl.Expression(nil)
+	firstExpr := hcl.Expression(nil)
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
@@ -546,9 +568,11 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 			timeoutExpr = attr.Expr
 		case mobileIntervalAttr:
 			intervalExpr = attr.Expr
+		case mobileFirstAttr:
+			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, timeout, interval.", actionName, name), &attrRange))
+			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, timeout, interval, first.", actionName, name), &attrRange))
 		}
 	}
 
@@ -559,6 +583,7 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 		ID:       expr(path, idExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
+		First:    expr(path, firstExpr),
 	}
 
 	return action, diags
@@ -572,6 +597,7 @@ func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 
 	timeoutExpr := hcl.Expression(nil)
 	intervalExpr := hcl.Expression(nil)
+	firstExpr := hcl.Expression(nil)
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
@@ -581,9 +607,11 @@ func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			timeoutExpr = attr.Expr
 		case mobileIntervalAttr:
 			intervalExpr = attr.Expr
+		case mobileFirstAttr:
+			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown double_tap attribute", fmt.Sprintf("double_tap attribute %q is not supported; allowed: id, timeout, interval.", name), &attrRange))
+			diags = append(diags, diagError("Unknown double_tap attribute", fmt.Sprintf("double_tap attribute %q is not supported; allowed: id, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -594,6 +622,7 @@ func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		ID:       expr(path, idExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
+		First:    expr(path, firstExpr),
 	}
 
 	return action, diags
@@ -605,7 +634,7 @@ func decodeLongPressBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 	idExpr, idDiags := requireActionAttr(block, "long_press", "id")
 	diags = append(diags, idDiags...)
 
-	var durationExpr, timeoutExpr, intervalExpr hcl.Expression
+	var durationExpr, timeoutExpr, intervalExpr, firstExpr hcl.Expression
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
@@ -617,9 +646,11 @@ func decodeLongPressBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			timeoutExpr = attr.Expr
 		case mobileIntervalAttr:
 			intervalExpr = attr.Expr
+		case mobileFirstAttr:
+			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown long_press attribute", fmt.Sprintf("long_press attribute %q is not supported; allowed: id, duration, timeout, interval.", name), &attrRange))
+			diags = append(diags, diagError("Unknown long_press attribute", fmt.Sprintf("long_press attribute %q is not supported; allowed: id, duration, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -631,6 +662,7 @@ func decodeLongPressBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		Duration: expr(path, durationExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
+		First:    expr(path, firstExpr),
 	}
 
 	return action, diags
@@ -646,7 +678,7 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 	directionExpr, dirDiags := requireActionAttr(block, actionName, "direction")
 	diags = append(diags, dirDiags...)
 
-	var distanceExpr, durationExpr, timeoutExpr, intervalExpr hcl.Expression
+	var distanceExpr, durationExpr, timeoutExpr, intervalExpr, firstExpr hcl.Expression
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
@@ -660,9 +692,11 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 			timeoutExpr = attr.Expr
 		case mobileIntervalAttr:
 			intervalExpr = attr.Expr
+		case mobileFirstAttr:
+			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, direction, distance, duration, timeout, interval.", actionName, name), &attrRange))
+			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, direction, distance, duration, timeout, interval, first.", actionName, name), &attrRange))
 		}
 	}
 
@@ -676,6 +710,7 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 		Duration:  expr(path, durationExpr),
 		Timeout:   expr(path, timeoutExpr),
 		Interval:  expr(path, intervalExpr),
+		First:     expr(path, firstExpr),
 	}
 
 	return action, diags
