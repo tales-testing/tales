@@ -193,6 +193,28 @@ Device-level actions take no `id`:
 
 Actions have an implicit wait of `10s` with `250ms` polling. Each action may set a per-call `timeout`.
 
+### Duplicate-id sibling resolution (`first = true`)
+
+Every element-targeted action (`tap`, `double_tap`, `long_press`, `input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`, `wait_not_visible`) accepts an optional `first = true` attribute. By default the resolver requires that an `id` matches a single logical element: a node and a same-id descendant collapse to one match (the SwiftUI wrapper + inner control case), but two genuinely distinct sibling matches surface `multiple elements share the same id`. That strict default is deliberate — it keeps explicit `expect` assertions backed by a real uniqueness guarantee.
+
+System pickers break that contract: iOS's `PhotosPicker`, the file importer and similar surfaces expose every cell of a grid under the same accessibility identifier (e.g. `PXGGridLayout-Info`), as siblings inside a collection view rather than as a parent-child pair. `first = true` opts the action into pre-order first-match resolution — the same semantics as XCUITest's `descendants(matching:).matching(identifier:).firstMatch` — so the first cell wins instead of failing with `ErrDuplicate`.
+
+```hcl
+actions {
+  wait_visible {
+    id      = "PXGGridLayout-Info"
+    first   = true
+    timeout = "15s"
+  }
+  tap {
+    id    = "PXGGridLayout-Info"
+    first = true
+  }
+}
+```
+
+The strict default is intentionally kept on every `expect { visible | not_visible | text | value | enabled | disabled }` block: assertions still error when an `id` resolves to two distinct subtrees. Use `first = true` only at the action level, where the goal is to *act* on the picker, not to *assert* its shape.
+
 ## Expectations
 
 ```hcl
