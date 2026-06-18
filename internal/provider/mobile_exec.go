@@ -38,8 +38,8 @@ type MobileTerminateExec struct{}
 
 // MobileActionExec is one ordered UI action ready to be executed.
 type MobileActionExec struct {
-	Kind     model.MobileActionKind
-	ID       string
+	Kind model.MobileActionKind
+	ID   string
 	// Label, when non-empty, opts into accessibility-label resolution
 	// (XCUITest firstMatch on NSPredicate "label == %@") on both Go
 	// snapshot lookup and the driver-side element search. Mutually
