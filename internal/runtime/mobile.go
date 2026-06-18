@@ -272,34 +272,8 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 			exec.Value = value
 		}
 
-		if !action.Secure.Empty() {
-			secure, err := evaluator.Eval(action.Secure, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: fmt.Sprintf("mobile.actions[%d].secure", i)})
-			if err != nil {
-				return nil, fmt.Errorf("mobile.actions[%d].secure: %w", i, err)
-			}
-
-			if !secure.IsNull() {
-				if secure.Type() != cty.Bool {
-					return nil, fmt.Errorf("mobile.actions[%d].secure: must be a boolean", i)
-				}
-
-				exec.Secure = secure.True()
-			}
-		}
-
-		if !action.First.Empty() {
-			first, err := evaluator.Eval(action.First, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: fmt.Sprintf("mobile.actions[%d].first", i)})
-			if err != nil {
-				return nil, fmt.Errorf("mobile.actions[%d].first: %w", i, err)
-			}
-
-			if !first.IsNull() {
-				if first.Type() != cty.Bool {
-					return nil, fmt.Errorf("mobile.actions[%d].first: must be a boolean", i)
-				}
-
-				exec.First = first.True()
-			}
+		if err := evalMobileBoolAttrs(evaluator, scope, scenarioName, step, i, action, &exec); err != nil {
+			return nil, err
 		}
 
 		if err := evalMobileGestureAttrs(evaluator, scope, scenarioName, step, i, action, &exec); err != nil {
@@ -340,6 +314,31 @@ func evalMobilePermissions(evaluator *lang.Evaluator, scope lang.ScopeData, scen
 	}
 
 	return out, nil
+}
+
+// evalMobileBoolAttrs resolves the optional boolean attributes on a
+// mobile action (secure, first). Each is optional; an empty expression
+// or a null evaluation leaves the corresponding exec field at false.
+func evalMobileBoolAttrs(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName string, step *model.Step, index int, action model.MobileAction, exec *provider.MobileActionExec) error {
+	if !action.Secure.Empty() {
+		secure, err := evalBoolAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].secure", index), action.Secure)
+		if err != nil {
+			return err
+		}
+
+		exec.Secure = secure
+	}
+
+	if !action.First.Empty() {
+		first, err := evalBoolAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].first", index), action.First)
+		if err != nil {
+			return err
+		}
+
+		exec.First = first
+	}
+
+	return nil
 }
 
 // evalMobileGestureAttrs resolves the swipe / scroll / long_press extras
