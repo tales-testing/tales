@@ -219,6 +219,15 @@ struct WelcomeView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("welcome.stall")
+
+            NavigationLink {
+                PickerView()
+            } label: {
+                Text("Picker")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("welcome.picker")
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -908,6 +917,55 @@ struct ProfileView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+// MARK: - Picker repro
+
+/// Reproduces the iOS PhotosPicker / file-importer shape: a grid of
+/// sibling cells that all carry the same accessibility identifier. The
+/// system PhotosPicker exposes every cell as `PXGGridLayout-Info`; the
+/// repro mirrors that ambiguity with `picker.cell` so a Tales scenario
+/// can verify that `first = true` resolves to the first cell while the
+/// strict default fails with ErrDuplicate.
+struct PickerView: View {
+    @State private var tapped: Int? = nil
+
+    private let labels = ["First", "Second", "Third"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Picker")
+                .font(.title.bold())
+                .accessibilityIdentifier("picker.screen")
+
+            Text("Tap a cell. They all share id=\"picker.cell\".")
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 12) {
+                ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                    Button {
+                        tapped = index
+                    } label: {
+                        Text(label)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("picker.cell")
+                }
+            }
+
+            Text("tapped=\(tapped.map(String.init) ?? "none")")
+                .monospaced()
+                .accessibilityIdentifier("picker.status")
+
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(.systemBackground))
     }
 }
 
