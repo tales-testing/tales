@@ -34,6 +34,14 @@ const (
 	// keyboard subtree makes the full-application snapshot exceed the
 	// driver's bounded timeout.
 	MobileActionDismissKeyboard MobileActionKind = "dismiss_keyboard"
+	// MobileActionScrollTo asks the driver to scroll the element
+	// identified by id or label into the viewport. Idempotent (no-op
+	// when the element is already in the safe area). Indispensable
+	// before an input_text on a tall SwiftUI Form where the target
+	// field is offscreen: the focus tap would otherwise miss, the
+	// follow-up synth path would trip an XCTest API violation and tear
+	// the runner down.
+	MobileActionScrollTo MobileActionKind = "scroll_to"
 )
 
 // MobileStep is the provider-specific payload attached to a Step when Provider == "mobile".

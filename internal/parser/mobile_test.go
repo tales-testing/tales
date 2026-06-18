@@ -738,6 +738,108 @@ scenario "form" {
 	}
 }
 
+func TestLoadPathMobileScrollToDecodes(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "form" {
+  step "mobile" "fill" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      scroll_to {
+        id = "form.identifier_value"
+      }
+      input_text {
+        id    = "form.identifier_value"
+        value = "123456789"
+      }
+      scroll_to {
+        label = "Done"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Mobile.Actions
+	if len(actions) != 3 {
+		t.Fatalf("expected 3 actions, got %d", len(actions))
+	}
+
+	if actions[0].Kind != model.MobileActionScrollTo || actions[0].ID.Empty() {
+		t.Fatalf("expected first scroll_to to carry an ID, got %+v", actions[0])
+	}
+
+	if actions[2].Kind != model.MobileActionScrollTo || actions[2].Label.Empty() {
+		t.Fatalf("expected second scroll_to to carry a Label, got %+v", actions[2])
+	}
+}
+
+func TestLoadPathMobileScrollToRejectsIDAndLabelTogether(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "form" {
+  step "mobile" "fill" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      scroll_to {
+        id    = "form.field"
+        label = "Done"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics when scroll_to carries both id and label")
+	}
+
+	if !strings.Contains(diags.Error(), "Conflicting element locator") {
+		t.Fatalf("expected Conflicting element locator, got: %s", diags.Error())
+	}
+}
+
+func TestLoadPathMobileScrollToRejectsTimeout(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "form" {
+  step "mobile" "fill" {
+    platform = "ios"
+    target = "iphone"
+    actions {
+      scroll_to {
+        id      = "form.field"
+        timeout = "5s"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected diagnostics when scroll_to carries an unsupported attribute")
+	}
+
+	if !strings.Contains(diags.Error(), "Unknown scroll_to attribute") {
+		t.Fatalf("expected Unknown scroll_to attribute diagnostic, got: %s", diags.Error())
+	}
+}
+
 func TestLoadPathMobileDismissKeyboardRejectsAttributes(t *testing.T) {
 	t.Parallel()
 

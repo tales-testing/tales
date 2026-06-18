@@ -498,6 +498,66 @@ func TestClientTapIncludesLabelWhenSet(t *testing.T) {
 	}
 }
 
+func TestClientScrollToSendsLocator(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/scrollTo" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.ScrollTo(context.Background(), "com.example.MyApp", "form.identifier_value", ""); err != nil {
+		t.Fatalf("scrollTo: %v", err)
+	}
+
+	if captured["bundleId"] != "com.example.MyApp" {
+		t.Fatalf("expected bundleId in payload, got %v", captured)
+	}
+
+	if captured["id"] != "form.identifier_value" {
+		t.Fatalf("expected id in payload, got %v", captured)
+	}
+
+	if _, hasLabel := captured["label"]; hasLabel {
+		t.Fatalf("payload should omit empty label, got %v", captured)
+	}
+}
+
+func TestClientScrollToSendsLabel(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.ScrollTo(context.Background(), "com.example.MyApp", "", "Done"); err != nil {
+		t.Fatalf("scrollTo: %v", err)
+	}
+
+	if captured["label"] != "Done" {
+		t.Fatalf("expected label in payload, got %v", captured)
+	}
+
+	if _, hasID := captured["id"]; hasID {
+		t.Fatalf("payload should omit empty id, got %v", captured)
+	}
+}
+
 func TestClientDismissKeyboardSendsPayload(t *testing.T) {
 	t.Parallel()
 

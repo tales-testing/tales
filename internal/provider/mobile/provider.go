@@ -665,7 +665,7 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 		return executeSwipe(ctx, session, action, node, true)
 	case model.MobileActionWaitVisible, model.MobileActionWaitNotVisible,
 		model.MobileActionPressKey, model.MobileActionPressButton, model.MobileActionSetOrientation,
-		model.MobileActionDismissKeyboard:
+		model.MobileActionDismissKeyboard, model.MobileActionScrollTo:
 		// Handled before element resolution (wait_* and the device-level
 		// actions); never reached here.
 		return nil
@@ -707,6 +707,14 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	if action.Kind == model.MobileActionDismissKeyboard {
 		if err := session.Driver.DismissKeyboard(ctx, session.Target.BundleID); err != nil {
 			return true, fmt.Errorf("dismiss keyboard: %w", err)
+		}
+
+		return true, nil
+	}
+
+	if action.Kind == model.MobileActionScrollTo {
+		if err := session.Driver.ScrollTo(ctx, session.Target.BundleID, action.ID, action.Label); err != nil {
+			return true, fmt.Errorf("scroll to: %w", err)
 		}
 
 		return true, nil
