@@ -234,26 +234,14 @@ func evalMobileActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenario
 
 		// Device-level actions (press_key, press_button, set_orientation)
 		// target the device, not an element, so they carry no id or label.
-		// Element-targeted actions carry exactly one of id / label (parser-
-		// enforced); evaluate whichever is set.
 		if !isDeviceAction(action.Kind) {
-			if !action.ID.Empty() {
-				id, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].id", i), action.ID)
-				if err != nil {
-					return nil, err
-				}
-
-				exec.ID = id
+			id, label, err := evalMobileLocator(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d]", i), action.ID, action.Label)
+			if err != nil {
+				return nil, err
 			}
 
-			if !action.Label.Empty() {
-				label, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("mobile.actions[%d].label", i), action.Label)
-				if err != nil {
-					return nil, err
-				}
-
-				exec.Label = label
-			}
+			exec.ID = id
+			exec.Label = label
 		}
 
 		if !action.Timeout.Empty() {

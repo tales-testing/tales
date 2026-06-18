@@ -978,9 +978,9 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 
 		found = true
 		got = extract(node)
+		assertionLabel := kind + "." + locator.String()
 
 		res := pollResult{Done: true}
-		assertionLabel := kind + "." + locator.String()
 		if mismatch := assertion.Equal(assertionLabel, v.Expected, cty.StringVal(got)); mismatch != nil {
 			res = pollResult{Mismatch: mismatch}
 		}
