@@ -139,3 +139,27 @@ scenario "iOS PhotosPicker first cell" {
     }
   }
 }
+
+# System controller buttons (PhotosPicker / PHPickerViewController Done,
+# document picker, share sheet, mail composer, ...) carry an
+# accessibilityLabel but no accessibilityIdentifier. The `label = "..."`
+# locator is the only way to reach them. Mutually exclusive with `id`;
+# accepted on every action AND every expect block.
+scenario "iOS PhotosPicker Done button" {
+  step "mobile" "confirm_photo_pick" {
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      wait_visible {
+        label   = "Done"
+        timeout = "10s"
+      }
+      tap {
+        label = "Done"
+      }
+    }
+    expect {
+      visible { label = "Done" }
+    }
+  }
+}

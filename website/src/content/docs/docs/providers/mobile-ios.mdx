@@ -215,6 +215,33 @@ actions {
 
 The strict default is intentionally kept on every `expect { visible | not_visible | text | value | enabled | disabled }` block: assertions still error when an `id` resolves to two distinct subtrees. Use `first = true` only at the action level, where the goal is to *act* on the picker, not to *assert* its shape.
 
+### Matching by `accessibilityLabel` (`label = "..."`)
+
+Every element-targeted action (`tap`, `double_tap`, `long_press`, `input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`, `wait_not_visible`) and every expectation block (`visible`, `not_visible`, `text`, `value`, `enabled`, `disabled`) accepts an optional `label = "<accessibilityLabel>"` attribute as an **alternative** to `id`. The two are mutually exclusive at the parse layer: setting both is rejected with `Conflicting element locator`, setting neither with `Missing element locator`.
+
+`id` matches `accessibilityIdentifier` — the canonical, locale-independent locator authored on the element. `label` matches `accessibilityLabel` — the user-facing string that screen readers announce. Use `id` whenever the app defines one; reach for `label` to interact with iOS system controllers that don't expose an identifier:
+
+- `PHPickerViewController` (the SwiftUI `PhotosPicker`) — `Done` / `Cancel`.
+- `UIDocumentPickerViewController` — file importer.
+- `UIActivityViewController` — the share sheet.
+- `MFMailComposeViewController` / `MFMessageComposeViewController`.
+- Most system alerts and action sheets where Apple leaves the identifier blank.
+
+```hcl
+actions {
+  wait_visible { label = "Done" timeout = "10s" }
+  tap          { label = "Done" }
+}
+
+expect {
+  visible { label = "Done" }
+}
+```
+
+Resolution is `XCUIElement.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch` on the driver side, mirrored by `tree.FindFirstByLabel` on the Go side for snapshot-only expectations. Match is exact and case-sensitive; `firstMatch` is implicit, so `first = true` next to `label` is redundant but accepted. Because system labels change with the simulator locale (`Done` vs `Terminé`), keep `label` for cases where `id` is unavailable — prefer `id` whenever the app under test defines one.
+
+Unlike `first`, `label` IS accepted in `expect` blocks: the goal is to *assert* on system controllers as well as interact with them. The uniqueness guarantee of strict id resolution does not extend to label resolution.
+
 ## Expectations
 
 ```hcl
