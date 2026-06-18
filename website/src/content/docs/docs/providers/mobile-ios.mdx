@@ -311,6 +311,69 @@ step "mobile" "fill" {
 
 Calling `generate(...)` twice produces two different values (the seed mixer includes the expression path), so the capture-once pattern is the only way to get matching values.
 
+## Recording
+
+A scenario-level `record { ... }` block instructs the iOS provider to capture a screen recording for the duration of the scenario using `xcrun simctl io <UDID> recordVideo`. Use it to produce App Store preview videos or to capture flaky-bug repros.
+
+```hcl
+scenario "app_store_preview" {
+  tags = ["video"]
+
+  skip_unless {
+    env_set = ["TALES_RECORD"]
+    reason  = "Set TALES_RECORD=1 to record an App Store preview"
+  }
+
+  record {
+    output = "preview.mp4"   # required, relative to scenario.workdir
+    codec  = "h264"          # optional: h264 (default), hevc
+    mask   = "black"         # optional: ignored (default), alpha, black
+    force  = true            # optional, default true
+  }
+
+  step "mobile" "intro" { ... }
+  step "mobile" "feature" { ... }
+}
+```
+
+Attributes (all forwarded to `simctl io recordVideo` unchanged when set):
+
+- `output` (required): path relative to `scenario.workdir`. The workspace resolver rejects any attempt to escape the per-scenario directory.
+- `codec`: `h264` (App Store-friendly) or `hevc`. Defaults to simctl's own default when omitted.
+- `mask`: `ignored`, `alpha`, or `black`. Controls device-mask handling for notched / Dynamic Island simulators.
+- `display`: `internal` or `external`. Selects which display to capture on devices that expose more than one.
+- `target`: the mobile target name (`config.mobile.targets.<name>`) the recording should bind to. Omit when the scenario only drives one target.
+- `force`: defaults to `true`; passes `--force` so simctl overwrites a stale file from a previous run instead of erroring.
+
+### Lifecycle
+
+The recording is wired through a generic provider capability (`ScenarioHook`), so:
+
+- It is **not** started until the first `step "mobile"` runs in the scenario, which is the earliest point where the simulator is guaranteed booted and a UDID is known.
+- It is stopped at the end of the scenario, including on failures and panics, via a defer. The recorder sends `SIGINT` only and waits for simctl to flush the MP4 moov atom; a forceful kill would leave the file unplayable.
+- The resulting path is surfaced as a scenario-level artifact (`type = "recording"`) in console, JSONL (`scenario.artifacts[]`), JUnit (`<system-out>`), and the embedded JSON payload of the visual HTML report.
+
+### Skip / opt-in pattern
+
+There is no dedicated CLI flag. Combine the existing primitives:
+
+```hcl
+scenario "my_recording" {
+  tags = ["video"]
+  skip_unless { env_set = ["TALES_RECORD"] }
+  record { output = "preview.mp4" }
+  # steps...
+}
+```
+
+Run with `TALES_RECORD=1 tales test e2e/ios-record`; without that variable, the scenario is reported as `SKIPPED` and `xcrun simctl` is never invoked. The [`e2e-ios-record`](https://github.com/tales-testing/tales/blob/main/Makefile) Make target wraps the same invocation for the demo app.
+
+### Limitations
+
+- The raw simctl output is **not** App Store submittable on its own (Apple requires fixed dimensions / framerate / audio). Post-process with `ffmpeg` after Tales finishes.
+- Concurrent scenarios cannot record on the same simulator UDID: the provider rejects the second start with a clear error. Run video scenarios with `--parallel 1` (or `--scenario "..."` / `--tag video`) to avoid the conflict.
+- The visual HTML template does not yet render a `<video>` element; the recording path is in the embedded JSON, so external tooling can pick it up.
+
 ## Driver modes
 
 The `driver` block selects one of three execution modes:
