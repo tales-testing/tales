@@ -235,6 +235,100 @@ func TestFindFirstByIDEmptyID(t *testing.T) {
 	}
 }
 
+func TestFindFirstByLabelRoot(t *testing.T) {
+	t.Parallel()
+
+	root := &ViewNode{ID: "root", Label: "Welcome"}
+
+	node, ok, err := FindFirstByLabel(root, "Welcome")
+	if err != nil || !ok || node == nil {
+		t.Fatalf("expected to find root by label, got (%v, %v, %v)", node, ok, err)
+	}
+}
+
+func TestFindFirstByLabelSiblings(t *testing.T) {
+	t.Parallel()
+
+	// Two distinct "Done" buttons (e.g. nested system sheets) share a
+	// label. FindFirstByLabel returns the pre-order first match instead
+	// of erroring like the strict id path would.
+	root := &ViewNode{
+		ID: "root",
+		Children: []*ViewNode{
+			{Label: "Done", Bounds: Rect{X: 0, Y: 0, Width: 100, Height: 50}},
+			{Label: "Done", Bounds: Rect{X: 0, Y: 60, Width: 100, Height: 50}},
+		},
+	}
+
+	node, ok, err := FindFirstByLabel(root, "Done")
+	if err != nil || !ok || node == nil {
+		t.Fatalf("expected first sibling Done, got (%v, %v, %v)", node, ok, err)
+	}
+
+	if node.Bounds.Y != 0 {
+		t.Fatalf("expected first sibling at Y=0, got %v", node.Bounds.Y)
+	}
+}
+
+func TestFindFirstByLabelMatchesNodeWithEmptyID(t *testing.T) {
+	t.Parallel()
+
+	// iOS PHPickerViewController shape: the "Done" button has an empty
+	// accessibilityIdentifier but a non-empty accessibilityLabel.
+	root := &ViewNode{
+		ID: "root",
+		Children: []*ViewNode{
+			{ID: "", Label: "Done", Visible: true, Bounds: Rect{X: 0, Y: 0, Width: 60, Height: 30}},
+		},
+	}
+
+	node, ok, err := FindFirstByLabel(root, "Done")
+	if err != nil || !ok || node == nil {
+		t.Fatalf("expected label match on empty-id node, got (%v, %v, %v)", node, ok, err)
+	}
+
+	if node.ID != "" {
+		t.Fatalf("expected matched node to keep empty id, got %q", node.ID)
+	}
+}
+
+func TestFindFirstByLabelMissing(t *testing.T) {
+	t.Parallel()
+
+	node, ok, err := FindFirstByLabel(sample(), "does.not.exist")
+	if err != nil || ok || node != nil {
+		t.Fatalf("expected miss, got (%v, %v, %v)", node, ok, err)
+	}
+}
+
+func TestFindFirstByLabelEmpty(t *testing.T) {
+	t.Parallel()
+
+	node, ok, err := FindFirstByLabel(sample(), "")
+	if err != nil || ok || node != nil {
+		t.Fatalf("expected empty-label miss, got (%v, %v, %v)", node, ok, err)
+	}
+}
+
+func TestFindFirstByLabelNeverErrors(t *testing.T) {
+	t.Parallel()
+
+	// Three identical siblings; label resolver must never report a
+	// duplicate (no ErrDuplicate analogue).
+	root := &ViewNode{
+		ID: "root",
+		Children: []*ViewNode{
+			{Label: "Cancel"},
+			{Label: "Cancel"},
+			{Label: "Cancel"},
+		},
+	}
+
+	if _, _, err := FindFirstByLabel(root, "Cancel"); err != nil {
+		t.Fatalf("FindFirstByLabel must never return an error, got %v", err)
+	}
+}
+
 func TestCenter(t *testing.T) {
 	t.Parallel()
 

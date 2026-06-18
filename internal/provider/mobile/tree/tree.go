@@ -61,6 +61,45 @@ func FindByID(root *ViewNode, id string) (*ViewNode, bool, error) {
 	}
 }
 
+// FindFirstByLabel returns the first node whose Label equals label in
+// pre-order depth-first traversal. It returns (nil, false, nil) on miss
+// and never errors. Mirrors XCUITest's
+// matching(NSPredicate(format: "label == %@", label)).firstMatch on the
+// label attribute. Useful for iOS system controllers
+// (PHPickerViewController / SwiftUI PhotosPicker, UIDocumentPickerViewController,
+// UIActivityViewController share sheet, MFMailComposeViewController, ...)
+// whose buttons expose accessibilityLabel but leave accessibilityIdentifier
+// empty.
+func FindFirstByLabel(root *ViewNode, label string) (*ViewNode, bool, error) {
+	if root == nil || label == "" {
+		return nil, false, nil
+	}
+
+	if node := firstByLabel(root, label); node != nil {
+		return node, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func firstByLabel(node *ViewNode, label string) *ViewNode {
+	if node == nil {
+		return nil
+	}
+
+	if node.Label == label {
+		return node
+	}
+
+	for _, child := range node.Children {
+		if found := firstByLabel(child, label); found != nil {
+			return found
+		}
+	}
+
+	return nil
+}
+
 // FindFirstByID returns the first node matching id in pre-order depth-first
 // traversal. It returns (nil, false, nil) when no node matches and never
 // reports ErrDuplicate, mirroring XCUITest's
