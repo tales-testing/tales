@@ -294,12 +294,17 @@ func (*noopSimctl) ResetKeychain(_ context.Context, _ string) error { return nil
 func (*noopSimctl) Screenshot(_ context.Context, _, _ string) error { return nil }
 
 func newProviderWithFake(drv *fakeDriverAll, lifecycle *fakeLifecycle, target apple.Target) *Provider {
+	return newProviderWithFakeAndDiagnostics(drv, lifecycle, target, apple.DriverDiagnostics{})
+}
+
+func newProviderWithFakeAndDiagnostics(drv *fakeDriverAll, lifecycle *fakeLifecycle, target apple.Target, diag apple.DriverDiagnostics) *Provider {
 	builder := SessionBuilderFunc(func(_ context.Context, _ apple.Target) (*Session, error) {
 		return &Session{
-			Target:    target,
-			UDID:      lifecycle.udid,
-			Driver:    drv,
-			Lifecycle: lifecycle.toAppleLifecycle(),
+			Target:      target,
+			UDID:        lifecycle.udid,
+			Driver:      drv,
+			Lifecycle:   lifecycle.toAppleLifecycle(),
+			Diagnostics: diag,
 		}, nil
 	})
 
@@ -905,6 +910,167 @@ func TestExecuteDeviceActionsDispatchWithoutElement(t *testing.T) {
 	// Device actions never resolve an element, so no tap was issued.
 	if len(drv.taps) != 0 {
 		t.Fatalf("device actions should not tap an element, got %d taps", len(drv.taps))
+	}
+}
+
+func TestLooksLikeDriverDeath(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{nil, false},
+		{errors.New("element not found"), false},
+		{errors.New("call POST /tap: dial tcp 127.0.0.1:9080: connect: connection refused"), true},
+		{errors.New("call POST /pressKey: EOF"), true},
+		{errors.New("call POST /tap: write: broken pipe"), true},
+		{errors.New("call POST /tap: connection reset by peer"), true},
+	}
+
+	for _, tc := range cases {
+		if got := looksLikeDriverDeath(tc.err); got != tc.want {
+			t.Errorf("looksLikeDriverDeath(%v) = %v, want %v", tc.err, got, tc.want)
+		}
+	}
+}
+
+func TestWrapDriverDeathErrorAppendsDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	session := &Session{
+		Diagnostics: apple.DriverDiagnostics{
+			DriverLog:   "/tmp/driver.log",
+			XCResultDir: "/tmp/derived/Logs/Test",
+			BuildLog:    "/tmp/build.log",
+		},
+	}
+
+	wrapped := wrapDriverDeathError(errors.New("call POST /tap: connection refused"), session)
+	if wrapped == nil {
+		t.Fatal("expected wrapped error")
+	}
+
+	msg := wrapped.Error()
+	for _, want := range []string{
+		"driver process appears to have terminated",
+		"/tmp/driver.log",
+		"/tmp/derived/Logs/Test",
+		"*.xcresult",
+		"/tmp/build.log",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("wrapped error missing %q, got: %s", want, msg)
+		}
+	}
+}
+
+func TestWrapDriverDeathErrorNoOpWithoutDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	session := &Session{} // No diagnostics (external driver).
+
+	original := errors.New("call POST /tap: connection refused")
+
+	wrapped := wrapDriverDeathError(original, session)
+	if wrapped.Error() != original.Error() {
+		t.Fatalf("expected no wrapping for empty Diagnostics, got: %s", wrapped.Error())
+	}
+}
+
+func TestWrapDriverDeathErrorNoOpForNonTransportError(t *testing.T) {
+	t.Parallel()
+
+	session := &Session{
+		Diagnostics: apple.DriverDiagnostics{DriverLog: "/tmp/driver.log"},
+	}
+
+	original := errors.New("element id=\"foo\" not found after 30s")
+
+	wrapped := wrapDriverDeathError(original, session)
+	if wrapped.Error() != original.Error() {
+		t.Fatalf("expected no wrapping for non-transport error, got: %s", wrapped.Error())
+	}
+}
+
+func TestDriverDeathArtifactsSkipsEmptyFields(t *testing.T) {
+	t.Parallel()
+
+	out := driverDeathArtifacts(apple.DriverDiagnostics{
+		DriverLog: "/tmp/driver.log",
+		// XCResultDir + BuildLog deliberately empty.
+	})
+
+	if len(out) != 1 || out[0].Type != artifactTypeDriverLog {
+		t.Fatalf("expected only the driver_log artifact, got %+v", out)
+	}
+}
+
+func TestExecuteSurfacesDriverDeathDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	// fakeDriverAll lets us simulate the post-XCTest-tear-down state:
+	// the listener died, every subsequent dial returns "connection
+	// refused". tapErr is the same error pattern http.Client surfaces
+	// when net/http calls Dial under those conditions.
+	drv := &fakeDriverAll{
+		hierarchies: []*tree.ViewNode{newButtonNode()},
+		tapErr:      errors.New("call POST /tap: dial tcp 127.0.0.1:9080: connect: connection refused"),
+	}
+	lc := &fakeLifecycle{udid: "UDID"}
+	diag := apple.DriverDiagnostics{
+		DriverLog:   "/tmp/build/artifacts/mobile/driver/iphone/driver.log",
+		XCResultDir: "/Users/me/Library/Caches/tales/apple-driver/abc/derived-data/Logs/Test",
+		BuildLog:    "/Users/me/Library/Caches/tales/apple-driver/abc/logs/build.log",
+	}
+	p := newProviderWithFakeAndDiagnostics(drv, lc, sampleProviderTarget(), diag)
+
+	out, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "form",
+		Step:     newStep("tap-died"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, ID: "welcome.register"},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when driver dies mid-action")
+	}
+
+	msg := err.Error()
+	for _, want := range []string{
+		"connection refused",
+		"driver process appears to have terminated",
+		diag.DriverLog,
+		diag.XCResultDir,
+		"*.xcresult",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("driver-death error missing %q, got:\n%s", want, msg)
+		}
+	}
+
+	// The same paths surface as report artifacts so the visual / JSONL
+	// renderer can show clickable links next to the failed step.
+	artifacts := out.Response["artifacts"]
+	if !artifacts.IsKnown() || artifacts.IsNull() {
+		t.Fatal("expected artifacts list on the output")
+	}
+
+	gotTypes := map[string]bool{}
+	for it := artifacts.ElementIterator(); it.Next(); {
+		_, v := it.Element()
+		gotTypes[v.GetAttr("type").AsString()] = true
+	}
+
+	for _, want := range []string{artifactTypeDriverLog, artifactTypeXCResultDir, artifactTypeDriverBuildLog} {
+		if !gotTypes[want] {
+			t.Errorf("expected artifact of type %q in output, got %v", want, gotTypes)
+		}
 	}
 }
 
