@@ -229,10 +229,21 @@ strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
   `direction` is the content direction to reveal. Same optional `distance` /
   `duration` as `swipe`.
 - `press_key { key = "return" }` — hardware key: `return`, `enter`, `tab`,
-  `space`, `escape` or `delete`. No `id`.
+  `space`, `escape` or `delete`. No `id`. For `return` / `enter`, the
+  driver auto-routes to the soft keyboard's submit button when one is up
+  (Return / Done / Send / locale variants) — safer than synthesizing
+  `\r`, which crashes the XCTest runner on iOS 26.x while a SwiftUI
+  TextField is focused.
 - `press_button { button = "home" }` — device button: `home` or `lock`. No `id`.
 - `set_orientation { orientation = "portrait" }` — rotate the device:
   `portrait`, `landscape_left`, `landscape_right` or `upside_down`. No `id`.
+- `dismiss_keyboard {}` — dismisses the soft keyboard when one is up,
+  no-op otherwise. Takes no attributes. Insert before a snapshot-heavy
+  step on a tall SwiftUI form: the iOS keyboard's accessibility subtree
+  is huge, and on iOS 26.x can push a single `/hierarchy` request past
+  the driver's 8s bounded timeout. Window-scoped snapshots skip the
+  keyboard daemon already, but a form whose own content + keyboard
+  together exceed budget benefits from dismissing the keyboard first.
 - `wait_visible { id = "..." }` — explicit wait until the element is visible.
 - `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
 
