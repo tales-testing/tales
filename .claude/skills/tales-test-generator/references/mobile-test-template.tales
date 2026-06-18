@@ -185,6 +185,13 @@ scenario "iOS long form with dismiss_keyboard" {
         id    = "form.email"
         value = "alice@example.com"
       }
+      scroll_to {
+        id = "form.identifier_value"
+      }
+      input_text {
+        id    = "form.identifier_value"
+        value = "123456789"
+      }
       dismiss_keyboard {}
       wait_visible {
         id      = "form.submit"
