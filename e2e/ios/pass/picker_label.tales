@@ -1,0 +1,99 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+        }
+      }
+    }
+  }
+}
+
+# Exercises the label = "..." DSL attribute on actions and expects.
+#
+# The PHPickerViewController "Done" button (and the analogous controls
+# on UIDocumentPickerViewController, UIActivityViewController,
+# MFMailComposeViewController, MFMessageComposeViewController) carries an
+# accessibilityLabel but no accessibilityIdentifier. The demo app's
+# PickerView reproduces that exact shape: a SwiftUI Button("Done") whose
+# label is derived from the title and whose identifier is intentionally
+# left unset. Tapping it via the new label-based locator proves the
+# Go-side findElement and the Swift driver's matching(NSPredicate)
+# branches are wired end-to-end.
+scenario "picker label match reaches a system-style button" {
+  tags = ["ios", "mobile", "demo", "picker", "label"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
+  step "mobile" "open_picker" {
+    platform = "ios"
+    target   = "iphone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.picker"
+        timeout = "20s"
+      }
+      tap {
+        id = "welcome.picker"
+      }
+      wait_visible {
+        id      = "picker.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  # The Done button carries no identifier — only accessibilityLabel.
+  # wait_visible { label = "Done" } cannot use id and exercises the new
+  # FindFirstByLabel path on the Go snapshot. tap { label = "Done" }
+  # then dispatches the request with id="" + label="Done"; the Swift
+  # handler resolves the element through NSPredicate(label == %@) and
+  # taps it inside XCUITest. The status mirror flips to done=1, proving
+  # the underlying SwiftUI Button received the tap (and not a coordinate
+  # tap on a neighbouring affordance).
+  step "mobile" "tap_done_by_label" {
+    depends_on = ["open_picker"]
+
+    platform = "ios"
+    target   = "iphone"
+
+    actions {
+      wait_visible {
+        label   = "Done"
+        timeout = "10s"
+      }
+      tap {
+        label = "Done"
+      }
+    }
+
+    expect {
+      text {
+        id      = "picker.done.status"
+        value   = "done=1"
+        timeout = "5s"
+      }
+      visible {
+        label = "Done"
+      }
+    }
+  }
+}
