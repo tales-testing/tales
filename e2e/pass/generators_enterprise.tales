@@ -1,0 +1,61 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+generator "siren" "company_siren" {}
+generator "siret" "company_siret" {}
+generator "ein" "company_ein" {}
+generator "duns" "company_duns" {}
+generator "lei" "company_lei" {}
+
+generator "vat_number" "company_vat" {
+  country = "FR"
+}
+
+generator "euid" "company_euid" {
+  country = "FR"
+}
+
+scenario "Enterprise identifier generators produce valid formats" {
+  tags = ["generators", "enterprise"]
+
+  step "http" "echo_generated_identifiers" {
+    request {
+      method = "POST"
+      url    = "${config.base_url}/echo"
+
+      headers = {
+        Accept       = "application/json"
+        Content-Type = "application/json"
+      }
+
+      body {
+        json = {
+          siren = generate("company_siren")
+          siret = generate("company_siret")
+          ein   = generate("company_ein")
+          duns  = generate("company_duns")
+          lei   = generate("company_lei")
+          vat   = generate("company_vat")
+          euid  = generate("company_euid")
+        }
+      }
+    }
+
+    expect {
+      status = 200
+
+      json = {
+        siren = matches("^\\d{9}$")
+        siret = matches("^\\d{14}$")
+        ein   = matches("^\\d{2}-\\d{7}$")
+        duns  = matches("^\\d{9}$")
+        lei   = matches("^[A-Z0-9]{20}$")
+        vat   = matches("^FR\\d{11}$")
+        euid  = matches("^FR\\.[A-Z0-9]+\\.\\d+\\.\\d{2}$")
+      }
+    }
+  }
+}

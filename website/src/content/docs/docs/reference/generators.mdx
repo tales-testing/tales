@@ -1,6 +1,6 @@
 ---
 title: Generators
-description: The ten built-in generator types, declaration syntax, options, and determinism rules.
+description: The seventeen built-in generator types, declaration syntax, options, and determinism rules.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -13,7 +13,7 @@ generator "<type>" "<name>" {
 }
 ```
 
-The first label is the generator *type* (one of ten built-ins). The second is the *name* you reference from `generate(...)`.
+The first label is the generator *type* (one of seventeen built-ins). The second is the *name* you reference from `generate(...)`.
 
 ## Available types
 
@@ -29,6 +29,13 @@ The first label is the generator *type* (one of ten built-ins). The second is th
 | `date`        | string (`YYYY-MM-DD`)    | Replayable calendar dates (birth, contract)  |
 | `datetime`    | string (RFC3339 UTC)     | Replayable timestamps (publication, events)  |
 | `unix_time`   | number (int64 seconds)   | Replayable Unix timestamps                   |
+| `siren`       | string (9 digits)        | French SIREN business identifier (Luhn)      |
+| `siret`       | string (14 digits)       | French SIRET establishment identifier (Luhn) |
+| `ein`         | string (`NN-NNNNNNN`)    | US Employer Identification Number            |
+| `duns`        | string (9 digits)        | Dun & Bradstreet number                      |
+| `lei`         | string (20 alphanumeric) | ISO 17442 Legal Entity Identifier            |
+| `vat_number`  | string                   | EU VAT registration number                   |
+| `euid`        | string                   | BRIS EU Unique Identifier                    |
 
 ## `email`
 
@@ -212,6 +219,102 @@ generator "unix_time" "event_ts" {
 json = {
   created_at = generate("event_ts")   // 1721306096 (number)
 }
+```
+
+## `siren`
+
+French SIREN business identifier: 9 decimal digits with a valid Luhn check digit. No attributes.
+
+```hcl
+generator "siren" "company_siren" {}
+```
+
+```hcl
+generate("company_siren")   // "552100554"
+```
+
+## `siret`
+
+French SIRET establishment identifier: 14 decimal digits with a valid Luhn check digit. The first 9 digits form a Luhn-valid SIREN. No attributes.
+
+```hcl
+generator "siret" "company_siret" {}
+```
+
+```hcl
+generate("company_siret")   // "55210055400024"
+```
+
+## `ein`
+
+US Employer Identification Number formatted as `NN-NNNNNNN`. The two-digit prefix is drawn from the IRS published campus code list; the seven-digit body is random with no published checksum. No attributes.
+
+```hcl
+generator "ein" "company_ein" {}
+```
+
+```hcl
+generate("company_ein")   // "47-8392016"
+```
+
+## `duns`
+
+Dun & Bradstreet DUNS number: 9 decimal digits, format only (no public checksum). No attributes.
+
+```hcl
+generator "duns" "company_duns" {}
+```
+
+```hcl
+generate("company_duns")   // "804613259"
+```
+
+## `lei`
+
+ISO 17442 Legal Entity Identifier: 20 alphanumeric characters laid out as a 4-character LOU prefix, two reserved zeroes, a 12-character entity code, and a 2-digit ISO 7064 mod 97-10 check. No attributes.
+
+```hcl
+generator "lei" "company_lei" {}
+```
+
+```hcl
+generate("company_lei")   // "Q8B400X1NLEZ6V3K7C82"
+```
+
+## `vat_number`
+
+EU VAT registration number. Each country uses its own algorithm: Luhn for IT, mod 97 for FR and BE, mod 11 for PT and SK, format-only for the remaining 22 EU member states (correct length and charset, no checksum).
+
+```hcl
+generator "vat_number" "company_vat" {
+  country = "FR"   // optional, ISO 3166-1 alpha-2 EU member code
+}
+```
+
+| Attribute | Type   | Default            | Notes                                                                                            |
+| --------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------ |
+| `country` | string | random EU member   | Forces the country prefix (`AT`, `BE`, `BG`, `CY`, `CZ`, `DE`, `DK`, `EE`, `EL`, `ES`, `FI`, `FR`, `HR`, `HU`, `IE`, `IT`, `LT`, `LU`, `LV`, `MT`, `NL`, `PL`, `PT`, `RO`, `SE`, `SI`, `SK`). Empty or unknown values fall back to a random EU member. |
+
+```hcl
+generate("company_vat")   // "FR55552100554"
+```
+
+## `euid`
+
+BRIS-style EU Unique Identifier per Regulation (EU) 2015/884. The value has the shape `CC.RegisterID.EntityID.Check` where `Check` is an ISO 7064 mod 97-10 over the unpunctuated payload.
+
+```hcl
+generator "euid" "company_euid" {
+  country = "FR"   // optional, ISO 3166-1 alpha-2 EU member code
+}
+```
+
+| Attribute | Type   | Default          | Notes                                                                          |
+| --------- | ------ | ---------------- | ------------------------------------------------------------------------------ |
+| `country` | string | random EU member | Forces the country prefix. Empty or unknown values fall back to a random EU member. |
+
+```hcl
+generate("company_euid")   // "FR.RCS.552100554.47"
 ```
 
 ## Determinism

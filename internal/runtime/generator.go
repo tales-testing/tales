@@ -55,7 +55,41 @@ func runGenerator(generatorType string, params map[string]cty.Value, rnd generat
 
 		return cty.NumberIntVal(value), nil
 	default:
+		if value, ok, err := runEnterpriseGenerator(generatorType, params, rnd); ok {
+			return value, err
+		}
+
 		return cty.NilVal, fmt.Errorf("generator type %q is not supported", generatorType)
+	}
+}
+
+// runEnterpriseGenerator dispatches the business/entity identifier generators
+// backed by go-faker's enterprise_id.go. The bool result lets the main
+// `runGenerator` switch report "unsupported generator type" for anything
+// neither it nor this helper handles, while keeping each switch under the
+// gocyclo threshold.
+func runEnterpriseGenerator(generatorType string, params map[string]cty.Value, rnd generatorRandom) (cty.Value, bool, error) {
+	switch generatorType {
+	case "siren":
+		return cty.StringVal(rnd.faker().SIREN()), true, nil
+	case "siret":
+		return cty.StringVal(rnd.faker().SIRET()), true, nil
+	case "ein":
+		return cty.StringVal(rnd.faker().EIN()), true, nil
+	case "duns":
+		return cty.StringVal(rnd.faker().DUNS()), true, nil
+	case "lei":
+		return cty.StringVal(rnd.faker().LEI()), true, nil
+	case "vat_number":
+		value, err := stringGeneratorValue(runVATNumberGenerator(params, rnd))
+
+		return value, true, err
+	case "euid":
+		value, err := stringGeneratorValue(runEUIDGenerator(params, rnd))
+
+		return value, true, err
+	default:
+		return cty.NilVal, false, nil
 	}
 }
 
@@ -244,6 +278,30 @@ func runDateTimeGenerator(params map[string]cty.Value, rnd generatorRandom) (str
 	}
 
 	return value, nil
+}
+
+func runVATNumberGenerator(params map[string]cty.Value, rnd generatorRandom) (string, error) {
+	opts := make([]faker.VATNumberOption, 0, 1)
+
+	if country, ok, err := optionalGeneratorStringParam(params, "vat_number", "country"); err != nil {
+		return "", err
+	} else if ok {
+		opts = append(opts, faker.WithVATCountry(country))
+	}
+
+	return rnd.faker().VATNumber(opts...), nil
+}
+
+func runEUIDGenerator(params map[string]cty.Value, rnd generatorRandom) (string, error) {
+	opts := make([]faker.EUIDOption, 0, 1)
+
+	if country, ok, err := optionalGeneratorStringParam(params, "euid", "country"); err != nil {
+		return "", err
+	} else if ok {
+		opts = append(opts, faker.WithEUIDCountry(country))
+	}
+
+	return rnd.faker().EUID(opts...), nil
 }
 
 func runUnixTimeGenerator(params map[string]cty.Value, rnd generatorRandom) (int64, error) {
