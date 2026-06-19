@@ -292,7 +292,7 @@ Exit codes:
 - `expect` assertions for status/headers/json.
 - `capture` to expose a stable contract for next steps.
 - `result.<step_name>.<field>` for cross-step references.
-- `generator "email"`, `generator "password"`, `generator "timezone"`, `generator "locale"`, `generator "person"`, `generator "mac_address"`, `generator "bytes"`, `generator "date"`, `generator "datetime"`, and `generator "unix_time"` for deterministic test data.
+- `generator "email"`, `generator "password"`, `generator "timezone"`, `generator "locale"`, `generator "person"`, `generator "mac_address"`, `generator "bytes"`, `generator "date"`, `generator "datetime"`, `generator "unix_time"`, `generator "siren"`, `generator "siret"`, `generator "ein"`, `generator "duns"`, `generator "lei"`, `generator "vat_number"`, and `generator "euid"` for deterministic test data.
 - `teardown { ... }` for deterministic cleanup.
 - `keyword \"...\" { ... }` for reusable flows.
 - `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/writing-scenarios/conditional-execution/](https://taleslabs.org/docs/writing-scenarios/conditional-execution/).
@@ -587,6 +587,7 @@ Password generators default to a 16-character password with at least one upperca
 Locale generators support `language`, `country`, and `separator`. Timezone generators return IANA tzdb names or aliases.
 Person generators return an object with `first_name`, `last_name`, `gender`, and `name`. MAC address generators support `prefix`, `separator`, `lowercase`, and `uppercase`. Bytes generators return deterministic encoded bytes and support `length` plus `encoding` (`hex` or `base64`).
 Date, datetime, and unix_time generators take required `from` and `to` bounds (inclusive, UTC): `date` uses `YYYY-MM-DD` and returns a string, `datetime` uses RFC3339 and returns an RFC3339 UTC string, and `unix_time` uses RFC3339 and returns a number (int64 seconds). Prefer these over `now_unix()` / `now_rfc3339()` when you need replayable fake timestamps; use `now_*` only for live protocol values such as request signatures and TOTP.
+Enterprise identifier generators take no parameters except `vat_number` and `euid`, which accept an optional `country` (ISO 3166-1 alpha-2 EU member code, falls back to a random EU member when omitted or unknown): `siren` returns a 9-digit French SIREN with a valid Luhn check, `siret` a 14-digit French SIRET embedding a Luhn-valid SIREN, `ein` a US Employer Identification Number formatted as `NN-NNNNNNN`, `duns` a 9-digit Dun & Bradstreet number, `lei` a 20-character ISO 17442 Legal Entity Identifier with the ISO 7064 mod 97-10 check, `vat_number` an EU VAT registration number with the per-country algorithm (Luhn for IT, mod 97 for FR/BE, mod 11 for PT/SK, format-only elsewhere), and `euid` a BRIS-style `CC.RegisterID.EntityID.Check` per Regulation (EU) 2015/884.
 
 ## Reports
 
