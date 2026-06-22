@@ -1,0 +1,53 @@
+version = 1
+
+# Connect JSON unary against the mockserver. The shared rpc config lives
+# in config.tales so all rpc/pass scenarios see one merged descriptor +
+# target map.
+
+scenario "Connect JSON Echo round-trip" {
+  step "rpc" "echo" {
+    target = "connect"
+    call {
+      service = "tales.rpc.v1.TestService"
+      method  = "Echo"
+      message = {
+        id     = "e1"
+        name   = "Tales"
+        tags   = ["rpc", "connect"]
+        status = "STATUS_ACTIVE"
+      }
+    }
+    expect {
+      status = "ok"
+      message = {
+        id     = "e1"
+        name   = "Tales"
+        tags   = ["rpc", "connect"]
+        status = "STATUS_ACTIVE"
+      }
+    }
+    capture {
+      echoed_id = response.message.id
+    }
+  }
+}
+
+scenario "Connect JSON Fail surfaces not_found" {
+  step "rpc" "fail" {
+    target = "connect"
+    call {
+      service = "tales.rpc.v1.TestService"
+      method  = "Fail"
+      message = {
+        reason = "boom"
+      }
+    }
+    expect {
+      status = "not_found"
+      error = {
+        code    = "not_found"
+        message = contains("boom")
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+version = 1
+
+# Descriptor loaded via the mockserver's gRPC reflection v1 service
+# (target grpc_reflected, descriptor reflected — both declared in
+# config.tales). Same Echo round-trip as grpc.tales; only the descriptor
+# source differs.
+
+scenario "gRPC reflection Echo" {
+  step "rpc" "echo" {
+    target = "grpc_reflected"
+    call {
+      service = "tales.rpc.v1.TestService"
+      method  = "Echo"
+      message = {
+        id     = "r1"
+        name   = "Reflection"
+        tags   = ["rpc", "reflection"]
+        status = "STATUS_ACTIVE"
+      }
+    }
+    expect {
+      status = "ok"
+      message = {
+        id     = "r1"
+        name   = "Reflection"
+        status = "STATUS_ACTIVE"
+      }
+    }
+  }
+}

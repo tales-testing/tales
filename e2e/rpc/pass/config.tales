@@ -1,0 +1,39 @@
+version = 1
+
+# Single shared config for every rpc/pass scenario. Tales merges the
+# top-level config attributes across files by name; declaring `rpc = {...}`
+# in multiple files would overwrite the prior definition because each
+# file's attribute lands at the same key.
+config {
+  rpc = {
+    descriptors = {
+      app = { path = "./e2e/rpc/descriptor.bin" }
+      reflected = {
+        reflection = {
+          address   = env("GRPC_ADDR", "127.0.0.1:50051")
+          plaintext = true
+        }
+      }
+    }
+    targets = {
+      connect = {
+        descriptor = "app"
+        protocol   = "connect"
+        encoding   = "json"
+        base_url   = env("CONNECT_BASE_URL", "http://localhost:1337")
+      }
+      grpc = {
+        descriptor = "app"
+        protocol   = "grpc"
+        address    = env("GRPC_ADDR", "127.0.0.1:50051")
+        plaintext  = true
+      }
+      grpc_reflected = {
+        descriptor = "reflected"
+        protocol   = "grpc"
+        address    = env("GRPC_ADDR", "127.0.0.1:50051")
+        plaintext  = true
+      }
+    }
+  }
+}
