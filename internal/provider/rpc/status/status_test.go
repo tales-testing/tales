@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestStatusFromCode_KnownCodes(t *testing.T) {
+func TestFromCode_KnownCodes(t *testing.T) {
 	t.Parallel()
 
 	cases := map[uint32]string{
@@ -18,55 +18,55 @@ func TestStatusFromCode_KnownCodes(t *testing.T) {
 	}
 
 	for code, want := range cases {
-		if got := StatusFromCode(code); got != want {
-			t.Errorf("StatusFromCode(%d) = %q, want %q", code, got, want)
+		if got := FromCode(code); got != want {
+			t.Errorf("FromCode(%d) = %q, want %q", code, got, want)
 		}
 	}
 }
 
-func TestStatusFromCode_OutOfRange(t *testing.T) {
+func TestFromCode_OutOfRange(t *testing.T) {
 	t.Parallel()
 
 	for _, code := range []uint32{17, 100, 1 << 31} {
-		if got := StatusFromCode(code); got != StatusUnknown {
-			t.Errorf("StatusFromCode(%d) = %q, want %q", code, got, StatusUnknown)
+		if got := FromCode(code); got != StatusUnknown {
+			t.Errorf("FromCode(%d) = %q, want %q", code, got, StatusUnknown)
 		}
 	}
 }
 
-func TestNormalizeStatus_CaseInsensitive(t *testing.T) {
+func TestNormalize_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 
 	for _, raw := range []string{"ok", "OK", "Ok", "  ok  "} {
-		got, err := NormalizeStatus(raw)
+		got, err := Normalize(raw)
 		if err != nil {
-			t.Errorf("NormalizeStatus(%q) returned error: %v", raw, err)
+			t.Errorf("Normalize(%q) returned error: %v", raw, err)
 
 			continue
 		}
 
 		if got != StatusOK {
-			t.Errorf("NormalizeStatus(%q) = %q, want %q", raw, got, StatusOK)
+			t.Errorf("Normalize(%q) = %q, want %q", raw, got, StatusOK)
 		}
 	}
 }
 
-func TestNormalizeStatus_RejectsEmpty(t *testing.T) {
+func TestNormalize_RejectsEmpty(t *testing.T) {
 	t.Parallel()
 
-	if _, err := NormalizeStatus(""); err == nil {
+	if _, err := Normalize(""); err == nil {
 		t.Fatal("expected error for empty status")
 	}
 
-	if _, err := NormalizeStatus("   "); err == nil {
+	if _, err := Normalize("   "); err == nil {
 		t.Fatal("expected error for whitespace status")
 	}
 }
 
-func TestNormalizeStatus_RejectsUnknown(t *testing.T) {
+func TestNormalize_RejectsUnknown(t *testing.T) {
 	t.Parallel()
 
-	_, err := NormalizeStatus("totally_made_up")
+	_, err := Normalize("totally_made_up")
 	if err == nil {
 		t.Fatal("expected error for unknown status")
 	}
