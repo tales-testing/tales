@@ -78,6 +78,7 @@ type stepBlock struct {
 	WebhookStart *webhookStartBlock      `hcl:"start,block"`
 	WebhookWait  *webhookWaitBlock       `hcl:"wait,block"`
 	WebhookStop  *webhookStopBlock       `hcl:"stop,block"`
+	RPCCall      *rpcCallBlock           `hcl:"call,block"`
 	Path         hcl.Expression          `hcl:"path,optional"`
 	Command      hcl.Expression          `hcl:"command,optional"`
 	Args         hcl.Expression          `hcl:"args,optional"`
@@ -120,6 +121,20 @@ type webhookWaitBlock struct {
 // webhookStopBlock shuts down the targeted receiver.
 type webhookStopBlock struct {
 	Target hcl.Expression `hcl:"target,optional"`
+}
+
+// rpcCallBlock declares the dynamic unary RPC payload for an rpc step. The
+// service/method pair resolves against the descriptor configured on the
+// step's target; message is an object mapped to the input proto via the
+// dynamic codec. Optional headers / metadata overlay the target defaults
+// (step wins on conflict). Optional timeout overrides the step-level value.
+type rpcCallBlock struct {
+	Service  hcl.Expression `hcl:"service,optional"`
+	Method   hcl.Expression `hcl:"method,optional"`
+	Message  hcl.Expression `hcl:"message,optional"`
+	Headers  hcl.Expression `hcl:"headers,optional"`
+	Metadata hcl.Expression `hcl:"metadata,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
 }
 
 // runBlock describes how a load step should drive its request. Exactly

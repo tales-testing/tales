@@ -48,6 +48,12 @@ func decodeBrowserStepIfNeeded(path string, rs stepBlock, stepName string) (*mod
 		return nil, nil
 	}
 
+	// An rpc step also carries `target` plus the call { } block; defer to
+	// the rpc dispatcher so the user gets an rpc-specific diagnostic.
+	if looksLikeRPCStep(rs) {
+		return nil, nil
+	}
+
 	if !looksLikeBrowserStep(rs) {
 		return nil, nil
 	}
