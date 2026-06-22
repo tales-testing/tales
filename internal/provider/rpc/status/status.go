@@ -58,10 +58,10 @@ var codeNames = [...]string{
 	16: StatusUnauthenticated,
 }
 
-// StatusFromCode returns the canonical name for a numeric gRPC / Connect
+// FromCode returns the canonical name for a numeric gRPC / Connect
 // code. Out-of-range values fall back to "unknown" because both protocols
 // reserve unspecified codes for forward compatibility.
-func StatusFromCode(code uint32) string {
+func FromCode(code uint32) string {
 	if int(code) < len(codeNames) {
 		return codeNames[code]
 	}
@@ -69,12 +69,12 @@ func StatusFromCode(code uint32) string {
 	return StatusUnknown
 }
 
-// NormalizeStatus accepts the canonical form the user wrote in
+// Normalize accepts the canonical form the user wrote in
 // expect { status = "..." } and returns it unchanged, or an error if the
 // string does not match a known code. The check is case-insensitive so
 // "OK" / "Ok" / "ok" all pass, but the returned value is always lowercase
 // so assertion comparisons stay direct.
-func NormalizeStatus(s string) (string, error) {
+func Normalize(s string) (string, error) {
 	lower := strings.ToLower(strings.TrimSpace(s))
 	if lower == "" {
 		return "", fmt.Errorf("rpc status is empty")
