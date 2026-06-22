@@ -20,8 +20,8 @@ scenario "Connect JSON Echo round-trip" {
     expect {
       status = "ok"
       message = {
-        id     = "e1"
-        name   = "Tales"
+        id     = request.message.id
+        name   = request.message.name
         tags   = ["rpc", "connect"]
         status = "STATUS_ACTIVE"
       }

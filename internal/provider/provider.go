@@ -136,6 +136,7 @@ type RPCExecution struct {
 	MetadataOverride map[string]string
 	Timeout          time.Duration
 	ArtifactsDir     string
+	ProjectDir       string
 }
 
 // Output is provider execution output.
