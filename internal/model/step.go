@@ -24,6 +24,7 @@ type Step struct {
 	Browser   *BrowserStep
 	Load      *LoadCall
 	Webhook   *WebhookCall
+	RPC       *RPCCall
 	Retry     *Retry
 	SkipRules []SkipRule
 }

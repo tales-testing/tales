@@ -25,6 +25,7 @@ type Input struct {
 	Webhook  *WebhookExecution
 	File     *FileExecution
 	Exec     *ExecExecution
+	RPC      *RPCExecution
 	Timeout  time.Duration
 }
 
@@ -118,6 +119,23 @@ type SQLExecution struct {
 	Mode       string // "exec" or "query"
 	SQL        string
 	Args       []any
+}
+
+// RPCExecution carries the resolved data for one rpc step ready to be
+// executed by the rpc provider. The runner evaluates step expressions into
+// these concrete Go values; the provider does descriptor resolution and
+// dynamic Protobuf encoding internally so no protobuf types leak across this
+// boundary. HeadersOverride / MetadataOverride hold the step-level overlay
+// merged on top of the target's defaults inside the provider.
+type RPCExecution struct {
+	Target           string
+	Service          string
+	Method           string
+	Message          map[string]cty.Value
+	HeadersOverride  map[string]string
+	MetadataOverride map[string]string
+	Timeout          time.Duration
+	ArtifactsDir     string
 }
 
 // Output is provider execution output.

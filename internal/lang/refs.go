@@ -98,6 +98,7 @@ func StepDependencies(step *model.Step) (map[string]struct{}, error) {
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
 	collectWebhookRefs(step.Webhook, collect)
+	collectRPCRefs(step.RPC, collect)
 	collectSkipRefs(step.SkipRules, collect)
 
 	// A step referencing its own name — through depends_on or a
@@ -419,6 +420,31 @@ func collectWebhookExpectRefs(expect *model.WebhookExpect, collect func(model.Ex
 	}
 }
 
+func collectRPCRefs(rpc *model.RPCCall, collect func(model.Expression)) {
+	if rpc == nil {
+		return
+	}
+
+	collect(rpc.Target)
+	collect(rpc.Service)
+	collect(rpc.Method)
+	collect(rpc.Message)
+	collect(rpc.Headers)
+	collect(rpc.Metadata)
+	collect(rpc.Timeout)
+
+	if rpc.Expect == nil {
+		return
+	}
+
+	collect(rpc.Expect.Status)
+	collect(rpc.Expect.Error)
+	collect(rpc.Expect.Message)
+	collect(rpc.Expect.Headers)
+	collect(rpc.Expect.Metadata)
+	collect(rpc.Expect.Trailers)
+}
+
 func collectSkipRefs(rules []model.SkipRule, collect func(model.Expression)) {
 	for _, rule := range rules {
 		collect(rule.Condition)
@@ -498,6 +524,7 @@ func ValidateStepVars(step *model.Step) error {
 	collectMobileRefs(step.Mobile, collect)
 	collectSQLRefs(step.SQL, collect)
 	collectWebhookRefs(step.Webhook, collect)
+	collectRPCRefs(step.RPC, collect)
 
 	for ref := range seen {
 		if _, ok := declared[ref]; !ok {
