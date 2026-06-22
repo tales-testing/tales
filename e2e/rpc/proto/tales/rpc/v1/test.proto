@@ -1,0 +1,46 @@
+// Source of truth for the Tales rpc e2e fixture schema. The descriptor
+// shipped at ../../../descriptor.bin is built from this file (regenerate
+// via `go run ./e2e/rpc/genbin`); the Tales binary loads the descriptor
+// dynamically at runtime — no Go bindings are needed for either the
+// Tales side or the mockserver side.
+syntax = "proto3";
+
+package tales.rpc.v1;
+
+service TestService {
+  // Echo returns the request payload unchanged. The handler proves
+  // round-tripping of strings, repeated fields, and enums between the
+  // wire and dynamicpb.
+  rpc Echo(EchoRequest) returns (EchoResponse);
+
+  // Fail returns a gRPC NotFound / Connect not_found error whose
+  // message contains the request reason verbatim. Exercises the rpc
+  // provider's error envelope handling.
+  rpc Fail(FailRequest) returns (FailResponse);
+}
+
+message EchoRequest {
+  string id = 1;
+  string name = 2;
+  repeated string tags = 3;
+  Status status = 4;
+}
+
+message EchoResponse {
+  string id = 1;
+  string name = 2;
+  repeated string tags = 3;
+  Status status = 4;
+}
+
+message FailRequest {
+  string reason = 1;
+}
+
+message FailResponse {}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_ACTIVE = 1;
+  STATUS_DISABLED = 2;
+}
