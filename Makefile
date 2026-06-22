@@ -356,6 +356,31 @@ e2e-exec: build verify-file-bin
 	  --report-jsonl $(BUILD_DIR)/reports/e2e-exec.jsonl \
 	  ./e2e/exec
 
+.PHONY: e2e-rpc
+e2e-rpc: build
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs
+	@rm -f $(BUILD_DIR)/mockserver.pid
+	@set -euo pipefail; \
+	( $(MOCK_BIN) > $(BUILD_DIR)/logs/mockserver.log 2>&1 & echo $$! > $(BUILD_DIR)/mockserver.pid ); \
+	cleanup() { \
+	  if [ -f $(BUILD_DIR)/mockserver.pid ]; then \
+	    pid=$$(cat $(BUILD_DIR)/mockserver.pid); \
+	    if kill -0 $$pid 2>/dev/null; then kill $$pid; fi; \
+	    rm -f $(BUILD_DIR)/mockserver.pid; \
+	  fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for i in $$(seq 1 50); do \
+	  if curl -fsS http://localhost:1337/healthz >/dev/null 2>&1; then break; fi; \
+	  sleep 0.2; \
+	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
+	done; \
+	CONNECT_BASE_URL=http://localhost:1337 GRPC_ADDR=127.0.0.1:50051 \
+	  $(TALES_BIN) test --seed 1234 --parallel 1 \
+	    --report-junit $(BUILD_DIR)/reports/e2e-rpc.junit.xml \
+	    --report-jsonl $(BUILD_DIR)/reports/e2e-rpc.jsonl \
+	    ./e2e/rpc/pass
+
 .PHONY: e2e-failure
 e2e-failure: build
 	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/logs

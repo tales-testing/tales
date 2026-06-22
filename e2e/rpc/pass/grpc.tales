@@ -1,0 +1,49 @@
+version = 1
+
+# Native gRPC unary against the mockserver's :50051 gRPC server. Uses the
+# shared config in config.tales.
+
+scenario "gRPC Echo round-trip" {
+  step "rpc" "echo" {
+    target = "grpc"
+    call {
+      service = "tales.rpc.v1.TestService"
+      method  = "Echo"
+      message = {
+        id     = "g1"
+        name   = "gRPC"
+        tags   = ["rpc", "grpc"]
+        status = "STATUS_ACTIVE"
+      }
+    }
+    expect {
+      status = "ok"
+      message = {
+        id     = "g1"
+        name   = "gRPC"
+        tags   = ["rpc", "grpc"]
+        status = "STATUS_ACTIVE"
+      }
+    }
+  }
+}
+
+scenario "gRPC Fail surfaces not_found" {
+  step "rpc" "fail" {
+    target = "grpc"
+    call {
+      service = "tales.rpc.v1.TestService"
+      method  = "Fail"
+      message = {
+        reason = "kaboom"
+      }
+    }
+    expect {
+      status = "not_found"
+      error = {
+        code    = "not_found"
+        message = contains("kaboom")
+      }
+    }
+  }
+}
