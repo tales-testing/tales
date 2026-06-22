@@ -24,6 +24,10 @@ import (
 	"github.com/tales-testing/tales/internal/lang"
 )
 
+// schemaServicePrefix is the URL path prefix the Connect handlers for the
+// rpc e2e fixture are mounted under (tales.rpc.v1.TestService).
+const schemaServicePrefix = "tales.rpc.v1.TestService"
+
 // mfaTOTPSecret is the shared TOTP secret expected by /mfa/totp/verify, kept
 // in sync with the matching .tales scenario via config.mfa_secret. The value
 // is the public RFC 6238 SHA-1 appendix test vector.
@@ -90,7 +94,18 @@ func main() {
 	// are ready by the time /healthz answers (the e2e readiness probe).
 	startMailListeners(state.mail)
 
+	// Stand up the dynamic Connect / gRPC servers for the rpc provider e2e
+	// suite. gRPC binds synchronously inside installRPCHandlers so its port
+	// is ready by the time /healthz answers. We intentionally do not defer
+	// the returned stop function: main() never returns under normal load
+	// (server.ListenAndServe blocks) and the test harness sends SIGTERM,
+	// at which point the OS reclaims the listener; pairing the stop with a
+	// defer would either be unreachable or fight log.Fatal.
+	rpcMux := http.NewServeMux()
+	_ = installRPCHandlers(rpcMux)
+
 	r := mux.NewRouter()
+	r.PathPrefix("/" + schemaServicePrefix + "/").Handler(rpcMux)
 
 	r.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
