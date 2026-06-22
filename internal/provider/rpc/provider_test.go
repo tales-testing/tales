@@ -57,6 +57,41 @@ func TestProvider_ExecuteConnectSuccess(t *testing.T) {
 	if got := msg.GetAttr("text").AsString(); got != "echo: ping" {
 		t.Errorf("message.text = %q", got)
 	}
+
+	requestMsg := output.Request["message"]
+	if !requestMsg.Type().IsObjectType() {
+		t.Fatalf("request.message = %v, want object", requestMsg)
+	}
+
+	if got := requestMsg.GetAttr("text").AsString(); got != "ping" {
+		t.Errorf("request.message.text = %q", got)
+	}
+}
+
+func TestProvider_ExecuteResolvesDescriptorPathRelativeToProjectDir(t *testing.T) {
+	t.Parallel()
+
+	srv, descPath, _ := startConnectEchoServer(t)
+	defer srv.Close()
+
+	prov := New()
+	defer func() { _ = prov.Close() }()
+
+	cfg := connectConfig(t, filepath.Base(descPath), srv.URL)
+
+	_, err := prov.Execute(context.Background(), provider.Input{
+		Config: cfg,
+		RPC: &provider.RPCExecution{
+			Target:     "api",
+			Service:    "tales.providertest.v1.EchoService",
+			Method:     "Echo",
+			Message:    map[string]cty.Value{"text": cty.StringVal("relative")},
+			ProjectDir: filepath.Dir(descPath),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute with relative descriptor path: %v", err)
+	}
 }
 
 func TestProvider_ExecuteConnectErrorEnvelope(t *testing.T) {

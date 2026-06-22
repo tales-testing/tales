@@ -49,6 +49,8 @@ func (r *Runner) executeRPCStep(ctx context.Context, evaluator *lang.Evaluator, 
 		return failStep(stepReport, start, kindEval, "", evalErr.Error())
 	}
 
+	exec.ProjectDir = r.projectDir
+
 	providerImpl, ok := r.providers.Get(step.Provider)
 	if !ok {
 		return failStep(stepReport, start, kindProvider, "", fmt.Sprintf("unknown provider %q", step.Provider))

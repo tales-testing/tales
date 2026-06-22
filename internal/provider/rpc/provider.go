@@ -111,6 +111,8 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, err
 	}
 
+	resolveProjectPaths(input.RPC.ProjectDir, targetCfg, descCfg)
+
 	files, err := p.loadDescriptor(ctx, descCfg)
 	if err != nil {
 		return nil, err
@@ -129,6 +131,11 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	reqMsg, reqJSON, err := codec.EncodeMessage(resolved.Input, ctyObjectFromMap(input.RPC.Message), types)
 	if err != nil {
 		return nil, fmt.Errorf("rpc encode request: %w", err)
+	}
+
+	_, reqValue, err := codec.DecodeMessage(reqMsg, types)
+	if err != nil {
+		return nil, fmt.Errorf("rpc decode request: %w", err)
 	}
 
 	trans, err := p.transportFor(targetCfg, types)
@@ -163,13 +170,44 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, fmt.Errorf("rpc decode response: %w", err)
 	}
 
-	output := buildOutput(targetCfg, resolved, result, reqJSON, respJSON, respValue)
+	output := buildOutput(targetCfg, resolved, result, reqJSON, reqValue, respJSON, respValue)
 
 	if input.RPC.ArtifactsDir != "" {
 		writeArtifacts(input.RPC.ArtifactsDir, targetCfg, resolved, result, reqJSON, respJSON)
 	}
 
 	return output, nil
+}
+
+func resolveProjectPaths(projectDir string, target *TargetConfig, desc *DescriptorConfig) {
+	if desc != nil {
+		desc.Path = resolveProjectPath(projectDir, desc.Path)
+		if desc.Reflection != nil {
+			resolveTLSPaths(projectDir, desc.Reflection.TLS)
+		}
+	}
+
+	if target != nil {
+		resolveTLSPaths(projectDir, target.TLS)
+	}
+}
+
+func resolveTLSPaths(projectDir string, cfg *TLSConfig) {
+	if cfg == nil {
+		return
+	}
+
+	cfg.CAFile = resolveProjectPath(projectDir, cfg.CAFile)
+	cfg.CertFile = resolveProjectPath(projectDir, cfg.CertFile)
+	cfg.KeyFile = resolveProjectPath(projectDir, cfg.KeyFile)
+}
+
+func resolveProjectPath(projectDir, path string) string {
+	if path == "" || filepath.IsAbs(path) || projectDir == "" {
+		return path
+	}
+
+	return filepath.Join(projectDir, path)
 }
 
 // Close releases every cached transport (and through it any open gRPC
@@ -284,7 +322,7 @@ func buildTransport(target *TargetConfig, types *protoregistry.Types) (transport
 	}
 }
 
-func buildOutput(target *TargetConfig, resolved *descriptor.Resolved, result *transport.Result, reqJSON, respJSON []byte, respValue cty.Value) *provider.Output {
+func buildOutput(target *TargetConfig, resolved *descriptor.Resolved, result *transport.Result, reqJSON []byte, reqValue cty.Value, respJSON []byte, respValue cty.Value) *provider.Output {
 	response := map[string]cty.Value{
 		keyStatus:     cty.StringVal(result.Status),
 		keyCode:       cty.NumberIntVal(int64(result.Code)),
@@ -303,6 +341,7 @@ func buildOutput(target *TargetConfig, resolved *descriptor.Resolved, result *tr
 		keyEncoding: cty.StringVal(target.Encoding),
 		keyService:  cty.StringVal(string(resolved.Service.FullName())),
 		keyMethod:   cty.StringVal(string(resolved.Method.Name())),
+		keyMessage:  reqValue,
 		keyJSON:     cty.StringVal(string(reqJSON)),
 	}
 
