@@ -1,0 +1,224 @@
+---
+title: RPC (ConnectRPC + gRPC)
+description: The Tales rpc provider speaks ConnectRPC and native gRPC against your services using Protobuf descriptors loaded at runtime — no code generation, no rebuild of Tales when your .proto files change. Covers descriptor sources (descriptor.bin + reflection), Connect JSON / proto and gRPC encoding, status assertions, header / metadata masking, and TLS.
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+The `rpc` provider tests services that speak [ConnectRPC](https://connectrpc.com/) or native [gRPC](https://grpc.io/) without ever generating Go bindings. Tales loads your Protobuf descriptors (a `descriptor.bin` file or via gRPC reflection) and uses `dynamicpb` at runtime, so a single Tales binary works against any service whose schema it can load.
+
+## When to use it
+
+<CardGrid>
+  <Card title="Use it for" icon="approve-check">
+    - Unary RPC calls against ConnectRPC or gRPC services.
+    - Asserting both the response payload and the protocol status (`ok`, `not_found`, `invalid_argument`, ...).
+    - Loading descriptors from `descriptor.bin` (offline, reproducible) or from gRPC reflection (no fixture file).
+  </Card>
+  <Card title="Don't use it for" icon="error">
+    - Streaming RPC (client / server / bidi). V1 rejects streaming methods at descriptor resolution time.
+    - Parsing `.proto` source directly. Generate a `FileDescriptorSet` with `buf build` or `protoc` instead.
+    - Reflecting against v1alpha-only servers. V1 supports `grpc.reflection.v1` only.
+  </Card>
+</CardGrid>
+
+## Generating `descriptor.bin`
+
+With [Buf](https://buf.build):
+
+```bash
+buf build proto -o build/proto/descriptor.bin
+```
+
+With `protoc` (note `--include_imports` so well-known types and dependencies are self-contained):
+
+```bash
+protoc \
+  --include_imports \
+  --include_source_info \
+  --descriptor_set_out=build/proto/descriptor.bin \
+  proto/**/*.proto
+```
+
+Commit the generated `descriptor.bin` to your repository so CI does not need `buf` or `protoc` installed.
+
+## Configuration
+
+Two top-level blocks under `config.rpc`: `descriptors` (where the schema comes from) and `targets` (how to reach the service).
+
+```hcl
+config {
+  rpc = {
+    descriptors = {
+      app = {
+        path = "./build/proto/descriptor.bin"
+      }
+      live = {
+        reflection = {
+          address   = "api.staging.example.com:443"
+          plaintext = false
+          headers = {
+            authorization = "Bearer ${env("STAGING_TOKEN")}"
+          }
+        }
+      }
+    }
+    targets = {
+      api = {
+        descriptor = "app"
+        protocol   = "connect"
+        encoding   = "json"
+        base_url   = "http://localhost:8080"
+        headers = {
+          Authorization = "Bearer ${config.token}"
+        }
+      }
+      backend = {
+        descriptor = "app"
+        protocol   = "grpc"
+        address    = "localhost:50051"
+        plaintext  = true
+        metadata = {
+          authorization = "Bearer ${config.token}"
+        }
+      }
+    }
+  }
+}
+```
+
+### Descriptor sources
+
+Each descriptor entry must define exactly one of:
+
+- `path = "./..."` — a serialized `FileDescriptorSet` on disk (resolved relative to the project directory).
+- `reflection = { address, plaintext, tls?, headers? }` — fetched from a gRPC server's `grpc.reflection.v1.ServerReflection` service. Tales lists every advertised service, fetches each containing file with transitive imports, and builds the registry once per descriptor name (cached for the rest of the run).
+
+### Target fields
+
+| Field          | Connect | gRPC | Notes |
+|----------------|---------|------|-------|
+| `descriptor`   | required | required | name of an entry under `config.rpc.descriptors` |
+| `protocol`     | required (`"connect"`) | required (`"grpc"`) | |
+| `encoding`     | `"json"` (default) or `"proto"` | always `"proto"` (gRPC + JSON is rejected) | |
+| `base_url`     | required | n/a | e.g. `"https://api.example.com"` |
+| `address`      | n/a | required | e.g. `"127.0.0.1:50051"` |
+| `plaintext`    | optional | optional | true disables TLS |
+| `tls`          | optional | optional | see below |
+| `headers`      | optional | n/a | merged with step-level headers, step wins |
+| `metadata`     | n/a | optional | merged with step-level metadata, step wins |
+
+### TLS block
+
+```hcl
+tls = {
+  ca_file              = "./certs/ca.pem"   # custom root, defaults to system roots
+  cert_file            = "./certs/client.pem"
+  key_file             = "./certs/client.key"  # cert_file and key_file must be set together
+  server_name          = "internal.example.com"
+  insecure_skip_verify = false
+}
+```
+
+`tls.insecure_skip_verify = true` is honored verbatim for testing against self-signed servers; never use it against production.
+
+## Step DSL
+
+```hcl
+step "rpc" "create_user" {
+  target = "api"
+  call {
+    service = "users.v1.UserService"
+    method  = "CreateUser"
+    message = {
+      email    = generate("user_email")
+      password = "Passw0rd!"
+    }
+    headers  = { X-Trace = "tales-${scenario.name}" }  # Connect only
+    metadata = { x-request-id = "abc123" }              # gRPC only
+    timeout  = "5s"                                     # optional, default 30s
+  }
+  expect {
+    status = "ok"
+    message = {
+      id    = is_string()
+      email = request.message.email
+    }
+  }
+  capture {
+    user_id = response.message.id
+  }
+}
+```
+
+### `call` fields
+
+- `service` — fully-qualified service name (`pkg.subpkg.ServiceName`).
+- `method` — the unary method on that service.
+- `message` — HCL object converted to the input Protobuf message via `protojson` (unknown fields fail by design so typos surface clearly).
+- `headers` — Connect HTTP headers, merged with the target defaults (step overrides).
+- `metadata` — gRPC metadata, same merge semantics.
+- `timeout` — call deadline. Defaults to 30s if unset.
+
+### `expect` fields
+
+All optional; absent fields are not asserted.
+
+- `status` — canonical lowercase code: `ok`, `cancelled`, `unknown`, `invalid_argument`, `deadline_exceeded`, `not_found`, `already_exists`, `permission_denied`, `resource_exhausted`, `failed_precondition`, `aborted`, `out_of_range`, `unimplemented`, `internal`, `unavailable`, `data_loss`, `unauthenticated`.
+- `message` — partial-match assertion against `response.message`. All standard matchers (`contains`, `matches`, `is_string`, `optional`, `lt`, `gte`, ...) work.
+- `error` — partial-match assertion against `response.error` (`{ code, message, details? }`); set when status is not `ok`.
+- `headers`, `metadata`, `trailers` — partial-match against the response headers / gRPC metadata / gRPC trailers. Values are lists of strings (Set-Cookie-style multi-value support).
+
+### `capture`
+
+Reads from the standard `response.*` scope, identical to the HTTP provider:
+
+```hcl
+capture {
+  id            = response.message.id
+  status        = response.status
+  error_message = response.error.message
+  request_email = request.message.email
+}
+```
+
+## Response namespace
+
+After every rpc step the runner exposes:
+
+| Key            | Type           | Description |
+|----------------|----------------|-------------|
+| `response.status` | string | canonical lowercase code (`ok`, `not_found`, ...) |
+| `response.code` | number | raw gRPC / Connect code number (0 for ok) |
+| `response.message` | object or null | decoded response message, null on error |
+| `response.error` | object or null | `{ code, message, details? }` on error |
+| `response.headers` | map[string][]string | response headers (masked) |
+| `response.metadata` | map[string][]string | gRPC headers metadata (masked) |
+| `response.trailers` | map[string][]string | gRPC trailers (masked) |
+| `response.duration_ms` | number | wall-clock for the call |
+| `response.raw` | string | canonical protojson of the response message |
+
+The `response.message` value is the cty conversion of `protojson.Marshal` output. V1 caveat: protobuf integer types `int64`, `uint64`, `sint64`, `fixed64`, `sfixed64` round-trip through protojson as JSON strings (per the proto3 JSON spec to avoid JavaScript precision loss); assert on them with string literals (e.g. `id = "42"`) for those types. `int32`, `double`, `bool`, and other scalars round-trip as JSON numbers natively.
+
+## Artifacts
+
+Every rpc step writes three files under `<scenario.workdir>/rpc/<step-name>/`:
+
+- `request.json` — the canonical protojson of the request message.
+- `response.json` — the canonical protojson of the response message (or the Connect error envelope).
+- `metadata.json` — target, protocol, encoding, service, method, status, code, duration_ms, masked headers / metadata / trailers, error (when set).
+
+Sensitive headers / metadata (`Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, anything containing `token` / `secret` / `password` / `api-key` / `apikey` / `private`) are masked to `***` everywhere they appear in artifacts and reports.
+
+## Security and limitations
+
+V1 supports:
+- Unary RPC only. Streaming methods are rejected at descriptor resolution time with `rpc method "X" is streaming; streaming RPC is not supported in V1`.
+- Connect JSON (default for `protocol = "connect"`) and Connect proto binary.
+- Native gRPC over HTTP/2 (`grpc-go` default proto codec on `dynamicpb.Message`).
+- Descriptor source: `FileDescriptorSet` on disk or gRPC reflection v1.
+
+Out of scope for V1:
+- Streaming (client / server / bidi).
+- Direct `.proto` source parsing.
+- gRPC reflection v1alpha (legacy).

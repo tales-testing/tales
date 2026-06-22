@@ -42,6 +42,7 @@ This repository contains a pragmatic V1 focused on HTTP workflows:
 - executable `keyword` blocks with `inputs` and `outputs`.
 - Parallel scenario execution (`--parallel`).
 - Deterministic generation via `--seed`.
+- Multi-provider support: HTTP, SQL, mail (SMTP / LMTP), browser (Chrome), mobile (iOS), webhook receiver, file inspection, exec, load benchmarks, and dynamic [ConnectRPC + gRPC](https://taleslabs.org/docs/providers/rpc) loaded from `descriptor.bin` or gRPC reflection — no codegen, no Tales rebuild on schema change.
 
 ## Installation and Build
 
