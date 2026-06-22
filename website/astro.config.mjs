@@ -118,6 +118,7 @@ export default defineConfig({
 						{ label: 'Load (HTTP benchmarks)', slug: 'docs/providers/load' },
 						{ label: 'File', slug: 'docs/providers/file' },
 						{ label: 'Exec', slug: 'docs/providers/exec' },
+						{ label: 'RPC (ConnectRPC + gRPC)', slug: 'docs/providers/rpc' },
 						{ label: 'Keyword', slug: 'docs/providers/keyword' },
 					],
 				},
