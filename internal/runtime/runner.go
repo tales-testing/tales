@@ -569,6 +569,8 @@ func (r *Runner) dispatchProviderStep(ctx context.Context, evaluator *lang.Evalu
 		return r.executeFileStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
 	case execProviderType:
 		return r.executeExecStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
+	case rpcProviderType:
+		return r.executeRPCStep(ctx, evaluator, scenarioName, config, state, input, step, phase, attempt), true
 	default:
 		return nil, false
 	}
@@ -1087,7 +1089,7 @@ func assertExpectedStatus(evaluator *lang.Evaluator, scope lang.ScopeData, scena
 		return nil
 	}
 
-	expectedStatus, err := evaluator.Eval(step.Expect.Status, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "expect.status"})
+	expectedStatus, err := evaluator.Eval(step.Expect.Status, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: exprPathExpectStatus})
 	if err != nil {
 		return fmt.Errorf("expect.status: %w", err)
 	}
@@ -1108,7 +1110,7 @@ func assertExpectedHeaders(evaluator *lang.Evaluator, scope lang.ScopeData, scen
 		return nil
 	}
 
-	expectedHeaders, err := evaluator.Eval(step.Expect.Headers, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: "expect.headers"})
+	expectedHeaders, err := evaluator.Eval(step.Expect.Headers, scope, lang.GenerateMeta{Scenario: scenarioName, Step: step.Name, ExprPath: exprPathExpectHeaders})
 	if err != nil {
 		return fmt.Errorf("expect.headers: %w", err)
 	}

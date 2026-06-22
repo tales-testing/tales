@@ -20,6 +20,7 @@ import (
 	loadprovider "github.com/tales-testing/tales/internal/provider/load"
 	mailprovider "github.com/tales-testing/tales/internal/provider/mail"
 	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
+	rpcprovider "github.com/tales-testing/tales/internal/provider/rpc"
 	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
 	webhookprovider "github.com/tales-testing/tales/internal/provider/webhook"
 	"github.com/tales-testing/tales/internal/report"
@@ -193,6 +194,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		webhookprovider.New(),
 		fileprovider.New(),
 		execprovider.New(execprovider.WithAllowExec(cmd.Bool("allow-exec"))),
+		rpcprovider.New(),
 	))
 
 	sink := buildEventSink(cmd.Bool("no-progress"), cmd.Bool("no-color"))
