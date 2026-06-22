@@ -17,7 +17,7 @@ func newTestClient(t *testing.T, handler http.Handler) *Client {
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	return New(srv.URL)
+	return New(srv.URL, WithHTTPClient(srv.Client()))
 }
 
 func TestClientHealthOK(t *testing.T) {
