@@ -15,6 +15,9 @@ import (
 const (
 	defaultBytesLength = 16
 	dateLayout         = "2006-01-02"
+	// maxEmailSuffixDigits mirrors go-faker's cap so an out-of-range value is
+	// rejected with a clear error instead of being silently clamped.
+	maxEmailSuffixDigits = 12
 )
 
 func runGenerator(generatorType string, params map[string]cty.Value, rnd generatorRandom) (cty.Value, error) {
@@ -116,7 +119,7 @@ func (r generatorRandom) faker() *faker.Faker {
 }
 
 func runEmailGenerator(params map[string]cty.Value, rnd generatorRandom) (string, error) {
-	opts := make([]faker.EmailOption, 0, 2)
+	opts := make([]faker.EmailOption, 0, 3)
 
 	if prefix, ok, err := optionalGeneratorStringParam(params, "email", "prefix"); err != nil {
 		return "", err
@@ -128,6 +131,23 @@ func runEmailGenerator(params map[string]cty.Value, rnd generatorRandom) (string
 		return "", err
 	} else if ok {
 		opts = append(opts, faker.WithEmailDomain(domain))
+	}
+
+	// suffix_digits appends N random digits to the local part, multiplying the
+	// output space by 10^N. It keeps generated addresses collision-safe when a
+	// suite fans out many signups in parallel (birthday paradox on faker's
+	// otherwise small name pool).
+	suffixDigits, err := optionalGeneratorIntParam(params, "email", "suffix_digits", 0)
+	if err != nil {
+		return "", err
+	}
+
+	if suffixDigits < 0 || suffixDigits > maxEmailSuffixDigits {
+		return "", fmt.Errorf("email generator suffix_digits must be between 0 and %d", maxEmailSuffixDigits)
+	}
+
+	if suffixDigits > 0 {
+		opts = append(opts, faker.WithEmailSuffixDigits(suffixDigits))
 	}
 
 	return rnd.faker().Email(opts...), nil

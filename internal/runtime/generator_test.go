@@ -48,8 +48,89 @@ func TestEmailGeneratorUsesDeterministicFaker(t *testing.T) {
 		t.Fatalf("different seed generated same email: %q", first.AsString())
 	}
 
-	if !regexp.MustCompile(`^test-[a-z]+[.\-]?[a-z]*@example\.test$`).MatchString(first.AsString()) {
+	if !regexp.MustCompile(`^test-[a-z]+[._\-]?[a-z]*@example\.test$`).MatchString(first.AsString()) {
 		t.Fatalf("email does not look like faker output with configured prefix/domain: %q", first.AsString())
+	}
+}
+
+func TestEmailGeneratorSuffixDigits(t *testing.T) {
+	t.Parallel()
+
+	params := map[string]cty.Value{
+		"prefix":        cty.StringVal("test-"),
+		"domain":        cty.StringVal("example.test"),
+		"suffix_digits": cty.NumberIntVal(4),
+	}
+	parts := []string{"scenario", "step", "request.body.json", "user_email"}
+
+	first, err := runGenerator("email", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate first email: %v", err)
+	}
+
+	second, err := runGenerator("email", params, newGeneratorRandom(1234, parts...))
+	if err != nil {
+		t.Fatalf("generate second email: %v", err)
+	}
+
+	if first.AsString() != second.AsString() {
+		t.Fatalf("same seed generated different emails: %q vs %q", first.AsString(), second.AsString())
+	}
+
+	// The local part must end with exactly four random digits before the '@'.
+	if !regexp.MustCompile(`^test-[a-z][a-z0-9._\-]*[0-9]{4}@example\.test$`).MatchString(first.AsString()) {
+		t.Fatalf("email does not carry a 4-digit suffix: %q", first.AsString())
+	}
+}
+
+// TestEmailGeneratorSuffixDigitsUnique is the regression guard for the
+// birthday-paradox collision reported under high parallelism: many scenarios
+// invoking the same generator produced duplicate addresses because faker's
+// name pool is small. With suffix_digits the output space is multiplied by
+// 10^N, so distinct seeds must yield distinct addresses.
+func TestEmailGeneratorSuffixDigitsUnique(t *testing.T) {
+	t.Parallel()
+
+	params := map[string]cty.Value{
+		"prefix":        cty.StringVal("qa-"),
+		"domain":        cty.StringVal("example.test"),
+		"suffix_digits": cty.NumberIntVal(8),
+	}
+
+	const runs = 2000
+
+	seen := make(map[string]string, runs)
+
+	for i := range runs {
+		scenario := fmt.Sprintf("scenario-%d", i)
+		parts := []string{scenario, "register", "request.body.json", "user_email"}
+
+		value, err := runGenerator("email", params, newGeneratorRandom(1234, parts...))
+		if err != nil {
+			t.Fatalf("generate email %d: %v", i, err)
+		}
+
+		email := value.AsString()
+		if prev, dup := seen[email]; dup {
+			t.Fatalf("collision between %q and %q on email %q", prev, scenario, email)
+		}
+
+		seen[email] = scenario
+	}
+}
+
+func TestEmailGeneratorInvalidSuffixDigits(t *testing.T) {
+	t.Parallel()
+
+	parts := []string{"scenario", "step", "request.body.json", "user_email"}
+
+	for _, digits := range []int{-1, 13} {
+		_, err := runGenerator("email", map[string]cty.Value{
+			"suffix_digits": cty.NumberIntVal(int64(digits)),
+		}, newGeneratorRandom(1234, parts...))
+		if err == nil || !strings.Contains(err.Error(), "suffix_digits must be between 0 and 12") {
+			t.Fatalf("suffix_digits=%d: expected range error, got %v", digits, err)
+		}
 	}
 }
 
