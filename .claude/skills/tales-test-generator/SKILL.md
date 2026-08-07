@@ -117,6 +117,7 @@ Use this skill when asked to:
 - Do not combine `headers.Authorization` with `auth.basic`; Tales rejects that conflict.
 - Prefer `generator "password"` + `generate("...")` over hard-coded reusable passwords when creating users.
 - Password generator options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
+- Email generator options are `prefix`, `domain`, and `suffix_digits` (0–12, default 0). Always set `suffix_digits` (e.g. `6`) when a suite generates many emails under high `--parallel`: the faker name pool is small, so without it the birthday paradox produces duplicate addresses (409 duplicate-signup, wrong mailbox lookup). Each digit multiplies the output space by 10 and stays deterministic per seed.
 - Faker-backed generators currently available: `email`, `password`, `timezone`, `locale`, `person`, `mac_address`, `bytes`, `date`, `datetime`, `unix_time`, `siren`, `siret`, `ein`, `duns`, `lei`, `vat_number`, and `euid`.
 - Locale generator options are `language`, `country`, and `separator`.
 - Person generator option is `gender` (`any`, `male`, or `female`) and it returns an object with `first_name`, `last_name`, `gender`, and `name`.

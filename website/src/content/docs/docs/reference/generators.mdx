@@ -41,19 +41,30 @@ The first label is the generator *type* (one of seventeen built-ins). The second
 
 ```hcl
 generator "email" "user_email" {
-  prefix = "qa-"          // optional, prepended after the random local-part
-  domain = "example.com"  // optional, defaults to a faker domain
+  prefix        = "qa-"          // optional, prepended after the random local-part
+  domain        = "example.com"  // optional, defaults to a faker domain
+  suffix_digits = 6              // optional, random digits appended to the local-part
 }
 ```
 
-| Attribute | Type   | Default       | Notes                                      |
-| --------- | ------ | ------------- | ------------------------------------------ |
-| `prefix`  | string | `""`          | Prepended to the local-part for filtering. |
-| `domain`  | string | faker default | Overrides the random domain.               |
+| Attribute       | Type   | Default       | Notes                                                             |
+| --------------- | ------ | ------------- | ----------------------------------------------------------------- |
+| `prefix`        | string | `""`          | Prepended to the local-part for filtering.                        |
+| `domain`        | string | faker default | Overrides the random domain.                                      |
+| `suffix_digits` | number | `0`           | Appends N random digits to the local-part (0–12). See below.      |
 
 ```hcl
-generate("user_email")   // "qa-7f3a@example.com"
+generate("user_email")   // "qa-jean.dupond831742@example.com"
 ```
+
+:::caution[Collisions under high parallelism]
+The faker name pool is small, so at high `--parallel` a suite that generates many
+addresses can hit the birthday paradox and produce the **same** email twice
+(duplicate-signup `409`s, cross-contaminated mailbox lookups). Set
+`suffix_digits` to append random digits: each digit multiplies the output space
+by 10, so `suffix_digits = 6` (10^6) keeps addresses unique across even large,
+highly-parallel suites while staying deterministic for a given seed.
+:::
 
 ## `password`
 

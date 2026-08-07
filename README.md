@@ -82,8 +82,9 @@ config {
 }
 
 generator "email" "user_email" {
-  prefix = "test-"
-  domain = "example.com"
+  prefix        = "test-"
+  domain        = "example.com"
+  suffix_digits = 6
 }
 
 generator "password" "user_password" {
@@ -583,6 +584,8 @@ Generation is deterministic with `--seed` and stable derivation inputs.
 
 Running the same suite with the same seed produces the same generated values, even with parallel execution.
 Step retries reuse the same deterministic generation context, so generated values do not change between retry attempts.
+
+Email generators support `prefix`, `domain`, and `suffix_digits` (0–12, default 0), which appends that many random digits to the local-part. Because the faker name pool is small, high `--parallel` suites that generate many addresses can hit the birthday paradox and emit duplicate emails (duplicate-signup `409`s, wrong mailbox lookups); set `suffix_digits` (each digit multiplies the output space by 10, e.g. `6` = 10^6) to keep addresses unique while staying deterministic per seed.
 
 Password generators default to a 16-character password with at least one uppercase letter, lowercase letter, digit, and special character. Supported password options are `length`, `min_upper`, `min_lower`, `min_digit`, `min_special`, and `specials`.
 Locale generators support `language`, `country`, and `separator`. Timezone generators return IANA tzdb names or aliases.

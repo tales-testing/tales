@@ -5,8 +5,9 @@ config {
 }
 
 generator "email" "verification_email" {
-  prefix = "verify-"
-  domain = "example.com"
+  prefix        = "verify-"
+  domain        = "example.com"
+  suffix_digits = 6 # collision-safe under high --parallel (10^6 extra space)
 }
 
 generator "password" "verification_password" {
