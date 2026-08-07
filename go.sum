@@ -28,8 +28,8 @@ github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 h1:oP4q0fw+fOSWn3
 github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6/go.mod h1:iL2twTeMvZnrg54ZoPDNfJaJaqy0xIQFuBdrLsmspwQ=
 github.com/emersion/go-smtp v0.24.0 h1:g6AfoF140mvW0vLNPD/LuCBLEAdlxOjIXqbIkJIS6Wk=
 github.com/emersion/go-smtp v0.24.0/go.mod h1:ZtRRkbTyp2XTHCA+BmyTFTrj8xY4I+b4McvHxCU2gsQ=
-github.com/euskadi31/go-faker v0.0.0-20260619092624-c799bbc2bd3d h1:ktqfF+7rmulhpqqyEOdG1mLtjUaS4dApHS58ZhUiXdM=
-github.com/euskadi31/go-faker v0.0.0-20260619092624-c799bbc2bd3d/go.mod h1:x0CGZ+7zE0BiZw9mV7wcxinsNvov7Gxda1ESnSN0wtw=
+github.com/euskadi31/go-faker v0.0.0-20260806151042-16b097c04ac4 h1:wrMox8ZwBNBrYLd8KJv2ARn4797Y9rBOpBBP+/oD3oo=
+github.com/euskadi31/go-faker v0.0.0-20260806151042-16b097c04ac4/go.mod h1:x0CGZ+7zE0BiZw9mV7wcxinsNvov7Gxda1ESnSN0wtw=
 github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433 h1:vymEbVwYFP/L05h5TKQxvkXoKxNvTpjxYKdF1Nlwuao=
 github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433/go.mod h1:tphK2c80bpPhMOI4v6bIc2xWywPfbqi1Z06+RcrMkDg=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=

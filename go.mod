@@ -9,7 +9,7 @@ require (
 	github.com/chromedp/chromedp v0.15.1
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.24.0
-	github.com/euskadi31/go-faker v0.0.0-20260619092624-c799bbc2bd3d
+	github.com/euskadi31/go-faker v0.0.0-20260806151042-16b097c04ac4
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/hcl/v2 v2.7.0
