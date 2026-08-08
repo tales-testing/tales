@@ -30,7 +30,11 @@
       "Bash(gh run *)",
       "Bash(echo \"make lint exit=$?\")",
       "Bash(echo \"make test exit=$?\")",
-      "Bash(gh release *)"
+      "Bash(gh release *)",
+      "Bash(go version *)",
+      "Bash(git tag *)",
+      "Bash(command -v goreleaser)",
+      "Bash(goreleaser --version)"
     ]
   }
 }
