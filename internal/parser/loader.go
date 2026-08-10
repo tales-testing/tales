@@ -134,6 +134,8 @@ func mergeSuite(dst, src *model.Suite, diags *hcl.Diagnostics) {
 	}
 
 	dst.Scenarios = append(dst.Scenarios, src.Scenarios...)
+
+	mergeSuiteTeardown(dst, src, diags)
 }
 
 func validateSuite(suite *model.Suite, diags *hcl.Diagnostics) {
@@ -168,20 +170,22 @@ func validateSuite(suite *model.Suite, diags *hcl.Diagnostics) {
 
 	validateKeywordStepNames(suite, diags)
 	validateKeywordStepVars(suite, diags)
+	validateSuiteTeardown(suite, diags)
 }
 
 // validateScenarioStepVars enforces the step-local vars contract for every
 // step and teardown step in the scenario.
 func validateScenarioStepVars(sc *model.Scenario, diags *hcl.Diagnostics) {
-	for _, step := range sc.Steps {
-		if err := lang.ValidateStepVars(step); err != nil {
-			*diags = append(*diags, diagError("Invalid step vars", fmt.Sprintf("Scenario %q: %v", sc.Name, err), nil))
-		}
-	}
+	validateStepVarsIn(sc.Steps, fmt.Sprintf("Scenario %q", sc.Name), diags)
+	validateStepVarsIn(sc.Teardown, fmt.Sprintf("Scenario %q teardown", sc.Name), diags)
+}
 
-	for _, step := range sc.Teardown {
+// validateStepVarsIn enforces the step-local vars contract over a list of
+// steps, prefixing each diagnostic with the owner's description.
+func validateStepVarsIn(steps []*model.Step, owner string, diags *hcl.Diagnostics) {
+	for _, step := range steps {
 		if err := lang.ValidateStepVars(step); err != nil {
-			*diags = append(*diags, diagError("Invalid step vars", fmt.Sprintf("Scenario %q teardown: %v", sc.Name, err), nil))
+			*diags = append(*diags, diagError("Invalid step vars", fmt.Sprintf("%s: %v", owner, err), nil))
 		}
 	}
 }
