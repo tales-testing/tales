@@ -212,7 +212,7 @@ func intAttr(value cty.Value, key string) (int, bool) {
 
 	bf := attr.AsBigFloat()
 	if !bf.IsInt() {
-		// A non-integer port (e.g. 2525.9) is invalid; reject it rather than
+		// A non-integer port (e.g. 12525.9) is invalid; reject it rather than
 		// silently truncating.
 		return 0, false
 	}

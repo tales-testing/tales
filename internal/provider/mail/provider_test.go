@@ -416,7 +416,7 @@ func TestProviderUnknownTarget(t *testing.T) {
 
 	exec := &provider.MailExecution{Target: "missing", From: "a@x.test", To: []string{"b@x.test"}, Text: "x", MessageID: "<x@tales.local>"}
 
-	_, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", "127.0.0.1", 2525, nil), exec))
+	_, err := New().Execute(context.Background(), mailInput(smtpConfig("inbound", "127.0.0.1", 12525, nil), exec))
 	if err == nil || !strings.Contains(err.Error(), `mail target "missing" not found`) {
 		t.Fatalf("want not-found error, got: %v", err)
 	}
