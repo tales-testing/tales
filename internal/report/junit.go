@@ -49,7 +49,7 @@ func WriteJUnit(path string, result *SuiteResult) error {
 		case StatusFail:
 			x.Failures++
 
-			message, body := buildJUnitFailure(result.Seed, scenario)
+			message, body := buildJUnitFailure(result.Seed, replayTarget(result, scenario), scenario)
 			tc.Failure = &failureXML{Message: message, Body: body}
 		case StatusSkip:
 			x.Skipped++
@@ -63,6 +63,8 @@ func WriteJUnit(path string, result *SuiteResult) error {
 
 		x.TestCases = append(x.TestCases, tc)
 	}
+
+	appendSuiteTeardownCase(&x, result)
 
 	file, err := os.Create(path)
 	if err != nil {
@@ -81,7 +83,7 @@ func WriteJUnit(path string, result *SuiteResult) error {
 	return nil
 }
 
-func buildJUnitFailure(seed int64, scenario *ScenarioResult) (string, string) {
+func buildJUnitFailure(seed int64, replayPath string, scenario *ScenarioResult) (string, string) {
 	message := "scenario failed"
 	if scenario.Failure != nil {
 		message = failurePrefix(scenario.Failure)
@@ -133,9 +135,66 @@ func buildJUnitFailure(seed int64, scenario *ScenarioResult) (string, string) {
 		body.WriteString(renderArtifactsForJUnit(failedStep.Artifacts))
 	}
 
-	_, _ = fmt.Fprintf(&body, "replay: tales test --seed %d --scenario %q %s\n", seed, scenario.Name, scenario.File)
+	_, _ = fmt.Fprintf(&body, "replay: tales test --seed %d --scenario %q %s\n", seed, scenario.Name, replayPath)
 
 	return message, body.String()
+}
+
+// appendSuiteTeardownCase adds a synthetic testcase describing the suite-level
+// teardown. Without it, a run whose only failure is the cleanup would produce
+// a fully green JUnit file next to a non-zero exit code, and CI dashboards
+// would disagree with the command result.
+func appendSuiteTeardownCase(x *testsuiteXML, result *SuiteResult) {
+	if len(result.Teardown) == 0 {
+		return
+	}
+
+	x.Tests++
+
+	tc := testcaseXML{
+		Name:      suiteTeardownLabel,
+		ClassName: suiteTeardownFile(result),
+		Time:      seconds(0),
+		SystemOut: renderSuiteTeardownSteps(result.Teardown),
+	}
+
+	if len(result.TeardownFailures) > 0 {
+		x.Failures++
+		tc.Failure = &failureXML{
+			Message: suiteTeardownFailureMessage(result.TeardownFailures),
+			Body:    renderSuiteTeardownSteps(result.Teardown),
+		}
+	}
+
+	x.TestCases = append(x.TestCases, tc)
+}
+
+func suiteTeardownFailureMessage(failures []*ErrorDetail) string {
+	for _, failure := range failures {
+		if failure != nil && failure.Message != "" {
+			return failure.Message
+		}
+	}
+
+	return "suite teardown failed"
+}
+
+func renderSuiteTeardownSteps(steps []*StepResult) string {
+	builder := strings.Builder{}
+
+	for _, step := range steps {
+		_, _ = fmt.Fprintf(&builder, "%s [%s] %s\n", step.Name, step.Provider, step.Status)
+
+		if step.SkipReason != "" {
+			_, _ = fmt.Fprintf(&builder, "  reason: %s\n", step.SkipReason)
+		}
+
+		if step.Failure != nil && step.Failure.Message != "" {
+			_, _ = fmt.Fprintf(&builder, "  message: %s\n", step.Failure.Message)
+		}
+	}
+
+	return builder.String()
 }
 
 // buildJUnitSystemOut renders the scenario-level artifacts as a system-out

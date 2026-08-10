@@ -55,6 +55,10 @@ func PrintConsoleWithOptions(out io.Writer, result *SuiteResult, options Console
 		}
 	}
 
+	if err := printSuiteTeardown(out, result, stats, options, painter); err != nil {
+		return err
+	}
+
 	summaryLabel := painter.paint(ansiBlue, "Summary")
 
 	if _, err := fmt.Fprintf(
@@ -96,6 +100,8 @@ func newConsoleStats(result *SuiteResult) *consoleStats {
 		stats.totalSteps += len(scenario.Steps)
 		stats.totalSteps += len(scenario.Teardown)
 	}
+
+	stats.totalSteps += len(result.Teardown)
 
 	return stats
 }

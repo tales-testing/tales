@@ -14,8 +14,16 @@ const (
 	outputRequest  = "request"
 	outputResponse = "response"
 
-	phaseStep     = "step"
-	phaseTeardown = "teardown"
+	phaseStep          = "step"
+	phaseTeardown      = "teardown"
+	phaseSuiteTeardown = "suite_teardown"
+
+	// suiteTeardownScenario is the reserved pseudo-scenario name carried by
+	// the suite-level teardown. It seeds the generator mixer, labels
+	// StepResult.Scenario and names the workspace directory. The colon makes
+	// it impossible to write as a scenario label, so it can never collide
+	// with a user scenario and silently share its seed stream.
+	suiteTeardownScenario = "tales:suite-teardown"
 
 	// whenExprPathTeardown / whenExprPathStep prefix the generator seed
 	// mixer for a `when` expression. Scenario teardown keeps its historical

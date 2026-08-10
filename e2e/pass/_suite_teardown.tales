@@ -1,0 +1,47 @@
+version = 1
+
+# Suite-level cleanup: runs exactly once, after every scenario in the suite has
+# finished and before the providers are closed. Scenarios are unordered and run
+# in parallel, so this is the only place a "last thing that happens" belongs.
+#
+# Only one file per suite may declare this block.
+teardown {
+  # The mock mail inbox is shared by every mail scenario. Purging it here is
+  # the canonical use case: no single scenario owns it, and it must be emptied
+  # whatever the scenarios did or failed to do.
+  step "http" "purge_mail_inbox" {
+    request {
+      method = "DELETE"
+      url    = "${config.base_url}/mail/messages"
+    }
+
+    expect {
+      status = 200
+      json = {
+        ok = true
+      }
+    }
+
+    capture {
+      purged = response.json.ok
+    }
+  }
+
+  # Later cleanup steps consume what earlier ones captured, and `when` gates
+  # individual steps the same way it does everywhere else.
+  step "http" "confirm_inbox_empty" {
+    when = result.purge_mail_inbox.purged
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+      json = {
+        ok = true
+      }
+    }
+  }
+}
