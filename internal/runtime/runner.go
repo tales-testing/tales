@@ -420,6 +420,16 @@ func (r *Runner) runOneStep(ctx context.Context, scenario *model.Scenario, sResu
 		return
 	}
 
+	// `when` is evaluated after the skip rules and before the step body, so
+	// it sees config / result / host but never this step's own vars. Routing
+	// the skip through recordStepSkipResult gives it the same cascade to
+	// dependent steps as skip_if / skip_unless.
+	if run, reason := evalWhen(step.When, evaluator, skipScope(config, state, nil), scenario.Name, step.Name, whenExprPathStep); !run {
+		recordStepSkipResult(sResult, whenSkipResult(step, scenario.Name, phaseStep, reason), step.Name, tracker)
+
+		return
+	}
+
 	stepResult := r.executeStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
 
 	sResult.Steps = append(sResult.Steps, stepResult)
@@ -702,19 +712,34 @@ func sleepWithContext(ctx context.Context, duration time.Duration) bool {
 }
 
 func (r *Runner) executeTeardownStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step) *report.StepResult {
-	if !evalWhen(step.When, evaluator, lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}, scenarioName, step.Name) {
-		return &report.StepResult{
-			File:       step.File,
-			Scenario:   scenarioName,
-			Name:       step.Name,
-			Provider:   step.Provider,
-			Phase:      "teardown",
-			Status:     report.StatusSkip,
-			SkipReason: "when condition evaluated to false",
-		}
+	return r.executeTeardownStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, phaseTeardown)
+}
+
+// executeTeardownStepInPhase evaluates the step's `when` predicate and, when
+// it holds, runs the step under the given phase label. Shared by the
+// scenario-level ("teardown") and suite-level ("suite_teardown") blocks.
+func (r *Runner) executeTeardownStepInPhase(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, phase string) *report.StepResult {
+	scope := lang.ScopeData{Config: config, Result: state.GetResultMap(), Request: map[string]cty.Value{}, Response: map[string]cty.Value{}, Input: ensureValueMap(input)}
+
+	if run, reason := evalWhen(step.When, evaluator, scope, scenarioName, step.Name, whenExprPathTeardown); !run {
+		return whenSkipResult(step, scenarioName, phase, reason)
 	}
 
-	return r.executeStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, "teardown")
+	return r.executeStepInPhase(ctx, evaluator, suite, scenarioName, config, state, input, step, phase)
+}
+
+// whenSkipResult builds the StepResult recorded for a step whose `when`
+// predicate did not hold.
+func whenSkipResult(step *model.Step, scenarioName, phase, reason string) *report.StepResult {
+	return &report.StepResult{
+		File:       step.File,
+		Scenario:   scenarioName,
+		Name:       step.Name,
+		Provider:   step.Provider,
+		Phase:      phase,
+		Status:     report.StatusSkip,
+		SkipReason: reason,
+	}
 }
 
 // evaluateStepVars evaluates each declared step-local var in source order
@@ -1278,28 +1303,48 @@ func evalGeneratorParams(evaluator *lang.Evaluator, gen *model.Generator, config
 	return params, nil
 }
 
-func evalWhen(condition model.Expression, evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName string) bool {
+// evalWhen decides whether a step guarded by a `when` expression must run.
+// It returns (true, "") when the step must run, and (false, reason) when it
+// must be reported as skipped.
+//
+// A failed evaluation skips rather than fails: the canonical `when =
+// can(result.<step>.<field>)` guard relies on the reference being missing,
+// and a teardown that hard-failed on an absent prerequisite would defeat the
+// purpose of the guard. The reason string always says which of the two paths
+// was taken so a skip is never silent.
+//
+// exprPath prefixes the generator seed mixer. Scenario teardown keeps the
+// historical "teardown.when" prefix so existing suites replay byte-identical
+// generated values; every other phase uses "step.when".
+func evalWhen(condition model.Expression, evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, exprPath string) (bool, string) {
 	if condition.Empty() {
-		return true
+		return true, ""
 	}
 
 	if call, ok := condition.Expr.(*hclsyntax.FunctionCallExpr); ok && call.Name == "can" && len(call.Args) == 1 {
-		_, err := evaluator.EvalRaw(call.Args[0], scope, lang.GenerateMeta{Scenario: scenarioName, Step: stepName, ExprPath: "teardown.when.can"})
+		_, err := evaluator.EvalRaw(call.Args[0], scope, lang.GenerateMeta{Scenario: scenarioName, Step: stepName, ExprPath: exprPath + ".can"})
+		if err != nil {
+			return false, whenFalseReason
+		}
 
-		return err == nil
+		return true, ""
 	}
 
-	value, err := evaluator.Eval(condition, scope, lang.GenerateMeta{Scenario: scenarioName, Step: stepName, ExprPath: "teardown.when"})
+	value, err := evaluator.Eval(condition, scope, lang.GenerateMeta{Scenario: scenarioName, Step: stepName, ExprPath: exprPath})
 	if err != nil {
-		return false
+		return false, fmt.Sprintf("when condition failed to evaluate: %s", err)
 	}
 
 	boolValue, err := toBool(value)
 	if err != nil {
-		return false
+		return false, fmt.Sprintf("when condition failed to evaluate: %s", err)
 	}
 
-	return boolValue
+	if !boolValue {
+		return false, whenFalseReason
+	}
+
+	return true, ""
 }
 
 func (r *Runner) executeKeywordStep(ctx context.Context, evaluator *lang.Evaluator, suite *model.Suite, scenarioName string, config map[string]cty.Value, state *ScenarioState, input map[string]cty.Value, step *model.Step, start time.Time, stepReport *report.StepResult) *report.StepResult {
@@ -1474,6 +1519,13 @@ func (r *Runner) executeKeywordSteps(ctx context.Context, evaluator *lang.Evalua
 	}
 
 	for _, step := range keyword.Steps {
+		// A keyword sub-step gated off by `when` is simply not executed; it
+		// records no result, so later steps guarded by can(result.<step>)
+		// skip in turn instead of failing on a missing reference.
+		if run, _ := evalWhen(step.When, evaluator, skipScope(config, keywordState, input), scenarioName, step.Name, whenExprPathStep); !run {
+			continue
+		}
+
 		stepResult := r.executeStep(ctx, evaluator, suite, scenarioName, config, keywordState, input, step)
 		if stepResult.Status == report.StatusFail {
 			message := "keyword step failed"

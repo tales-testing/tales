@@ -1,0 +1,80 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# `when` gates any step, not just teardown steps. A step whose predicate does
+# not hold is reported as skipped, and every step consuming its results is
+# cascade-skipped in turn.
+scenario "Conditional steps honor when" {
+  tags = ["when"]
+
+  step "http" "health" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+      json = {
+        ok = true
+      }
+    }
+
+    capture {
+      ok = response.json.ok
+    }
+  }
+
+  # Gated off: the URL below would 404, so a silently-ignored `when` would
+  # turn this scenario red.
+  step "http" "never_runs" {
+    when = false
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/this-endpoint-does-not-exist"
+    }
+
+    expect {
+      status = 200
+    }
+
+    capture {
+      status = response.status
+    }
+  }
+
+  # Depends on a step that never produced a result: cascade-skipped.
+  step "http" "cascade_skipped" {
+    when = can(result.never_runs.status)
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+
+  # A truthy predicate leaves the step untouched.
+  step "http" "runs_when_true" {
+    when = result.health.ok
+
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+      json = {
+        ok = true
+      }
+    }
+  }
+}
