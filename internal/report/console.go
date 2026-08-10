@@ -50,7 +50,7 @@ func PrintConsoleWithOptions(out io.Writer, result *SuiteResult, options Console
 	for _, scenario := range result.Scenarios {
 		stats.currentScenario++
 
-		if err := printScenario(out, result.Seed, scenario, stats, options, painter); err != nil {
+		if err := printScenario(out, result.Seed, replayTarget(result, scenario), scenario, stats, options, painter); err != nil {
 			return fmt.Errorf("print scenario %q: %w", scenario.Name, err)
 		}
 	}
@@ -143,7 +143,20 @@ func (c colorPainter) colorizeStatus(value Status, rendered string) string {
 	}
 }
 
-func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *consoleStats, options ConsoleOptions, painter colorPainter) error {
+// replayTarget picks the path to print in the replay command. The path the
+// run was launched with is the only one guaranteed to reload the whole suite:
+// a directory run also loads sibling _config.tales and keywords/ files that
+// the scenario's own file does not carry, so replaying that file alone fails.
+// Programmatic runs leave InputPath empty and keep the historical output.
+func replayTarget(result *SuiteResult, scenario *ScenarioResult) string {
+	if result.InputPath != "" {
+		return result.InputPath
+	}
+
+	return scenario.File
+}
+
+func printScenario(out io.Writer, seed int64, replayPath string, scenario *ScenarioResult, stats *consoleStats, options ConsoleOptions, painter colorPainter) error {
 	updateScenarioStats(stats, scenario.Status)
 
 	if err := printScenarioHeader(out, scenario, painter); err != nil {
@@ -197,7 +210,7 @@ func printScenario(out io.Writer, seed int64, scenario *ScenarioResult, stats *c
 	}
 
 	if scenario.Failure != nil {
-		if _, err := fmt.Fprintf(out, "  replay: tales test --seed %d --scenario %q %s\n", seed, scenario.Name, scenario.File); err != nil {
+		if _, err := fmt.Fprintf(out, "  replay: tales test --seed %d --scenario %q %s\n", seed, scenario.Name, replayPath); err != nil {
 			return fmt.Errorf("print replay command: %w", err)
 		}
 	}

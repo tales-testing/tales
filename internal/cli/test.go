@@ -220,6 +220,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		Tags:              cmd.StringSlice("tag"),
 		Scenario:          cmd.String("scenario"),
 		ProjectDir:        projectDir,
+		InputPath:         path,
 		Events:            sink,
 		HeartbeatInterval: heartbeatInterval,
 		TeardownGrace:     cmd.Duration("teardown-grace"),
