@@ -20,6 +20,11 @@ import (
 
 const visualReportTitle = "Tales Visual Report"
 
+// suiteTeardownName labels the pseudo-scenario the suite-level teardown block
+// is projected into. It matches the reserved scenario name the runtime stamps
+// on those step results.
+const suiteTeardownName = "tales:suite-teardown"
+
 // Report is the top-level JSON payload embedded in the HTML data island.
 type Report struct {
 	Title       string     `json:"title"`
@@ -112,7 +117,38 @@ func Build(result *report.SuiteResult, htmlPath string) Report {
 		out.Scenarios = append(out.Scenarios, buildScenario(sc, htmlDir))
 	}
 
+	if teardown, ok := buildSuiteTeardown(result, htmlDir); ok {
+		out.Scenarios = append(out.Scenarios, teardown)
+	}
+
 	return out
+}
+
+// buildSuiteTeardown projects the suite-level teardown block as a trailing
+// pseudo-scenario, so the timeline shows it last without the template needing
+// a new concept. Returns ok=false when the suite declares no teardown.
+func buildSuiteTeardown(result *report.SuiteResult, htmlDir string) (Scenario, bool) {
+	if len(result.Teardown) == 0 {
+		return Scenario{}, false
+	}
+
+	status := report.StatusPass
+	if len(result.TeardownFailures) > 0 {
+		status = report.StatusFail
+	}
+
+	scenario := Scenario{
+		Name:   suiteTeardownName,
+		Status: string(status),
+		Steps:  make([]Step, 0, len(result.Teardown)),
+	}
+
+	for _, st := range stepsInExecutionOrder(result.Teardown) {
+		scenario.File = st.File
+		scenario.Steps = append(scenario.Steps, buildStep(st, htmlDir))
+	}
+
+	return scenario, true
 }
 
 func buildScenario(sc *report.ScenarioResult, htmlDir string) Scenario {
@@ -258,6 +294,10 @@ func relativeArtifactPath(path, htmlDir string) string {
 // scenario failed, otherwise pass. Defensive against nil entries in the
 // scenario slice (defensive enough to match buildScenario's nil drop).
 func suiteStatus(result *report.SuiteResult) string {
+	if len(result.TeardownFailures) > 0 {
+		return string(report.StatusFail)
+	}
+
 	for _, sc := range result.Scenarios {
 		if sc == nil {
 			continue

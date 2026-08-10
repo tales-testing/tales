@@ -57,6 +57,18 @@ func WriteJSONL(path string, result *SuiteResult) error {
 		}
 	}
 
+	// The suite-level teardown runs after every scenario, so its events come
+	// last: the stream order matches the execution order.
+	for _, step := range result.Teardown {
+		if err := encodeStepEvent(encoder, result.Seed, suiteTeardownLabel, step); err != nil {
+			return err
+		}
+
+		if err := encodeActionEvents(encoder, result.Seed, suiteTeardownLabel, step); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

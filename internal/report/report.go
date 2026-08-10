@@ -41,6 +41,14 @@ type SuiteResult struct {
 	// wrapper above the runner) fires before the suite finishes, and is
 	// used by the CLI to surface the culprits in the cancel message.
 	StalledScenarios []string
+	// Teardown holds the results of the suite-level `teardown { ... }` block,
+	// executed once after every scenario and before providers are closed.
+	// Empty when the suite declares none.
+	Teardown []*StepResult
+	// TeardownFailures collects the failures raised by the suite-level
+	// teardown. Failed reports true when it is non-empty, so a failing
+	// cleanup fails the run even when every scenario passed.
+	TeardownFailures []*ErrorDetail
 }
 
 // ScenarioResult contains one scenario execution.
@@ -129,8 +137,14 @@ type ErrorDetail struct {
 	Message string      `json:"message"`
 }
 
-// Failed returns true when suite has at least one failed scenario.
+// Failed returns true when the suite has at least one failed scenario, or
+// when the suite-level teardown failed: cleanup that did not complete leaves
+// the environment dirty for the next run, so it must fail the command.
 func (r *SuiteResult) Failed() bool {
+	if len(r.TeardownFailures) > 0 {
+		return true
+	}
+
 	for _, scenario := range r.Scenarios {
 		if scenario.Status == StatusFail {
 			return true

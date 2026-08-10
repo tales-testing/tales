@@ -179,6 +179,11 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 
 	wg.Wait()
 
+	// Order is load-bearing: after wg.Wait so no scenario goroutine races the
+	// result, and before closeProviders so cleanup steps can still use the
+	// long-lived sessions (SQL pools, gRPC conns, browser) they need.
+	result.Teardown, result.TeardownFailures = r.runSuiteTeardown(runCtx, suite, configValues, opts)
+
 	r.closeProviders()
 
 	result.EndedAt = time.Now()
@@ -252,30 +257,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	}
 
 	state := NewScenarioState(stepNames, seed, workdir, artifactsDir)
-
-	var evaluator *lang.Evaluator
-
-	evaluator = lang.NewEvaluator(func(name string, meta lang.GenerateMeta) (cty.Value, error) {
-		gen, ok := suite.Generators[name]
-		if !ok {
-			return cty.NilVal, fmt.Errorf("unknown generator %q", name)
-		}
-
-		params, err := evalGeneratorParams(evaluator, gen, config)
-		if err != nil {
-			return cty.NilVal, err
-		}
-
-		parts := []string{scenario.Name}
-
-		if scope := evaluator.SeedScope(); scope != "" {
-			parts = append(parts, scope)
-		}
-
-		parts = append(parts, meta.Step, name, meta.ExprPath)
-
-		return runGenerator(gen.Type, params, newGeneratorRandom(seed, parts...))
-	})
+	evaluator := newSeededEvaluator(suite, config, scenario.Name, seed)
 
 	evaluator.SetScopeVars(scopeVars)
 
@@ -367,6 +349,41 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	sResult.Duration = time.Since(start)
 
 	return sResult, nil
+}
+
+// newSeededEvaluator builds the expression evaluator for one execution scope
+// (a scenario, or the suite-level teardown). scopeName is the first element of
+// every generator seed mix, so two scopes never share a value stream and an
+// identical run replays identical generated data.
+//
+// The closure is self-referential (it reads evaluator.SeedScope to mix the
+// keyword call path), hence the two-step declaration.
+func newSeededEvaluator(suite *model.Suite, config map[string]cty.Value, scopeName string, seed int64) *lang.Evaluator {
+	var evaluator *lang.Evaluator
+
+	evaluator = lang.NewEvaluator(func(name string, meta lang.GenerateMeta) (cty.Value, error) {
+		gen, ok := suite.Generators[name]
+		if !ok {
+			return cty.NilVal, fmt.Errorf("unknown generator %q", name)
+		}
+
+		params, err := evalGeneratorParams(evaluator, gen, config)
+		if err != nil {
+			return cty.NilVal, err
+		}
+
+		parts := []string{scopeName}
+
+		if scope := evaluator.SeedScope(); scope != "" {
+			parts = append(parts, scope)
+		}
+
+		parts = append(parts, meta.Step, name, meta.ExprPath)
+
+		return runGenerator(gen.Type, params, newGeneratorRandom(seed, parts...))
+	})
+
+	return evaluator
 }
 
 // buildScenarioWorkspace creates the per-scenario workspace directory and

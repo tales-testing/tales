@@ -1,0 +1,49 @@
+version = 1
+
+config {
+  base_url = env("BASE_URL", "http://localhost:1337")
+}
+
+# A failing suite-level teardown must fail the run (exit code 1) even though
+# the scenario below passes: cleanup that did not complete leaves the
+# environment dirty for the next run.
+teardown {
+  step "http" "cleanup_that_fails" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 204
+    }
+  }
+
+  # Declared after the failing step: cleanup steps are independent obligations,
+  # not a pipeline, so this one must still run.
+  step "http" "still_runs_after_failure" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}
+
+scenario "Suite teardown failure fails the run" {
+  tags = ["suite-teardown"]
+
+  step "http" "health" {
+    request {
+      method = "GET"
+      url    = "${config.base_url}/healthz"
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}
