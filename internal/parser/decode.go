@@ -94,6 +94,14 @@ func decodeFile(path string, body hcl.Body) (*model.Suite, hcl.Diagnostics) {
 		}
 	}
 
+	suiteTeardown, stDiags := decodeSuiteTeardown(path, raw.Teardowns, syntaxBody)
+	diags = append(diags, stDiags...)
+
+	if len(suiteTeardown) > 0 {
+		suite.Teardown = suiteTeardown
+		suite.TeardownFile = path
+	}
+
 	scenarioBlocks := childBlocks(syntaxBody, "scenario")
 
 	for i, sc := range raw.Scenarios {

@@ -8,6 +8,12 @@ type fileSchema struct {
 	Generators []generatorBlock `hcl:"generator,block"`
 	Scenarios  []scenarioBlock  `hcl:"scenario,block"`
 	Keywords   []keywordBlock   `hcl:"keyword,block"`
+	// Teardowns is the suite-level teardown block: cleanup that must happen
+	// once, after every scenario, regardless of what any single scenario did.
+	// Scenarios are unordered and run in parallel, so they cannot host it.
+	// It reuses teardownDef verbatim, so a suite teardown step accepts the
+	// exact same surface as a scenario teardown step.
+	Teardowns []teardownDef `hcl:"teardown,block"`
 }
 
 type configBlock struct {
