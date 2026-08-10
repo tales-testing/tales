@@ -45,6 +45,13 @@ type Options struct {
 	// each tick. Used by --verbose to surface slow scenarios that would
 	// otherwise stay quiet between their start and end lines.
 	HeartbeatInterval time.Duration
+	// TeardownGrace is the wall-clock budget granted to cleanup work
+	// (scenario hooks, scenario teardown, suite teardown) on a context
+	// detached from the caller's. Without it an exhausted --timeout (or any
+	// cancelled parent) kills the very cleanup it makes necessary, leaving
+	// residue behind exactly when it matters most. 0 keeps the historical
+	// behavior: cleanup inherits the run context and its cancellation.
+	TeardownGrace time.Duration
 }
 
 // Runner executes a suite.
@@ -277,6 +284,12 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		ProjectDir:   opts.ProjectDir,
 	}
 
+	// Cleanup work (EndScenario hooks and teardown steps) runs on a context
+	// detached from ctx with its own grace budget, so an exhausted --timeout
+	// does not cancel the recording flush or the cleanup requests.
+	cleanupCtx, releaseCleanupCtx := newLazyCleanupContext(ctx, opts.TeardownGrace)
+	defer releaseCleanupCtx()
+
 	beganHooks := 0
 	hooksEnded := false
 	endHooks := func() {
@@ -287,7 +300,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 		hooksEnded = true
 
 		for i := beganHooks - 1; i >= 0; i-- {
-			artifacts, _ := hooks[i].EndScenario(ctx, scenario, hctx, runErr)
+			artifacts, _ := hooks[i].EndScenario(cleanupCtx(), scenario, hctx, runErr)
 			for _, a := range artifacts {
 				sResult.Artifacts = append(sResult.Artifacts, report.Artifact{Type: a.Type, Path: a.Path})
 			}
@@ -333,7 +346,7 @@ func (r *Runner) runScenario(ctx context.Context, suite *model.Suite, scenario *
 	endHooks()
 
 	for _, step := range scenario.Teardown {
-		stepResult := r.executeTeardownStep(ctx, evaluator, suite, scenario.Name, config, state, nil, step)
+		stepResult := r.executeTeardownStep(cleanupCtx(), evaluator, suite, scenario.Name, config, state, nil, step)
 
 		sResult.Teardown = append(sResult.Teardown, stepResult)
 		if stepResult.Status == report.StatusFail {
@@ -697,6 +710,49 @@ func retryOptions(step *model.Step) model.Retry {
 	}
 
 	return retry
+}
+
+// cleanupContext detaches ctx from its parent so an exhausted --timeout (or
+// any other cancellation) cannot kill the cleanup it makes most necessary,
+// then bounds the detached context with its own grace budget. grace <= 0
+// keeps the historical behavior: cleanup inherits the run context, including
+// its cancellation.
+func cleanupContext(ctx context.Context, grace time.Duration) (context.Context, context.CancelFunc) {
+	if grace <= 0 {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(context.WithoutCancel(ctx), grace)
+}
+
+// newLazyCleanupContext returns an accessor that builds the cleanup context
+// on first use, plus the release function to defer. Construction must be
+// lazy: context.WithTimeout starts counting immediately, so building it up
+// front would burn the grace budget while the main steps are still running.
+//
+// The accessor is called only from the scenario's own goroutine (hooks and
+// teardown both run there, after the steps), so no synchronization is needed.
+func newLazyCleanupContext(ctx context.Context, grace time.Duration) (func() context.Context, func()) {
+	var (
+		cleanupCtx context.Context
+		cancel     context.CancelFunc
+	)
+
+	get := func() context.Context {
+		if cleanupCtx == nil {
+			cleanupCtx, cancel = cleanupContext(ctx, grace)
+		}
+
+		return cleanupCtx
+	}
+
+	release := func() {
+		if cancel != nil {
+			cancel()
+		}
+	}
+
+	return get, release
 }
 
 func sleepWithContext(ctx context.Context, duration time.Duration) bool {
