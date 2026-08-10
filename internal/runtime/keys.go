@@ -14,7 +14,19 @@ const (
 	outputRequest  = "request"
 	outputResponse = "response"
 
-	phaseStep = "step"
+	phaseStep     = "step"
+	phaseTeardown = "teardown"
+
+	// whenExprPathTeardown / whenExprPathStep prefix the generator seed
+	// mixer for a `when` expression. Scenario teardown keeps its historical
+	// prefix so already-recorded suites keep replaying identical generated
+	// values; every other phase uses the step prefix.
+	whenExprPathTeardown = "teardown.when"
+	whenExprPathStep     = "step.when"
+
+	// whenFalseReason is the skip reason recorded when a `when` predicate
+	// evaluates to false. The wording matches the public documentation.
+	whenFalseReason = "when condition was false"
 
 	attrKind    = "kind"
 	keyName     = "name"
