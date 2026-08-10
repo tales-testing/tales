@@ -798,8 +798,20 @@ scenario "Login flow" {
 `goto`, `click`, `fill`, `clear`, `press`, `submit`, `scroll` (selector
 or x/y offsets), `wait_visible`, `wait_not_visible`, `hover`, `select`
 (for `<select>`), `check` / `uncheck` (for checkboxes / radios),
-`reload`, `back`, `forward`. Every action accepts optional `timeout`
-and `interval`.
+`upload_file` (for `<input type="file">`), `reload`, `back`, `forward`.
+Every action accepts optional `timeout` and `interval`.
+
+`upload_file` takes `selector` plus `paths`, a list of files (a bare
+string is sugar for one file). Relative paths resolve against the
+directory of the `.tales` file, like the HTTP multipart `file { path }`.
+The input does not need to be visible; a missing path fails the action.
+
+```hcl
+upload_file {
+  selector = "[data-testid='upload.input']"
+  paths    = ["./fixtures/contract.pdf"]
+}
+```
 
 ### Expectations
 

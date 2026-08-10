@@ -116,6 +116,7 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | `hover`              | `selector`                                                          | Dispatches a `mouseover` event |
 | `select`             | `selector`, `value`                                                 | Sets `<select>` value and fires `change` |
 | `check` / `uncheck`  | `selector`                                                          | Toggles a checkbox / radio input |
+| `upload_file`        | `selector`, `paths`                                                 | Sets the files of an `<input type="file">`. See below |
 | `reload`             | none                                                                | Reloads the current page |
 | `back` / `forward`   | none                                                                | Navigates the browser history. See limitations below |
 
@@ -132,6 +133,34 @@ fill {
   secure   = true
 }
 ```
+
+### File uploads
+
+The value of an `<input type="file">` is read-only from the DOM, so `fill` cannot drive a file picker. `upload_file` sets the input's files through CDP (`DOM.setFileInputFiles`) and then dispatches `input` + `change`, so client-side code that reads the picked files — a pre-upload hash, a preview, a size check — runs exactly as it would for a real user.
+
+```hcl
+step "browser" "attach_document" {
+  target = "chrome"
+
+  actions {
+    click { selector = "[data-testid='upload.open']" }
+
+    upload_file {
+      selector = "[data-testid='upload.input']"
+      paths    = ["./fixtures/contract.pdf"]
+      timeout  = "5s"
+    }
+
+    wait_visible { selector = "[data-testid='upload.ready']" }
+  }
+}
+```
+
+- `paths` takes a list, so an input with `multiple` is covered by a single action. A bare string is accepted as sugar for a one-file upload: `paths = "./fixtures/avatar.png"`.
+- Relative paths resolve against the directory of the `.tales` file declaring the step, like `body { multipart { file { path = ... } } }` in the [HTTP provider](/docs/providers/http/). Absolute paths are used as-is.
+- Every path is checked before Chrome is called: a missing path, a directory, or an empty list fails the action with an explicit message instead of a silent no-op.
+- The input does **not** have to be visible. Real apps routinely hide the input behind a styled `<label>`, so `upload_file` only requires the element to be present.
+- The action fails when the selector matches something that is not an `input[type=file]`.
 
 ## Expectations
 
