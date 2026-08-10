@@ -37,6 +37,13 @@ const pathArgsUsage = "<path>"
 // two ticks in CI.
 const heartbeatTickEvery = 30 * time.Second
 
+// defaultTeardownGrace is the wall-clock budget granted to teardown steps on
+// a context detached from the run's. It exists so an exhausted --timeout stops
+// the run without also killing the cleanup that the aborted run made
+// necessary. 30s is generous enough for a handful of DELETE calls or a SQL
+// purge, and short enough that a wedged provider cannot hang CI for long.
+const defaultTeardownGrace = 30 * time.Second
+
 // NewTestCommand returns test command.
 func NewTestCommand() *cli.Command {
 	return &cli.Command{
@@ -55,6 +62,7 @@ func NewTestCommand() *cli.Command {
 			&cli.StringFlag{Name: "report-html", Usage: "Write single-file visual HTML report"},
 			&cli.StringFlag{Name: "capture-screenshots", Usage: "Mobile screenshot capture mode (none|failures|steps|actions)"},
 			&cli.DurationFlag{Name: "timeout", Usage: "Global wall-clock budget for the whole run (e.g. 30s, 5m). 0 disables (default)."},
+			&cli.DurationFlag{Name: "teardown-grace", Value: defaultTeardownGrace, Usage: "Wall-clock budget granted to teardown steps on a context detached from --timeout. 0 makes teardown inherit the (possibly cancelled) run context."},
 			&cli.BoolFlag{Name: "verbose", Usage: "Emit a heartbeat every 30s listing scenarios still running"},
 			&cli.BoolFlag{Name: "allow-exec", Usage: "Allow exec steps to run external programs (disabled by default)"},
 		},
@@ -214,6 +222,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 		ProjectDir:        projectDir,
 		Events:            sink,
 		HeartbeatInterval: heartbeatInterval,
+		TeardownGrace:     cmd.Duration("teardown-grace"),
 	})
 	if err != nil && result == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "runtime failed: %v\n", err)
