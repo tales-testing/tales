@@ -14,7 +14,7 @@ func TestResolveTargetSMTP(t *testing.T) {
 	cfg := mailConfig("inbound", map[string]cty.Value{
 		"protocol": cty.StringVal("smtp"),
 		"host":     cty.StringVal("127.0.0.1"),
-		"port":     cty.NumberIntVal(2525),
+		"port":     cty.NumberIntVal(12525),
 		"tls":      cty.BoolVal(false),
 	})
 
@@ -23,7 +23,7 @@ func TestResolveTargetSMTP(t *testing.T) {
 		t.Fatalf("resolveTarget: %v", err)
 	}
 
-	if target.Protocol != "smtp" || target.Host != "127.0.0.1" || target.Port != 2525 {
+	if target.Protocol != "smtp" || target.Host != "127.0.0.1" || target.Port != 12525 {
 		t.Fatalf("unexpected target: %+v", target)
 	}
 
@@ -86,7 +86,7 @@ func TestResolveTargetErrors(t *testing.T) {
 		},
 		"non-integer smtp port": {
 			name:    "inbound",
-			cfg:     mailConfig("inbound", map[string]cty.Value{"protocol": cty.StringVal("smtp"), "host": cty.StringVal("h"), "port": cty.NumberFloatVal(2525.9)}),
+			cfg:     mailConfig("inbound", map[string]cty.Value{"protocol": cty.StringVal("smtp"), "host": cty.StringVal("h"), "port": cty.NumberFloatVal(12525.9)}),
 			wantSub: `mail target "inbound" has empty SMTP port`,
 		},
 		"unsupported lmtp network": {

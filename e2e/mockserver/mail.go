@@ -20,7 +20,7 @@ import (
 // smtpListenAddr / lmtpListenAddr are the loopback endpoints the mock mail
 // server binds in addition to the HTTP API. They match the e2e .tales targets.
 const (
-	smtpListenAddr = "127.0.0.1:2525"
+	smtpListenAddr = "127.0.0.1:12525"
 	lmtpListenAddr = "127.0.0.1:2424"
 )
 

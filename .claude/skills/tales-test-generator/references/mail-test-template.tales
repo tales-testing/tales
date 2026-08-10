@@ -17,7 +17,7 @@ config {
       smtp_inbound = {
         protocol = "smtp"
         host     = "127.0.0.1"
-        port     = 2525
+        port     = 12525
         tls      = false
       }
 
