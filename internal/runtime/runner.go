@@ -52,6 +52,12 @@ type Options struct {
 	// residue behind exactly when it matters most. 0 keeps the historical
 	// behavior: cleanup inherits the run context and its cancellation.
 	TeardownGrace time.Duration
+	// InputPath is the path the user passed on the command line (a file or a
+	// directory). It is echoed into the suite result so the console can print
+	// a replay command that loads the exact same suite: printing the failing
+	// scenario's own file instead would drop the sibling _config.tales and
+	// keywords/ files a directory run relies on.
+	InputPath string
 }
 
 // Runner executes a suite.
@@ -102,7 +108,7 @@ func (r *Runner) Run(ctx context.Context, suite *model.Suite, opts Options) (*re
 	}
 
 	scenarios := filterScenarios(suite.Scenarios, opts.Tags, opts.Scenario)
-	result := &report.SuiteResult{Seed: opts.Seed, StartedAt: time.Now(), Scenarios: make([]*report.ScenarioResult, len(scenarios))}
+	result := &report.SuiteResult{Seed: opts.Seed, InputPath: opts.InputPath, StartedAt: time.Now(), Scenarios: make([]*report.ScenarioResult, len(scenarios))}
 
 	emitSuiteStarted(opts.Events, len(scenarios), opts.Parallel, opts.Seed)
 

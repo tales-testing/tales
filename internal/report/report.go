@@ -23,7 +23,14 @@ const (
 
 // SuiteResult is aggregate test execution result.
 type SuiteResult struct {
-	Seed      int64
+	Seed int64
+	// InputPath is the path the run was launched with (`tales test <path>`).
+	// The console prints it in the replay command so the suggestion loads the
+	// same suite: a directory run also pulls in sibling _config.tales and
+	// keywords/ files that the failing scenario's own path would miss. Empty
+	// for programmatic runs, in which case the reporter falls back to the
+	// scenario file.
+	InputPath string
 	StartedAt time.Time
 	EndedAt   time.Time
 	Duration  time.Duration
