@@ -29,7 +29,7 @@ const actionDefaultTimeout = 30 * time.Second
 // runActions iterates over the prepared actions, executing each against
 // the driver. Failures stop the loop; subsequent actions are recorded as
 // "skipped" so the visual report can show the full sequence.
-func (p *Provider) runActions(ctx context.Context, drv driver.Driver, sc *ScenarioBrowserCtx, stepDir, defaultURL string, target Target, actions []provider.BrowserActionExec) ([]provider.ActionResult, error) {
+func (p *Provider) runActions(ctx context.Context, drv driver.Driver, sc *ScenarioBrowserCtx, stepDir, defaultURL string, target Target, actions []provider.BrowserActionExec, stepFile string) ([]provider.ActionResult, error) {
 	_ = sc
 
 	results := make([]provider.ActionResult, 0, len(actions))
@@ -42,7 +42,7 @@ func (p *Provider) runActions(ctx context.Context, drv driver.Driver, sc *Scenar
 
 		actionCtx, cancel := actionContext(ctx, action, target)
 
-		err := p.dispatchAction(actionCtx, drv, action, defaultURL)
+		err := p.dispatchAction(actionCtx, drv, action, defaultURL, stepFile)
 
 		cancel()
 
@@ -88,7 +88,7 @@ func actionContext(parent context.Context, action provider.BrowserActionExec, ta
 // consistent context regardless of which primitive surfaced the failure.
 //
 //nolint:gocyclo,exhaustive // Action surface is broad on purpose; the default returns a typed error for unknown kinds.
-func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action provider.BrowserActionExec, defaultURL string) error {
+func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action provider.BrowserActionExec, defaultURL, stepFile string) error {
 	switch action.Kind {
 	case model.BrowserActionGoto:
 		return wrapDriver(drv.Goto(ctx, resolveURL(defaultURL, action.URL)))
@@ -120,6 +120,13 @@ func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action
 		return wrapDriver(drv.Check(ctx, action.Selector))
 	case model.BrowserActionUncheck:
 		return wrapDriver(drv.Uncheck(ctx, action.Selector))
+	case model.BrowserActionUploadFile:
+		paths, err := resolveUploadPaths(stepFile, action.Paths)
+		if err != nil {
+			return err
+		}
+
+		return wrapDriver(drv.SetFileInputs(ctx, action.Selector, paths))
 	case model.BrowserActionReload:
 		return wrapDriver(drv.Reload(ctx))
 	case model.BrowserActionBack:
@@ -184,6 +191,8 @@ func actionLabel(action provider.BrowserActionExec) string {
 		}
 
 		return fmt.Sprintf("scroll by (%d,%d)", action.X, action.Y)
+	case model.BrowserActionUploadFile:
+		return fmt.Sprintf("upload_file %s %v", action.Selector, action.Paths)
 	case model.BrowserActionReload, model.BrowserActionBack, model.BrowserActionForward:
 		return string(action.Kind)
 	}

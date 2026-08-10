@@ -37,6 +37,9 @@ func (NoopDriver) Uncheck(_ context.Context, _ string) error { return nil }
 // SelectOption satisfies Driver.
 func (NoopDriver) SelectOption(_ context.Context, _, _ string) error { return nil }
 
+// SetFileInputs satisfies Driver.
+func (NoopDriver) SetFileInputs(_ context.Context, _ string, _ []string) error { return nil }
+
 // ScrollIntoView satisfies Driver.
 func (NoopDriver) ScrollIntoView(_ context.Context, _ string) error { return nil }
 

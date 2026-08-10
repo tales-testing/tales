@@ -20,7 +20,15 @@ const (
 	browserURLAttr      = "url"
 	browserKeyAttr      = "key"
 	browserSecureAttr   = "secure"
+	browserPathsAttr    = "paths"
 )
+
+// browserActionList is the human-readable action inventory reused by the
+// "unknown action" / "unknown actions attribute" diagnostics so both stay in
+// sync with decodeBrowserActionBlock.
+const browserActionList = "goto, click, fill, clear, press, submit, scroll, " +
+	"wait_visible, wait_not_visible, hover, select, check, uncheck, " +
+	"upload_file, reload, back, or forward"
 
 // decodeBrowserStepIfNeeded is the dispatcher called by decodeSteps. It
 // decodes a browser-shaped step when provider == "browser", and refuses
@@ -140,7 +148,7 @@ func decodeBrowserActions(path string, body hcl.Body) ([]model.BrowserAction, hc
 		attrRange := attr.Range()
 		diags = append(diags, diagError(
 			"Unknown actions attribute",
-			fmt.Sprintf("attribute %q is not allowed inside actions; use goto, click, fill, clear, press, submit, scroll, wait_visible, wait_not_visible, hover, select, check, uncheck, reload, back, or forward blocks.", name),
+			fmt.Sprintf("attribute %q is not allowed inside actions; use %s blocks.", name, browserActionList),
 			&attrRange,
 		))
 	}
@@ -187,6 +195,8 @@ func decodeBrowserActionBlock(path string, block *hclsyntax.Block) (*model.Brows
 		return decodeBrowserSelectorOnly(path, block, model.BrowserActionCheck)
 	case string(model.BrowserActionUncheck):
 		return decodeBrowserSelectorOnly(path, block, model.BrowserActionUncheck)
+	case string(model.BrowserActionUploadFile):
+		return decodeBrowserUploadFile(path, block)
 	case string(model.BrowserActionReload):
 		return decodeBrowserNoArg(path, block, model.BrowserActionReload)
 	case string(model.BrowserActionBack):
@@ -199,7 +209,7 @@ func decodeBrowserActionBlock(path string, block *hclsyntax.Block) (*model.Brows
 
 	return nil, hcl.Diagnostics{diagError(
 		"Unknown action",
-		fmt.Sprintf("action %q is not supported; use goto, click, fill, clear, press, submit, scroll, wait_visible, wait_not_visible, hover, select, check, uncheck, reload, back, or forward.", block.Type),
+		fmt.Sprintf("action %q is not supported; use %s.", block.Type, browserActionList),
 		&blockRange,
 	)}
 }
@@ -397,6 +407,51 @@ func decodeBrowserSelect(path string, block *hclsyntax.Block) (*model.BrowserAct
 		Line:     block.DefRange().Start.Line,
 		Selector: expr(path, selectorExpr),
 		Value:    expr(path, valueExpr),
+		Timeout:  expr(path, timeoutExpr),
+		Interval: expr(path, intervalExpr),
+	}, diags
+}
+
+// decodeBrowserUploadFile decodes the upload_file action, which sets the
+// files of an <input type="file"> through CDP. `paths` accepts a list of
+// strings, or a single string as sugar for a one-file upload; the shape is
+// validated at evaluation time by the runtime because the expression may be
+// built from captures.
+func decodeBrowserUploadFile(path string, block *hclsyntax.Block) (*model.BrowserAction, hcl.Diagnostics) {
+	diags := make(hcl.Diagnostics, 0)
+
+	selectorExpr, sDiags := requireActionAttr(block, "upload_file", browserSelectorAttr)
+	diags = append(diags, sDiags...)
+
+	pathsExpr, pDiags := requireActionAttr(block, "upload_file", browserPathsAttr)
+	diags = append(diags, pDiags...)
+
+	var timeoutExpr, intervalExpr hcl.Expression
+
+	for name, attr := range block.Body.Attributes {
+		switch name {
+		case browserSelectorAttr, browserPathsAttr:
+			continue
+		case browserTimeoutAttr:
+			timeoutExpr = attr.Expr
+		case browserIntervalAttr:
+			intervalExpr = attr.Expr
+		default:
+			rng := attr.Range()
+			diags = append(diags, diagError(
+				"Unknown upload_file attribute",
+				fmt.Sprintf("upload_file attribute %q is not supported; allowed: selector, paths, timeout, interval.", name),
+				&rng,
+			))
+		}
+	}
+
+	return &model.BrowserAction{
+		Kind:     model.BrowserActionUploadFile,
+		File:     path,
+		Line:     block.DefRange().Start.Line,
+		Selector: expr(path, selectorExpr),
+		Paths:    expr(path, pathsExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
 	}, diags

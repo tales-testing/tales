@@ -208,6 +208,20 @@ func evalBrowserActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenari
 				exec.X = x
 				exec.Y = y
 			}
+		case model.BrowserActionUploadFile:
+			sel, err := evalStringAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("browser.actions[%d].selector", i), action.Selector)
+			if err != nil {
+				return nil, err
+			}
+
+			exec.Selector = sel
+
+			paths, err := evalBrowserUploadPaths(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("browser.actions[%d].paths", i), action.Paths)
+			if err != nil {
+				return nil, err
+			}
+
+			exec.Paths = paths
 		case model.BrowserActionReload, model.BrowserActionBack, model.BrowserActionForward:
 			// no-arg actions
 		default:
@@ -530,6 +544,58 @@ func evalBrowserURLOrTitle(evaluator *lang.Evaluator, scope lang.ScopeData, scen
 	return exec, nil
 }
 
+// evalBrowserUploadPaths lowers the upload_file `paths` expression. A single
+// string is accepted as sugar for a one-element list so the common one-file
+// case stays terse; anything else must be a list / tuple of strings.
+func evalBrowserUploadPaths(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, exprPath string, expression model.Expression) ([]string, error) {
+	if expression.Empty() {
+		return nil, fmt.Errorf("%s: required", exprPath)
+	}
+
+	value, err := evaluator.Eval(expression, scope, lang.GenerateMeta{Scenario: scenarioName, Step: stepName, ExprPath: exprPath})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", exprPath, err)
+	}
+
+	if value.IsNull() {
+		return nil, fmt.Errorf("%s: must not be null", exprPath)
+	}
+
+	if value.Type() == cty.String {
+		if value.AsString() == "" {
+			return nil, fmt.Errorf("%s: entries must not be empty", exprPath)
+		}
+
+		return []string{value.AsString()}, nil
+	}
+
+	if ty := value.Type(); !ty.IsListType() && !ty.IsTupleType() {
+		return nil, fmt.Errorf("%s: must be a string or a list of strings", exprPath)
+	}
+
+	paths := make([]string, 0, value.LengthInt())
+
+	for it := value.ElementIterator(); it.Next(); {
+		_, elem := it.Element()
+
+		if elem.IsNull() || elem.Type() != cty.String {
+			return nil, fmt.Errorf("%s: every entry must be a string", exprPath)
+		}
+
+		if elem.AsString() == "" {
+			return nil, fmt.Errorf("%s: entries must not be empty", exprPath)
+		}
+
+		paths = append(paths, elem.AsString())
+	}
+
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("%s: must list at least one file", exprPath)
+	}
+
+	return paths, nil
+}
+
 func evalIntAttr(evaluator *lang.Evaluator, scope lang.ScopeData, scenarioName, stepName, exprPath string, expression model.Expression) (int, error) {
 	if expression.Empty() {
 		return 0, fmt.Errorf("%s: required", exprPath)
@@ -619,6 +685,10 @@ func browserActionSummary(action provider.BrowserActionExec) map[string]any {
 
 	if action.Interval > 0 {
 		entry["interval"] = action.Interval.String()
+	}
+
+	if len(action.Paths) > 0 {
+		entry["paths"] = action.Paths
 	}
 
 	if action.Kind == model.BrowserActionScroll && action.Selector == "" {

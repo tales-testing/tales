@@ -135,10 +135,11 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 
 	debugf("execute", "step lock acquired target=%q", target.Name)
 
-	stepDir := stepArtifactDir(p.artifactsBase, fileForStep(input), input.Scenario, stepName(input), input.Phase, input.Attempt)
+	stepFile := fileForStep(input)
+	stepDir := stepArtifactDir(p.artifactsBase, stepFile, input.Scenario, stepName(input), input.Phase, input.Attempt)
 	defaultURL := readConfigBaseURL(input.Config)
 
-	results, runErr := p.runActions(ctx, sc.Driver, sc, stepDir, defaultURL, target, input.Browser.Actions)
+	results, runErr := p.runActions(ctx, sc.Driver, sc, stepDir, defaultURL, target, input.Browser.Actions, stepFile)
 
 	out := &provider.Output{
 		Request:       map[string]cty.Value{},
