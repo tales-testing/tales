@@ -1,0 +1,33 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "2s"
+      }
+    }
+  }
+}
+
+scenario "Upload of a missing fixture fails fast" {
+  tags = ["browser", "fail"]
+
+  step "browser" "attach_missing_document" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/upload"
+      }
+      upload_file {
+        selector = "[data-testid='upload.input']"
+        paths    = ["./fixtures/does-not-exist.txt"]
+        timeout  = "1s"
+      }
+    }
+  }
+}

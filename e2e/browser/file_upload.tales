@@ -1,0 +1,126 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+scenario "File upload" {
+  tags = ["browser", "web", "upload"]
+
+  # The file input is hidden behind a label, so upload_file must reach it
+  # without waiting for visibility. The page hashes the picked bytes with
+  # SubtleCrypto, which pins that the browser really received the file.
+  step "browser" "attach_single_document" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/upload"
+      }
+      wait_visible {
+        selector = "[data-testid='upload.title']"
+      }
+      upload_file {
+        selector = "[data-testid='upload.input']"
+        paths    = ["./fixtures/contract.txt"]
+      }
+      wait_visible {
+        selector = "[data-testid='upload.ready']"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='upload.count']"
+        value    = "1"
+      }
+      text {
+        selector = "[data-testid='upload.names']"
+        value    = "contract.txt"
+      }
+      text {
+        selector = "[data-testid='upload.size']"
+        value    = "29"
+      }
+      text {
+        selector = "[data-testid='upload.sha256']"
+        value    = "322dbbe735684f4471d32e7dbf2c2d6780184fe0a7840b1725bac83f4ab75087"
+      }
+    }
+
+    capture {
+      digest = text("[data-testid='upload.sha256']")
+    }
+  }
+
+  # A multiple input takes the whole list in one action; the string form is
+  # the sugar for the single-file case.
+  step "browser" "attach_multiple_documents" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/upload"
+      }
+      upload_file {
+        selector = "[data-testid='upload.input']"
+        paths    = ["./fixtures/contract.txt", "./fixtures/appendix.txt"]
+        timeout  = "10s"
+      }
+      wait_visible {
+        selector = "[data-testid='upload.ready']"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='upload.count']"
+        value    = "2"
+      }
+      text {
+        selector = "[data-testid='upload.names']"
+        value    = "contract.txt,appendix.txt"
+      }
+      text {
+        selector = "[data-testid='upload.size']"
+        value    = "47"
+      }
+    }
+  }
+
+  step "browser" "attach_with_string_sugar" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/upload"
+      }
+      upload_file {
+        selector = "[data-testid='upload.input']"
+        paths    = "./fixtures/appendix.txt"
+      }
+      wait_visible {
+        selector = "[data-testid='upload.ready']"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='upload.names']"
+        value    = "appendix.txt"
+      }
+      text {
+        selector = "[data-testid='upload.sha256']"
+        value    = "a0129b7de35523be1152b4f4ae60645dd1b597f554cdd401cc066a93d5f39a1e"
+      }
+    }
+  }
+}
