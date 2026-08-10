@@ -34,7 +34,12 @@
       "Bash(go version *)",
       "Bash(git tag *)",
       "Bash(command -v goreleaser)",
-      "Bash(goreleaser --version)"
+      "Bash(goreleaser --version)",
+      "Bash(rtk grep *)",
+      "Bash(rtk go *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk read *)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }
