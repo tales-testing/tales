@@ -94,6 +94,63 @@ scenario "Postgres setup, query, teardown" {
     }
   }
 
+  step "sql" "insert_more_orgs" {
+    connection = "pg"
+
+    exec {
+      sql  = "INSERT INTO tales_orgs (id, vip) VALUES ($1, $2), ($3, $4)"
+      args = ["org_456", false, "org_789", true]
+    }
+
+    expect {
+      json = {
+        rows_affected = 2
+      }
+    }
+  }
+
+  # A list argument expands into a run of placeholders: IN ($1) becomes
+  # IN ($1,$2,$3) and the values are bound in order.
+  step "sql" "get_orgs_in" {
+    connection = "pg"
+
+    query {
+      sql  = "SELECT id FROM tales_orgs WHERE id IN ($1) ORDER BY id"
+      args = [["org_123", "org_789"]]
+    }
+
+    expect {
+      json = {
+        row_count = 2
+        rows = [
+          { id = "org_123" },
+          { id = "org_789" },
+        ]
+      }
+    }
+  }
+
+  # Mixing scalars and lists renumbers every later placeholder: the trailing
+  # $2 below is rewritten to $4 once the list expands into $2,$3.
+  step "sql" "get_vip_orgs_in" {
+    connection = "pg"
+
+    query {
+      sql  = "SELECT id FROM tales_orgs WHERE id IN ($1) AND vip = $2 ORDER BY id"
+      args = [["org_123", "org_456", "org_789"], true]
+    }
+
+    expect {
+      json = {
+        row_count = 2
+        rows = [
+          { id = "org_123" },
+          { id = "org_789" },
+        ]
+      }
+    }
+  }
+
   teardown {
     step "sql" "drop_table" {
       connection = "pg"
@@ -181,6 +238,61 @@ scenario "MySQL setup, query, teardown" {
 
     capture {
       vip = response.json.rows[0].vip
+    }
+  }
+
+  step "sql" "insert_more_orgs" {
+    connection = "my"
+
+    exec {
+      sql  = "INSERT INTO tales_orgs (id, vip) VALUES (?, ?), (?, ?)"
+      args = ["org_456", false, "org_789", true]
+    }
+
+    expect {
+      json = {
+        rows_affected = 2
+      }
+    }
+  }
+
+  # A list argument expands into a run of placeholders: IN (?) becomes
+  # IN (?,?,?) and the values are bound in order.
+  step "sql" "get_orgs_in" {
+    connection = "my"
+
+    query {
+      sql  = "SELECT id FROM tales_orgs WHERE id IN (?) ORDER BY id"
+      args = [["org_123", "org_789"]]
+    }
+
+    expect {
+      json = {
+        row_count = 2
+        rows = [
+          { id = "org_123" },
+          { id = "org_789" },
+        ]
+      }
+    }
+  }
+
+  step "sql" "get_vip_orgs_in" {
+    connection = "my"
+
+    query {
+      sql  = "SELECT id FROM tales_orgs WHERE id IN (?) AND vip = ? ORDER BY id"
+      args = [["org_123", "org_456", "org_789"], true]
+    }
+
+    expect {
+      json = {
+        row_count = 2
+        rows = [
+          { id = "org_123" },
+          { id = "org_789" },
+        ]
+      }
     }
   }
 

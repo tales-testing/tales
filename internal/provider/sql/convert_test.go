@@ -41,17 +41,67 @@ func TestConvertArgScalars(t *testing.T) {
 	}
 }
 
-func TestConvertArgRejectsCollections(t *testing.T) {
+func TestConvertArgRejectsObjects(t *testing.T) {
 	t.Parallel()
-
-	list := cty.ListVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")})
-	if _, err := ConvertArg(list); err == nil {
-		t.Errorf("ConvertArg(list): want error, got nil")
-	}
 
 	obj := cty.ObjectVal(map[string]cty.Value{"x": cty.NumberIntVal(1)})
 	if _, err := ConvertArg(obj); err == nil {
 		t.Errorf("ConvertArg(object): want error, got nil")
+	}
+
+	m := cty.MapVal(map[string]cty.Value{"x": cty.StringVal("a")})
+	if _, err := ConvertArg(m); err == nil {
+		t.Errorf("ConvertArg(map): want error, got nil")
+	}
+}
+
+// A list becomes a ListArg, which the provider later expands into a
+// placeholder run.
+func TestConvertArgLowersListsToListArg(t *testing.T) {
+	t.Parallel()
+
+	got, err := ConvertArg(cty.TupleVal([]cty.Value{
+		cty.NumberIntVal(1),
+		cty.StringVal("a"),
+		cty.NullVal(cty.String),
+	}))
+	if err != nil {
+		t.Fatalf("ConvertArg(tuple): %v", err)
+	}
+
+	list, ok := got.(ListArg)
+	if !ok {
+		t.Fatalf("ConvertArg(tuple) = %T, want ListArg", got)
+	}
+
+	if len(list) != 3 || list[0] != int64(1) || list[1] != "a" || list[2] != nil {
+		t.Fatalf("ListArg = %#v, want [1 \"a\" <nil>]", list)
+	}
+
+	empty, err := ConvertArg(cty.EmptyTupleVal)
+	if err != nil {
+		t.Fatalf("ConvertArg(empty tuple): %v", err)
+	}
+
+	if l, ok := empty.(ListArg); !ok || len(l) != 0 {
+		t.Fatalf("ConvertArg(empty tuple) = %#v, want an empty ListArg", empty)
+	}
+}
+
+// A placeholder expands into a flat run of values, so a list of lists has no
+// meaning; and a set has no source order, so its expansion would not be
+// reproducible.
+func TestConvertArgRejectsNestedListsAndSets(t *testing.T) {
+	t.Parallel()
+
+	nested := cty.TupleVal([]cty.Value{cty.TupleVal([]cty.Value{cty.NumberIntVal(1)})})
+	if _, err := ConvertArg(nested); err == nil || !strings.Contains(err.Error(), "nested list") {
+		t.Fatalf("ConvertArg(nested list) error = %v, want a nested-list rejection", err)
+	}
+
+	set := cty.SetVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")})
+	if _, err := ConvertArg(set); err == nil || !strings.Contains(err.Error(), "sets are not supported") {
+		t.Fatalf("ConvertArg(set) error = %v, want a set rejection", err)
 	}
 }
 
@@ -60,7 +110,7 @@ func TestConvertArgsReportsIndex(t *testing.T) {
 
 	_, err := ConvertArgs([]cty.Value{
 		cty.StringVal("ok"),
-		cty.ListVal([]cty.Value{cty.NumberIntVal(1)}),
+		cty.ObjectVal(map[string]cty.Value{"x": cty.NumberIntVal(1)}),
 	})
 
 	if err == nil || !strings.Contains(err.Error(), "args[1]") {
