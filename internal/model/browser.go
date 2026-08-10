@@ -37,6 +37,8 @@ const (
 	BrowserActionBack BrowserActionKind = "back"
 	// BrowserActionForward navigates forward in the session history.
 	BrowserActionForward BrowserActionKind = "forward"
+	// BrowserActionUploadFile sets the files of an <input type="file">.
+	BrowserActionUploadFile BrowserActionKind = "upload_file"
 )
 
 // BrowserStep is the provider-specific payload attached to a Step when
@@ -61,6 +63,10 @@ type BrowserAction struct {
 	Interval Expression
 	X        Expression
 	Y        Expression
+	// Paths carries the upload_file source paths. The expression evaluates
+	// to a list of strings, or to a single string as sugar for a one-file
+	// upload.
+	Paths Expression
 }
 
 // BrowserExpect groups assertions for a browser step. Each slice may be empty.

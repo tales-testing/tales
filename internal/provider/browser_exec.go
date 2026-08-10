@@ -28,8 +28,12 @@ type BrowserActionExec struct {
 	Interval time.Duration
 	X        int
 	Y        int
-	File     string
-	Line     int
+	// Paths holds the upload_file sources exactly as authored. The provider
+	// resolves relative entries against the directory of the .tales file
+	// declaring the step.
+	Paths []string
+	File  string
+	Line  int
 }
 
 // BrowserExpectExec groups resolved expectations for a browser step.

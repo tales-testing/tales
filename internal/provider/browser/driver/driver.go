@@ -31,6 +31,11 @@ type Driver interface {
 	Uncheck(ctx context.Context, selector string) error
 	// SelectOption selects a value on a <select> element.
 	SelectOption(ctx context.Context, selector, value string) error
+	// SetFileInputs sets the files of an <input type="file"> element. paths
+	// must be absolute and already validated by the caller. The element's
+	// value is read-only from the DOM, so this goes through CDP rather than
+	// through Fill.
+	SetFileInputs(ctx context.Context, selector string, paths []string) error
 	// ScrollIntoView scrolls the matching element into view.
 	ScrollIntoView(ctx context.Context, selector string) error
 	// ScrollBy scrolls the viewport by x / y pixels.

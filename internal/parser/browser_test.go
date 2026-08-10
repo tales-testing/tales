@@ -153,6 +153,10 @@ scenario "actions_smoke" {
       uncheck {
         selector = "input#newsletter"
       }
+      upload_file {
+        selector = "input#document"
+        paths    = ["./fixtures/contract.pdf"]
+      }
       reload {}
       back {}
       forward {}
@@ -171,8 +175,109 @@ scenario "actions_smoke" {
 		t.Fatal("expected step.Browser to be populated")
 	}
 
-	if got := len(step.Browser.Actions); got != 17 {
-		t.Fatalf("expected 17 actions, got %d", got)
+	if got := len(step.Browser.Actions); got != 18 {
+		t.Fatalf("expected 18 actions, got %d", got)
+	}
+}
+
+func TestLoadPathBrowserUploadFile(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "upload" {
+  step "browser" "attach" {
+    target = "chrome"
+    actions {
+      upload_file {
+        selector = "input#document"
+        paths    = ["./fixtures/contract.pdf", "./fixtures/appendix.pdf"]
+        timeout  = "5s"
+      }
+      upload_file {
+        selector = "input#avatar"
+        paths    = "./fixtures/avatar.png"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Browser.Actions
+	if len(actions) != 2 {
+		t.Fatalf("expected 2 actions, got %d", len(actions))
+	}
+
+	for i, action := range actions {
+		if action.Kind != model.BrowserActionUploadFile {
+			t.Fatalf("actions[%d].Kind = %q, want upload_file", i, action.Kind)
+		}
+
+		if action.Selector.Empty() || action.Paths.Empty() {
+			t.Fatalf("actions[%d] must carry selector and paths, got %+v", i, action)
+		}
+	}
+
+	if actions[0].Timeout.Empty() {
+		t.Error("expected the first upload_file to carry a timeout")
+	}
+}
+
+func TestLoadPathBrowserUploadFileValidation(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		block string
+		want  string
+	}{
+		{
+			name:  "missing paths",
+			block: `upload_file { selector = "input#document" }`,
+			want:  "paths",
+		},
+		{
+			name:  "missing selector",
+			block: `upload_file { paths = ["./a.pdf"] }`,
+			want:  "selector",
+		},
+		{
+			name:  "unknown attribute",
+			block: "upload_file {\n        selector = \"input#a\"\n        paths    = [\"./a.pdf\"]\n        value    = \"x\"\n      }",
+			want:  "Unknown upload_file attribute",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			content := `version = 1
+
+scenario "upload" {
+  step "browser" "attach" {
+    target = "chrome"
+    actions {
+      ` + tc.block + `
+    }
+  }
+}
+`
+
+			_, diags := LoadPath(writeTales(t, content))
+			if !diags.HasErrors() {
+				t.Fatalf("expected diagnostics for %s", tc.name)
+			}
+
+			if !strings.Contains(diags.Error(), tc.want) {
+				t.Fatalf("diagnostics = %s, want it to mention %q", diags.Error(), tc.want)
+			}
+		})
 	}
 }
 

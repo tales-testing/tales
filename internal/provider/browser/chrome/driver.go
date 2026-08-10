@@ -187,6 +187,45 @@ func (d *chromedpDriver) SelectOption(ctx context.Context, selector, value strin
 	return d.run(ctx, chromedp.Evaluate(script, nil))
 }
 
+// SetFileInputs implements driver.Driver via DOM.setFileInputFiles (wrapped
+// by chromedp.SetUploadFiles). The element's `value` is read-only from the
+// DOM side for security reasons, so this is the only way to drive a file
+// picker. The node only has to be present — file inputs are routinely hidden
+// behind a styled label — so no visibility wait is issued; the element kind
+// is checked first so a wrong selector reports the mismatch instead of a
+// bare CDP error. A `change` event is dispatched afterwards because
+// setFileInputFiles alone does not fire one, and frontend code that reads
+// the picked files hangs off that event.
+func (d *chromedpDriver) SetFileInputs(ctx context.Context, selector string, paths []string) error {
+	checkJS := fmt.Sprintf(`
+		(function(){
+			var el = document.querySelector(%q);
+			if (!el) throw new Error("element not found: " + %q);
+			if (el.tagName !== "INPUT" || el.type !== "file") {
+				throw new Error("element is not an input[type=file]: " + %q);
+			}
+			return true;
+		})()
+	`, selector, selector, selector)
+
+	changeJS := fmt.Sprintf(`
+		(function(){
+			var el = document.querySelector(%q);
+			if (!el) return;
+			el.dispatchEvent(new Event("input", { bubbles: true }));
+			el.dispatchEvent(new Event("change", { bubbles: true }));
+		})()
+	`, selector)
+
+	var ok bool
+
+	return d.run(ctx,
+		chromedp.Evaluate(checkJS, &ok),
+		chromedp.SetUploadFiles(selector, paths, chromedp.ByQuery),
+		chromedp.Evaluate(changeJS, nil),
+	)
+}
+
 // ScrollIntoView implements driver.Driver.
 func (d *chromedpDriver) ScrollIntoView(ctx context.Context, selector string) error {
 	return d.run(ctx, chromedp.ScrollIntoView(selector, chromedp.ByQuery))

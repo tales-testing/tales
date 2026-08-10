@@ -153,6 +153,14 @@ func (f *FakeDriver) SelectOption(_ context.Context, selector, value string) err
 	return f.failure("SelectOption", selector)
 }
 
+// SetFileInputs records the call, joining the paths into Call.Value so the
+// existing Call assertions stay usable.
+func (f *FakeDriver) SetFileInputs(_ context.Context, selector string, paths []string) error {
+	f.record(Call{Method: "SetFileInputs", Selector: selector, Value: strings.Join(paths, ",")})
+
+	return f.failure("SetFileInputs", selector)
+}
+
 // ScrollIntoView records the call.
 func (f *FakeDriver) ScrollIntoView(_ context.Context, selector string) error {
 	f.record(Call{Method: "ScrollIntoView", Selector: selector})
