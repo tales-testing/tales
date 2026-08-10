@@ -50,11 +50,22 @@ Scenario Create blog post (e2e/pass/blog.tales) PASS in 842ms
   ✔ create_post        POST   /blog/posts   201   418ms
   ✔ delete_user        DELETE /users/abc    204   112ms  (teardown)
 
+Suite teardown (e2e/pass/_suite.tales)
+  ✔ purge_test_users                              9ms
+
 Summary: scenarios 12 passed / 0 failed / 0 skipped, steps 47 passed / 0 failed
 Duration: 1.24s
 ```
 
 Failed steps include a diagnostic block pointing at the JSON path that mismatched, with want vs got side by side.
+
+The `Suite teardown` block is printed after the last scenario, and only when the suite declares a top-level `teardown { ... }`. Suites without one produce exactly the same output as before.
+
+Every failed scenario also prints a replay command. The path it shows is the one the run was launched with, so it can be pasted as-is: a directory run also loads sibling `_config.tales` and `keywords/` files that the failing scenario's own file would not pull in.
+
+```text
+  replay: tales test --seed 1234 --scenario "Create blog post" ./e2e/pass
+```
 
 ## Flags
 

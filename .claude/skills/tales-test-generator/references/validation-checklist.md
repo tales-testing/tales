@@ -8,6 +8,7 @@ Run this checklist before considering a `.tales` suite done.
 - `version = 1` is present
 - Every scenario has unique name
 - Step names are unique across main steps + teardown steps
+- At most one file in the suite declares a top-level `teardown { ... }` block, and its step names are unique inside it
 - Every step has a provider and name labels
 - Uses `step` / `expect`, not the deprecated aliases `case` / `response` (they load but warn on stderr and will be removed)
 
@@ -18,6 +19,9 @@ Run this checklist before considering a `.tales` suite done.
 - Raw response-body checks use `expect.body` when the contract is text-oriented
 - `result.<step>` references point to existing step names
 - `teardown` uses `when = can(...)` guards when a prerequisite can be missing
+- `when` on a non-teardown step is intentional: it is honored everywhere and cascade-skips the steps that reference the guarded step's results
+- Suite-level `teardown` steps are idempotent: the block also runs when `--tag` / `--scenario` matched no scenario
+- SQL `args` lists are non-empty when bound to an `IN (...)` placeholder; guard the step with `when` otherwise
 
 ## 3) Determinism and resilience
 

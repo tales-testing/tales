@@ -68,7 +68,8 @@ Use this skill when asked to:
 - `step "file" "name" { path = "<path>" expect { exists/size_bytes/sha1..sha512_256/text/json } capture { = file.path/file.size_bytes/file.sha*/file.text/file.json } }` — read-only file inspection. Missing file => `exists=false` (only fails when a read is required). Relative paths resolve under `scenario.workdir`; project files via `${project.dir}/...`.
 - `step "rpc" "name" { target = "<target>"; call { service = "pkg.Service"; method = "Method"; message = {...}; headers? metadata? timeout? } expect { status = "ok"|"not_found"|... ; message = {...}; error = { code, message }; headers? metadata? trailers? } capture { = response.message.* / response.status / response.error.message } }` — dynamic ConnectRPC + native gRPC. Descriptors come from `config.rpc.descriptors.<name>.path = "./descriptor.bin"` (Buf or protoc) or `.reflection { address, plaintext, tls?, headers? }`. Targets: `config.rpc.targets.<name>.protocol = "connect"|"grpc"`, plus `base_url` (connect) or `address` (grpc), `encoding = "json"|"proto"`, optional `headers` / `metadata` / `tls { ca_file, cert_file, key_file, server_name, insecure_skip_verify }`. V1 supports unary only (streaming methods rejected at descriptor resolution). See the [rpc provider reference](../../../website/src/content/docs/docs/providers/rpc.mdx).
 - `step "exec" "name" { command = "<prog>"; args?; env?; stdin?; timeout? (default 30s); sandbox { mode=process; workdir=scenario|project|<path>; env=minimal|inherit; network } expect { exit_code; stdout; stderr; stdout_json } capture { = exec.exit_code/exec.duration_ms/stdout.json.*/stdout.raw/stderr.raw } }`. **Disabled unless `tales test --allow-exec`** (exact failure: `exec provider is disabled by default. Re-run with --allow-exec.`). No shell: the program is run directly with `args`. Command resolution: bare name via PATH, `./relative` under `project.dir`, absolute only within workdir/project.dir. The `process` sandbox is hygiene, not a security boundary; `docker` mode is reserved (errors). Not seed-deterministic. See the File/Exec provider references.
-- optional `teardown { step ... }`
+- optional `teardown { step ... }` (scenario-level)
+- optional **top-level** `teardown { step ... }` — suite-wide cleanup, at most one per suite. See the Suite teardown section below.
 - optional `keyword "..." { inputs { ... } step ... outputs { ... } }`
 - optional `skip_if { ... }` / `skip_unless { ... }` on a `scenario` or `step` to gate execution on `host.os` / `host.arch`, env vars, or any bool expression. Attribute set: `condition`, `reason`, `os`, `arch`, `env_set`, `env`. Skipped scenarios skip their steps and teardown; skipped steps cascade-skip their dependents. See [docs/skip.md](../../../docs/skip.md).
 
@@ -84,7 +85,8 @@ Use this skill when asked to:
 - Use bounded `retry` blocks for eventually consistent HTTP flows instead of adding artificial sleeps.
 
 4. Always include resilient cleanup:
-- Put cleanup calls in `teardown`.
+- Put per-scenario cleanup calls in the scenario's `teardown`.
+- Put suite-wide cleanup (shared fixtures, purge queries that belong to no single scenario) in the **top-level** `teardown` block, in exactly one file of the suite.
 - Guard destructive cleanup with `when = can(result.<creator_step>.<id_field>)`.
 - For deletion status, prefer `one_of([200, 204, 404])` when API semantics allow idempotent cleanup.
 
@@ -107,7 +109,12 @@ Use this skill when asked to:
   - `inputs = { ... }` when keyword inputs are required
 - Avoid step name collisions:
   - unique names across scenario steps and teardown steps
+  - unique names inside the suite-level `teardown` block
   - keyword internal step names must not collide with outer scenario step names
+- `when` gates **every** step, not just teardown steps. On a scenario step it
+  also cascade-skips any later step referencing `result.<skipped-step>`; the
+  scenario itself stays green. Use it whenever a step is conditional instead of
+  reaching for `skip_if` on data that is only known at runtime.
 - A keyword can be invoked multiple times in one scenario: `generate(...)` calls inside it are seeded per call site (the calling step name is mixed in), so each invocation yields distinct values. Prefer reusing a `register_user`-style keyword over duplicating steps when you need several distinct entities.
 - Use `request.body { json = ... }`, `request.body { form = ... }`, `request.body { raw = ... }`, or `request.body { multipart { ... } }` for request bodies. The four modes are mutually exclusive.
 - Use `request.body.form` for `application/x-www-form-urlencoded` payloads; Tales URL-encodes form values and sets `Content-Type` when it is absent.
@@ -492,6 +499,64 @@ step "http" "find_verification_email" {
 }
 ```
 
+## Suite-level teardown
+
+Scenarios are unordered and run in parallel, so none of them can be "the last
+one". When cleanup belongs to the whole suite, declare a **top-level**
+`teardown` block. Put it in a dedicated, clearly-named file (for example
+`_suite_teardown.tales`), because only one file per suite may declare it.
+
+```hcl
+version = 1
+
+teardown {
+  step "sql" "purge_test_users" {
+    connection = "app"
+
+    exec {
+      sql = "DELETE FROM users WHERE email LIKE '%@tales.test'"
+    }
+  }
+
+  step "http" "drop_sandbox" {
+    when = can(config.sandbox_id)
+
+    request {
+      method = "DELETE"
+      url    = "${config.base_url}/sandboxes/${config.sandbox_id}"
+    }
+
+    expect {
+      status = one_of([204, 404])
+    }
+  }
+}
+```
+
+Rules to respect when generating one:
+- **One per suite.** A second declaring file is a load error naming the first.
+- Runs once, after every scenario, and **before providers are closed**, so SQL /
+  gRPC / browser sessions are still usable.
+- Runs **even when `--tag` / `--scenario` matched no scenario**. Make every step
+  idempotent, and gate the conditional ones with `when`.
+- Steps run in source order and a failure does **not** stop the later ones.
+- Later steps can read `result.<earlier-step>` from the same block. They cannot
+  read scenario results.
+- A failure makes the run exit `1` even when every scenario passed, so only put
+  assertions there that must genuinely hold.
+- Inside the block, `scenario.workdir` points at a dedicated workspace and
+  `scenario.name` is the reserved value `tales:suite-teardown`.
+
+Do **not** use it for state a single scenario owns: that belongs in the
+scenario's own `teardown`.
+
+## Teardown and `--timeout`
+
+Teardown steps (scenario and suite) run on a context detached from `--timeout`,
+bounded by `--teardown-grace` (default `30s`). An exhausted global budget stops
+the run without cancelling the cleanup it made necessary. `--teardown-grace 0`
+restores the old inherit-the-cancelled-context behavior.
+
 ## Output contract
 
 When asked to generate tests, produce:
@@ -553,8 +618,9 @@ When the DSN may not be present (CI without a DB), gate the scenario with
 ### Step shape
 
 A SQL step declares exactly one of `exec` or `query`. Both blocks take
-`sql` (required) and optional `args` (a list of scalars). Lists or
-objects in `args` are rejected at runtime.
+`sql` (required) and optional `args`: a list whose entries are scalars,
+or a nested flat list that expands into a placeholder run (see below).
+Objects, maps, nested-nested lists and sets are rejected at runtime.
 
 ```hcl
 step "sql" "make_org_vip" {
@@ -642,9 +708,16 @@ teardown {
   overwrite earlier ones), so colocate related SQL scenarios in a single
   file or register all required connections in every file that needs
   them.
-- Args are scalar-only: `string`, `bool`, integer/float `number`, or
-  `null`. Wrap composite values into JSON strings before binding if
-  needed.
+- Args are `string`, `bool`, integer/float `number`, `null`, or a flat
+  list of those. Wrap objects/maps into JSON strings before binding.
+- A list arg expands the placeholder it is bound to:
+  `sql = "... WHERE id IN ($1)"` with `args = [["a", "b", "c"]]` is sent
+  as `IN ($1,$2,$3)` (every later `$N` is renumbered); MySQL `IN (?)`
+  becomes `IN (?,?,?)`. Write the dialect's own placeholder, Tales does
+  not translate between them.
+- Rejected explicitly (do not generate these): an empty list (guard the
+  step with `when` instead), a nested list, a set, the same list
+  placeholder used twice, or a placeholder/arg count mismatch.
 - Integers preserve precision (bound as `int64`); non-integer numbers
   become `float64`.
 - `[]byte` columns are decoded as UTF-8 strings; non-UTF-8 bytes cause

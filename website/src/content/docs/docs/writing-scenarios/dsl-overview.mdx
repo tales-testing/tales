@@ -21,9 +21,12 @@ config {
 generator "<type>" "<name>" { … }   // zero or more
 keyword   "<name>"          { … }   // zero or more
 scenario  "<name>"          { … }   // zero or more
+teardown                    { … }   // at most one per suite (not per file)
 ```
 
 `version = 1` is optional and reserved for future format bumps. `config { ... }` is a free-form map exposed under the `config.*` expression namespace, put env-driven URLs, secrets, and connection definitions there.
+
+The top-level `teardown { ... }` block is suite-wide cleanup: it runs once, after every scenario, and only one file in the suite may declare it. See [Suite-level teardown](/docs/writing-scenarios/retry-teardown/#suite-level-teardown).
 
 Source order matters for `scenario` blocks (they run in suite order) and for `step` blocks inside a scenario (they run sequentially). The parser preserves textual order even when `step` and the alias `case` are interleaved.
 

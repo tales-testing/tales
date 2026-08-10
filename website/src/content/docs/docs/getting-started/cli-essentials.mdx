@@ -35,6 +35,7 @@ Runs every `.tales` scenario found in `<path>` (recursively).
 | `--no-color`                  | bool     | `false`                  | Strip ANSI colour codes from console output.                                               |
 | `--no-progress`               | bool     | `false`                  | Disable scenario start/end progress events on stderr.                                      |
 | `--timeout`                   | duration | `0` (disabled)           | Global wall-clock budget. Cancels in-flight scenarios when exceeded.                       |
+| `--teardown-grace`            | duration | `30s`                    | Budget granted to teardown steps on a context detached from `--timeout`. `0` restores the legacy behavior. |
 | `--verbose`                   | bool     | `false`                  | Print a 30s heartbeat listing scenarios still running.                                     |
 | `--report-junit <path>`       | string   | (none)                   | Write JUnit XML to `<path>`.                                                               |
 | `--report-jsonl <path>`       | string   | (none)                   | Write a JSONL event stream to `<path>`.                                                    |
@@ -85,6 +86,18 @@ tales: loaded 12 scenarios from 5 files; timeout=disabled
 While the runner is in flight (and `--no-progress` is not set), scenario start/end events are streamed on stderr. `--verbose` adds a heartbeat every 30 seconds listing scenarios still running, invaluable when you suspect one is stuck.
 
 If `--timeout` fires before the suite completes, the CLI prints the names of the in-flight scenarios so you know exactly which ones stalled.
+
+`--timeout` stops the run but does **not** cancel cleanup: teardown steps (scenario and suite) run on a detached context with their own `--teardown-grace` budget, because the run that ran out of budget is precisely the one that left resources behind. Pass `--teardown-grace 0` to restore the previous behavior. See [Retry & teardown](/docs/writing-scenarios/retry-teardown/#teardown-and---timeout).
+
+### Replaying a failure
+
+Every failed scenario prints a ready-to-paste replay command:
+
+```text
+  replay: tales test --seed 1234 --scenario "Create blog post" ./e2e/pass
+```
+
+The path is the one you launched the run with, not the failing scenario's own file: a directory run also loads sibling `_config.tales` and `keywords/` files, so replaying a single file would fail to resolve them.
 
 ## `tales validate`
 
