@@ -21,7 +21,7 @@
 - **Deterministic seeded data**: `--seed 1234` produces byte-identical generated values on every run.
 - **Scenarios in parallel, steps sequential in file order.** Chained captures stay deterministic.
 - **HTTP provider** including ConnectRPC JSON over HTTP and multipart uploads.
-- **SQL provider** (`step "sql"`) for PostgreSQL + MySQL preconditions and teardown. See [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/).
+- **SQL provider** (`step "sql"`) for PostgreSQL + MySQL preconditions and teardown. List args expand into placeholder runs, so `WHERE id IN ($1)` with `args = [[1, 2, 3]]` is sent as `IN ($1,$2,$3)`. See [docs/providers/sql/](https://taleslabs.org/docs/providers/sql/).
 - **Native iOS UI automation via XCUITest** (`step "mobile"`), no Appium / no Maestro. The XCUITest driver is **embedded** in the `tales` binary and built on first use into `~/Library/Caches/tales/apple-driver/`, so a released binary runs iOS tests on any macOS+Xcode host. `tales doctor` (`--json` for CI) inspects the cache, embedded source, Xcode, and simctl state in one place. See [docs/providers/mobile-ios/](https://taleslabs.org/docs/providers/mobile-ios/).
 - **Browser UI automation via Chrome DevTools Protocol** (`step "browser"`), no Puppeteer / no Playwright / no Selenium. Drives Chrome / Chromium through Go-native chromedp; ordered `actions` (goto/click/fill/…), polled `expect` (visible/text/url/title/attribute/…), Web performance budgets via `expect.web_perf { fcp = lt("1800ms") … }` and `browser.performance` capture (FCP/LCP/CLS/load/DOM/resources). Per-scenario browsing context for cookie isolation, full visual-report integration with masked secure values. See [docs/providers/browser/](https://taleslabs.org/docs/providers/browser/).
 - **Mail provider** (`step "mail"`), inject an email over SMTP or LMTP to test an application's mail-ingestion path end to end, then assert the result through HTTP/SQL/UI. Go-native (no external mail binary), with `text`/`html`/`multipart` bodies, attachments, custom headers, a deterministic Message-ID, SMTP TLS/STARTTLS/AUTH PLAIN, and LMTP over tcp or unix socket. Server **rejections are assertable** (`accepted`/`rejected`/`stage`/`status_code`/`enhanced_status_code`) so "the server refuses this email" can be the expected outcome, while transport errors still fail the step. Not a mailbox client. See [docs/providers/mail/](https://taleslabs.org/docs/providers/mail/).
@@ -37,8 +37,9 @@ This repository contains a pragmatic V1 focused on HTTP workflows:
 - `scenario` + `step` execution model.
 - `expect` assertions.
 - `capture` for stable step outputs.
-- `teardown` block always executed after main steps.
-- `when = can(...)` support in teardown.
+- `teardown` block always executed after main steps, plus a suite-level
+  `teardown` block executed once after every scenario.
+- `when = can(...)` gating on every step (scenario, keyword, teardown).
 - executable `keyword` blocks with `inputs` and `outputs`.
 - Parallel scenario execution (`--parallel`).
 - Deterministic generation via `--seed`.
@@ -245,6 +246,7 @@ Flags:
 - `--report-html <path>`: write a single-file visual HTML report (mobile screenshots replay).
 - `--capture-screenshots <mode>`: mobile screenshot capture mode. One of `none`, `failures`, `steps`, `actions`. Defaults to `failures`, or `actions` when `--report-html` is set.
 - `--timeout <duration>`: global wall-clock budget for the whole run (e.g. `30s`, `5m`, `1h`). When it fires, in-flight steps see a canceled context, are reported as failed, the CLI lists the scenarios that were still running, and the run exits with `1`. `0` (the default) disables the budget: Tales then waits indefinitely.
+- `--teardown-grace <duration>`: wall-clock budget granted to teardown steps (scenario and suite) on a context **detached** from `--timeout`. An exhausted global budget must not cancel the cleanup that the aborted run made necessary. Defaults to `30s`; `0` restores the legacy behavior where teardown inherits the cancelled run context.
 - `--verbose`: emit a heartbeat on stderr every 30s listing every scenario still in flight along with its elapsed time. Off by default.
 - `--no-progress`: silence two things: the streaming `scenario X starting / PASS / FAIL` lines emitted on stderr while the suite is running, AND the per-step progress counters that the final stdout report adds when stdout is a TTY. The scenario/step pass-fail summary itself is always rendered.
 
@@ -295,7 +297,7 @@ Exit codes:
 - `capture` to expose a stable contract for next steps.
 - `result.<step_name>.<field>` for cross-step references.
 - `generator "email"`, `generator "password"`, `generator "timezone"`, `generator "locale"`, `generator "person"`, `generator "mac_address"`, `generator "bytes"`, `generator "date"`, `generator "datetime"`, `generator "unix_time"`, `generator "siren"`, `generator "siret"`, `generator "ein"`, `generator "duns"`, `generator "lei"`, `generator "vat_number"`, and `generator "euid"` for deterministic test data.
-- `teardown { ... }` for deterministic cleanup.
+- `teardown { ... }` for deterministic cleanup, per scenario or (top-level) per suite.
 - `keyword \"...\" { ... }` for reusable flows.
 - `skip_if { ... }` / `skip_unless { ... }` on a scenario or step to gate execution on OS, architecture, env vars, or any HCL expression. See [docs/writing-scenarios/conditional-execution/](https://taleslabs.org/docs/writing-scenarios/conditional-execution/).
 
@@ -465,6 +467,12 @@ Rules:
   and are not executed.
 - `teardown` steps run sequentially in file order, after the scenario's steps,
   even when a step failed.
+- The suite-level `teardown { ... }` block (top-level, at most one per suite)
+  runs once after **every** scenario has finished and before providers are
+  closed, including when `--tag` / `--scenario` selected no scenario. A failure
+  there makes the run exit `1` even when every scenario passed.
+- Teardown steps run on a context detached from `--timeout`, bounded by
+  `--teardown-grace`.
 
 ## Built-in Functions and Matchers
 

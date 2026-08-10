@@ -22,7 +22,7 @@ Each line carries a `type` field. There are three:
 | `type`     | Emitted when                                                                                              |
 | ---------- | --------------------------------------------------------------------------------------------------------- |
 | `scenario` | Once per scenario, summarising its final status, duration, and (when failed/skipped) error / skip reason. |
-| `step`     | Once per step. Includes a `phase` field set to `"step"` for main-flow steps and `"teardown"` for teardown steps. Retried steps surface their attempt count via `attempts`. |
+| `step`     | Once per step. Includes a `phase` field set to `"step"` for main-flow steps, `"teardown"` for scenario teardown steps and `"suite_teardown"` for the suite-level teardown block. Retried steps surface their attempt count via `attempts`. |
 | `action`   | Once per UI action for mobile steps that recorded actions (any `--capture-screenshots` mode other than `none`). Emitted immediately after the parent `step` event. |
 
 There is no separate `suite_start` / `suite_end` envelope. Scenario aggregation is up to the consumer (`jq -s 'group_by(.scenario)'` or similar).
@@ -34,9 +34,12 @@ There is no separate `suite_start` / `suite_end` envelope. Scenario aggregation 
 {"type":"step","phase":"step","scenario":"Create blog post","step":"create_user","provider":"http","status":"pass","status_code":201,"duration_ms":312,"seed":1234,"file":"e2e/pass/blog.tales","request":{"method":"POST","url":"http://localhost:1337/users"},"response":{"status_code":201,"json":{"id":"u_abc"}}}
 {"type":"step","phase":"step","scenario":"Create blog post","step":"create_post","provider":"http","status":"pass","status_code":201,"duration_ms":418,"seed":1234,"file":"e2e/pass/blog.tales"}
 {"type":"step","phase":"teardown","scenario":"Create blog post","step":"delete_user","provider":"http","status":"pass","status_code":204,"duration_ms":112,"seed":1234,"file":"e2e/pass/blog.tales"}
+{"type":"step","phase":"suite_teardown","scenario":"tales:suite-teardown","step":"purge_test_users","provider":"sql","status":"pass","duration_ms":9,"seed":1234,"file":"e2e/pass/_suite.tales"}
 ```
 
 The order is `scenario` event first, then its `step` events (main flow, then teardown) interleaved with any `action` events.
+
+The suite-level teardown runs after every scenario, so its `suite_teardown` events come last in the stream. They carry the reserved scenario name `tales:suite-teardown`.
 
 ## Fields you can rely on
 
@@ -58,7 +61,7 @@ The order is `scenario` event first, then its `step` events (main flow, then tea
 | Field         | Type     | Notes                                                            |
 | ------------- | -------- | ---------------------------------------------------------------- |
 | `type`        | string   | Always `"step"`.                                                 |
-| `phase`       | string   | `"step"` for main-flow steps; `"teardown"` for teardown steps.   |
+| `phase`       | string   | `"step"`, `"teardown"` or `"suite_teardown"`.                    |
 | `scenario`    | string   | Scenario name.                                                   |
 | `step`        | string   | Step name.                                                       |
 | `provider`    | string   | `http`, `sql`, `mobile`, `keyword`.                              |

@@ -196,7 +196,76 @@ Args are bound through `database/sql` as positional parameters; Tales never inte
 | non-integer    | `float64`                              |
 | string         | `string`                               |
 
-Lists, tuples and objects are rejected explicitly: `unsupported SQL arg type at args[<i>]: <type>`. Wrap them in a string representation (JSON, comma-separated) before binding if you need to pass a composite value.
+Objects and maps are rejected explicitly: `unsupported SQL arg type at args[<i>]: <type>`. Wrap them in a string representation (JSON) before binding if you need to pass one.
+
+Lists get their own treatment, see below.
+
+## List args and `IN (...)`
+
+No driver protocol binds a list to a single placeholder, so Tales expands the placeholder instead. Write the list as a nested value:
+
+```hcl
+step "sql" "get_orgs" {
+  connection = "app"
+
+  query {
+    sql  = "SELECT id FROM organizations WHERE id IN ($1) ORDER BY id"
+    args = [["org_123", "org_456", "org_789"]]
+  }
+
+  expect { json = { row_count = 3 } }
+}
+```
+
+The statement actually sent becomes `... WHERE id IN ($1,$2,$3) ...` and the three values are bound in order. For MySQL, write `IN (?)` and it becomes `IN (?,?,?)`.
+
+Mixing scalars and lists renumbers every later placeholder for Postgres:
+
+```hcl
+query {
+  sql  = "SELECT id FROM organizations WHERE id IN ($1) AND vip = $2"
+  args = [["org_123", "org_456"], true]
+}
+# sent as: ... WHERE id IN ($1,$2) AND vip = $3
+```
+
+The scanner ignores placeholders that are not executable code, so a `?` inside a string literal, a `$2` inside a `--` or `/* */` comment, a `$1` inside a `$$ ... $$` dollar-quoted body, or a backtick-quoted MySQL identifier never shift the renumbering. Postgres never treats `?` as a placeholder, since it is the `jsonb` operator.
+
+### What is rejected, and why
+
+| Case | Message |
+| ---- | ------- |
+| Empty list | `args[i] is an empty list; SQL has no valid form for "IN ()"` |
+| Nested list | `nested list arguments are not supported at index i` |
+| A cty set | `sets are not supported as SQL args; use a list` |
+| List placeholder used twice (Postgres) | `list argument $N is used k times; a list placeholder may appear only once` |
+| List with no matching placeholder | `args[i] is a list but $N does not appear in the statement` |
+| `$N` beyond the arg count | `statement references $N but only k argument(s) were provided` |
+| Placeholder/arg count mismatch (MySQL) | `statement has n placeholder(s) but k argument(s) were provided` |
+
+An empty list is refused rather than rewritten to `IN (NULL)`: that substitution is right for `IN` and wrong for `NOT IN` (the comparison becomes UNKNOWN and matches nothing instead of everything), and the provider cannot know the surrounding syntax. Guard the step with `when` instead:
+
+```hcl
+step "sql" "purge" {
+  when       = length(result.collect_ids.ids) > 0
+  connection = "app"
+
+  exec {
+    sql  = "DELETE FROM organizations WHERE id IN ($1)"
+    args = [result.collect_ids.ids]
+  }
+}
+```
+
+A set is refused because a cty set has no source order, so the expanded statement would not be reproducible from one run to the next.
+
+Expansion happens **before the connection is acquired**, so a malformed list fails immediately without opening a connection.
+
+Statements that bind only scalars take a fast path: the SQL text and the arg slice are passed through untouched.
+
+<Aside type="caution" title="MySQL optimizer hints">
+	`/*! ... */` hints are executed by MySQL but are treated as ordinary block comments by the scanner. A placeholder written inside one would not be counted.
+</Aside>
 
 ## Security and masking
 
@@ -208,11 +277,13 @@ Lists, tuples and objects are rejected explicitly: `unsupported SQL arg type at 
 
 SQL steps appear with `provider: "sql"` in the JSONL, JUnit and HTML reports. The request structure carries `connection`, `mode` (`exec` / `query`), `sql` and `args`; the response carries the `json` payload described above.
 
+`sql` and `args` are reported **as authored**, so the report mirrors the `.tales` file: a list arg keeps its nested shape rather than appearing flattened. When list expansion rewrote the statement, an extra `sql_expanded` field carries what was actually sent to the driver. It is absent otherwise.
+
 ## Limitations (V1)
 
 - Two drivers only: `postgres` (or alias `pgx`) and `mysql`. SQLite was considered and dropped to keep the cross-platform binary lean.
-- No automatic placeholder rewriting between dialects. Write `$1` for Postgres and `?` for MySQL.
+- No automatic placeholder rewriting between dialects. Write `$1` for Postgres and `?` for MySQL. (List args *are* expanded, but within the dialect you wrote.)
 - No transactions span multiple steps. Each step uses the shared `*sql.DB` pool.
-- Only scalar args (string / number / bool / null). Lists and objects are rejected at the runtime boundary.
+- Args are scalars (string / number / bool / null) or a flat list of scalars. Objects, maps, nested lists and sets are rejected at the runtime boundary.
 - `last_insert_id` is `null` on PostgreSQL. Use `RETURNING` + query.
 - JSON columns are returned as strings; use `jsondecode(...)` if you need to walk them.

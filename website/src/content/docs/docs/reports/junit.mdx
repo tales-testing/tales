@@ -49,6 +49,13 @@ The parent directory is created if missing. The output is fully self-contained, 
 | Skipped scenario    | `<skipped message="<skip reason>"/>`                          |
 | Step duration       | aggregated into `time="<seconds>"` on the testcase            |
 | Teardown step       | rolled into the scenario's duration (no separate testcase)    |
+| Suite teardown      | one synthetic `<testcase name="suite_teardown">`, only when the suite declares the block |
+
+### Suite teardown
+
+When a suite declares a top-level `teardown { ... }` block, a single synthetic testcase named `suite_teardown` is appended, with the per-step outcomes in `<system-out>`. If the cleanup failed, it carries a `<failure>`.
+
+Without it, a run whose only failure was the cleanup would produce a fully green JUnit file next to a non-zero exit code, and the dashboard would disagree with the command result. Suites without the block produce byte-identical XML to before.
 
 ### Skip support
 

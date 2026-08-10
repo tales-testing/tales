@@ -73,6 +73,18 @@ step "http" "delete_user" {
 
 `when` is evaluated **before** the step body, so it cannot see `vars` from that step. It *can* see `config`, `result.*`, `host`, and the result of any HCL function.
 
+### Where `when` applies
+
+`when` gates **every** step: scenario steps, steps inside a `keyword`, scenario `teardown` steps, and suite `teardown` steps.
+
+- A **scenario step** skipped by `when` cascades: any later step referencing `result.<skipped-step>` is skipped too, with the reason naming the blocker. The scenario itself stays green.
+- A **keyword sub-step** skipped by `when` records no result, so downstream `can(result.<step>.<field>)` guards inside the keyword skip in turn.
+- When the expression cannot be evaluated at all (it is not a boolean, or it raises), the step is **skipped**, not failed, and the reason says `when condition failed to evaluate: ...`. That keeps the `can(...)` guard usable, and the reason keeps the skip visible.
+
+<Aside type="caution" title="Fixed in a recent release">
+	Before this behavior was corrected, `when` was only honored inside `teardown`. On a scenario step it was parsed, accepted, and then silently ignored: the step ran and reported `PASS`. If a suite has `when` on non-teardown steps, re-run it after upgrading, some steps that used to run will now correctly skip.
+</Aside>
+
 ## `teardown`
 
 A scenario can declare a single `teardown { ... }` block holding one or more steps. Teardown runs after the main flow, in the order steps are declared, **even when a previous step failed**.
@@ -111,6 +123,7 @@ scenario "Create blog post with cleanup" {
 - Steps inside `teardown` follow the same rules as scenario steps: source order, `when`, `retry`, `vars`, `capture`, `expect`.
 - A failing teardown step marks the scenario as failed and triggers an exit code of `1`, but later teardown steps still run, so all cleanup gets a chance to happen.
 - Captures produced by teardown steps are local to the teardown block; the scenario is already over by then.
+- Teardown runs on a context **detached from `--timeout`**, with its own budget. See [Teardown and `--timeout`](#teardown-and---timeout).
 
 ### Patterns
 
@@ -158,6 +171,60 @@ teardown {
 ```
 
 Each step is independent, a failing `delete_team` doesn't prevent `delete_user` from running.
+
+## Suite-level `teardown`
+
+Scenarios are unordered and run in parallel, so no scenario can be "the last one". When cleanup belongs to the whole suite rather than to one scenario, declare a **top-level** `teardown` block:
+
+```hcl
+# _suite.tales
+version = 1
+
+teardown {
+  step "sql" "purge_test_users" {
+    connection = "app"
+    exec {
+      sql = "DELETE FROM users WHERE email LIKE '%@tales.test'"
+    }
+  }
+
+  step "http" "drop_sandbox" {
+    when = can(config.sandbox_id)
+
+    request {
+      method = "DELETE"
+      url    = "${config.base_url}/sandboxes/${config.sandbox_id}"
+    }
+
+    expect { status = one_of([204, 404]) }
+  }
+}
+```
+
+### Suite teardown semantics
+
+- Runs **exactly once**, after every scenario has finished and **before providers are closed**, so SQL pools, gRPC connections and browser sessions are still usable.
+- Runs **even when `--tag` / `--scenario` selected no scenario at all**. A safety net that only fires when the run happened to match something is not a safety net. Gate individual steps with `when`.
+- Steps run sequentially in source order. A failing step does **not** stop the ones after it: cleanup is a list of independent obligations, not a pipeline.
+- Later steps can read `result.<earlier-step>` from the same block. They cannot read scenario results, which are per-scenario state.
+- A failure makes the run exit `1`, even when every scenario passed, and is reported in the console, JSONL (`phase: "suite_teardown"`), JUnit (a synthetic testcase) and the HTML report.
+- Only **one file per suite** may declare the block. Concatenating across files would make the cleanup order depend on the alphabetical order of filenames, so a second declaration is a load error.
+- Inside the block, `scenario.workdir` / `scenario.artifacts_dir` point at a dedicated workspace under `build/artifacts/suite-teardown/`, and `scenario.name` is the reserved value `tales:suite-teardown`.
+- Generated values are seeded from that reserved name, so they do not depend on `--parallel`, on the filters, or on how many scenarios ran.
+
+## Teardown and `--timeout`
+
+`--timeout` bounds the whole run. It must not, however, cancel the cleanup that an aborted run makes necessary: the run that ran out of budget is precisely the one that left resources behind.
+
+Teardown steps (scenario and suite) therefore run on a context **detached** from the run's, with their own budget:
+
+```bash
+tales test ./e2e --timeout 5m                       # teardown gets 30s of grace (default)
+tales test ./e2e --timeout 5m --teardown-grace 2m   # longer cleanup budget
+tales test ./e2e --timeout 5m --teardown-grace 0    # legacy: teardown inherits the cancelled context
+```
+
+`--teardown-grace 0` restores the historical behavior, where an exhausted `--timeout` (or `Ctrl-C`) also aborts cleanup.
 
 <Aside type="tip" title="Pair retry + teardown for flake-free integration tests">
 	Use `retry` to absorb genuinely asynchronous waits (email arrival, webhook delivery). Use `teardown` to guarantee deterministic cleanup so the next run starts from a known state. Combined, they make scenarios you can replay indefinitely without leaking state.
