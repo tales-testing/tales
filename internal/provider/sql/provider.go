@@ -69,6 +69,17 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, err
 	}
 
+	// List args are expanded here, and not in the runtime, because the
+	// placeholder syntax depends on the driver, which is only known once the
+	// connection is resolved. Doing it before acquire also means a malformed
+	// list fails without opening a connection.
+	expandedSQL, expandedArgs, err := expandListArgs(conn.Driver, input.SQL.SQL, input.SQL.Args)
+	if err != nil {
+		return nil, fmt.Errorf("sql step on connection %q: %w", conn.Name, err)
+	}
+
+	stmt := preparedStatement{Source: input.SQL.SQL, SQL: expandedSQL, Args: expandedArgs}
+
 	db, err := p.acquire(ctx, conn)
 	if err != nil {
 		return nil, fmt.Errorf("open sql connection %q: %w", conn.Name, withMaskedDSN(err, conn.DSN))
@@ -78,22 +89,37 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	defer cancel()
 
 	start := time.Now()
-	requestMap := buildRequestMap(input.SQL)
+	requestMap := buildRequestMap(input.SQL, stmt)
 
 	switch input.SQL.Mode {
 	case "exec":
-		return p.executeExec(stepCtx, db, input.SQL, conn, requestMap, start)
+		return p.executeExec(stepCtx, db, stmt, conn, requestMap, start)
 	case "query":
-		return p.executeQuery(stepCtx, db, input.SQL, conn, requestMap, start)
+		return p.executeQuery(stepCtx, db, stmt, conn, requestMap, start)
 	default:
 		return nil, fmt.Errorf("sql step has unknown mode %q", input.SQL.Mode)
 	}
 }
 
-func (p *Provider) executeExec(ctx context.Context, db *dbsql.DB, exec *provider.SQLExecution, conn ConnectionConfig, request map[string]cty.Value, start time.Time) (*provider.Output, error) {
-	result, err := db.ExecContext(ctx, exec.SQL, exec.Args...)
+// preparedStatement is the driver-ready form of an SQL step after list-arg
+// expansion. SQL / Args are what reach database/sql; Source is the statement
+// as authored, kept for diagnostics and for the request map. input.SQL is
+// never mutated: it is shared with the report and replayed across retries.
+type preparedStatement struct {
+	Source string
+	SQL    string
+	Args   []any
+}
+
+// expanded reports whether list-arg expansion rewrote the statement.
+func (s preparedStatement) expanded() bool {
+	return s.SQL != s.Source
+}
+
+func (p *Provider) executeExec(ctx context.Context, db *dbsql.DB, stmt preparedStatement, conn ConnectionConfig, request map[string]cty.Value, start time.Time) (*provider.Output, error) {
+	result, err := db.ExecContext(ctx, stmt.SQL, stmt.Args...)
 	if err != nil {
-		return nil, sqlExecutionError("exec", conn, exec, err)
+		return nil, sqlExecutionError("exec", conn, stmt, err)
 	}
 
 	return &provider.Output{
@@ -103,10 +129,10 @@ func (p *Provider) executeExec(ctx context.Context, db *dbsql.DB, exec *provider
 	}, nil
 }
 
-func (p *Provider) executeQuery(ctx context.Context, db *dbsql.DB, exec *provider.SQLExecution, conn ConnectionConfig, request map[string]cty.Value, start time.Time) (*provider.Output, error) {
-	rows, columns, err := scanRows(ctx, db, exec.SQL, exec.Args)
+func (p *Provider) executeQuery(ctx context.Context, db *dbsql.DB, stmt preparedStatement, conn ConnectionConfig, request map[string]cty.Value, start time.Time) (*provider.Output, error) {
+	rows, columns, err := scanRows(ctx, db, stmt.SQL, stmt.Args)
 	if err != nil {
-		return nil, sqlExecutionError("query", conn, exec, err)
+		return nil, sqlExecutionError("query", conn, stmt, err)
 	}
 
 	return &provider.Output{
@@ -253,18 +279,16 @@ func (p *Provider) Inject(name string, db *dbsql.DB) {
 	p.conns[name] = db
 }
 
-func buildRequestMap(execution *provider.SQLExecution) map[string]cty.Value {
+// buildRequestMap exposes the step as authored: request.args keeps the nested
+// shape the user wrote rather than the flattened binding list, so the report
+// mirrors the .tales file. sql_expanded is added only when list-arg expansion
+// actually rewrote the statement, keeping the report identical for the
+// scalar-only path.
+func buildRequestMap(execution *provider.SQLExecution, stmt preparedStatement) map[string]cty.Value {
 	args := make([]cty.Value, 0, len(execution.Args))
 
 	for _, raw := range execution.Args {
-		value, err := ConvertRowValue(raw)
-		if err != nil {
-			args = append(args, cty.StringVal(fmt.Sprintf("%v", raw)))
-
-			continue
-		}
-
-		args = append(args, value)
+		args = append(args, argToReportValue(raw))
 	}
 
 	argsValue := cty.EmptyTupleVal
@@ -272,20 +296,58 @@ func buildRequestMap(execution *provider.SQLExecution) map[string]cty.Value {
 		argsValue = cty.TupleVal(args)
 	}
 
-	return map[string]cty.Value{
+	request := map[string]cty.Value{
 		"connection": cty.StringVal(execution.Connection),
 		"mode":       cty.StringVal(execution.Mode),
-		"sql":        cty.StringVal(execution.SQL),
+		"sql":        cty.StringVal(stmt.Source),
 		"args":       argsValue,
 	}
+
+	if stmt.expanded() {
+		request["sql_expanded"] = cty.StringVal(stmt.SQL)
+	}
+
+	return request
+}
+
+// argToReportValue renders one bound argument for the report, preserving the
+// nesting of a list arg instead of flattening or stringifying it.
+func argToReportValue(raw any) cty.Value {
+	list, ok := raw.(ListArg)
+	if !ok {
+		value, err := ConvertRowValue(raw)
+		if err != nil {
+			return cty.StringVal(fmt.Sprintf("%v", raw))
+		}
+
+		return value
+	}
+
+	if len(list) == 0 {
+		return cty.EmptyTupleVal
+	}
+
+	elements := make([]cty.Value, 0, len(list))
+	for _, element := range list {
+		elements = append(elements, argToReportValue(element))
+	}
+
+	return cty.TupleVal(elements)
 }
 
 // sqlExecutionError wraps a driver error with sanitized context. The DSN is
 // never propagated as-is; only the connection name and driver alias are
-// surfaced.
-func sqlExecutionError(mode string, conn ConnectionConfig, exec *provider.SQLExecution, err error) error {
-	return fmt.Errorf("SQL %s failed\nconnection: %s\ndriver: %s\nsql: %s\nargs: %d value(s) omitted\nerror: %w",
-		mode, conn.Name, conn.Driver, exec.SQL, len(exec.Args), withMaskedDSN(err, conn.DSN))
+// surfaced. The statement actually sent to the driver is reported, plus the
+// authored one when expansion rewrote it, since a placeholder-count error is
+// unreadable without both.
+func sqlExecutionError(mode string, conn ConnectionConfig, stmt preparedStatement, err error) error {
+	origin := ""
+	if stmt.expanded() {
+		origin = fmt.Sprintf("expanded from: %s\n", stmt.Source)
+	}
+
+	return fmt.Errorf("SQL %s failed\nconnection: %s\ndriver: %s\nsql: %s\n%sargs: %d value(s) omitted\nerror: %w",
+		mode, conn.Name, conn.Driver, stmt.SQL, origin, len(stmt.Args), withMaskedDSN(err, conn.DSN))
 }
 
 // withMaskedDSN scrubs DSN credential fragments out of an error message

@@ -9,10 +9,18 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// ListArg marks an argument written as a nested list in .tales
+// (args = [[1, 2, 3]]). The provider expands the placeholder bound to it into
+// a run of placeholders (IN ($1,$2,$3) / IN (?,?,?)) and flattens the values
+// before binding them, because no driver protocol binds a composite value to a
+// single placeholder. Elements are already lowered to database/sql parameter
+// values.
+type ListArg []any
+
 // ConvertArgs lowers a list of cty values into Go values usable as
-// database/sql parameters. Scalars only: cty lists and objects are rejected
-// in V1 because the standard driver protocol can not bind composite values
-// without provider-specific helpers.
+// database/sql parameters. Scalars bind directly; a nested list becomes a
+// ListArg, which the provider later expands into a placeholder run. Objects
+// and maps are still rejected: no composite binding exists for them.
 func ConvertArgs(args []cty.Value) ([]any, error) {
 	out := make([]any, 0, len(args))
 
@@ -39,16 +47,45 @@ func ConvertArg(value cty.Value) (any, error) {
 		return nil, nil
 	}
 
-	switch value.Type() {
-	case cty.String:
+	switch {
+	case value.Type() == cty.String:
 		return value.AsString(), nil
-	case cty.Bool:
+	case value.Type() == cty.Bool:
 		return value.True(), nil
-	case cty.Number:
+	case value.Type() == cty.Number:
 		return numberToDriverValue(value), nil
+	case value.Type().IsSetType():
+		// A cty set has no source order, so the expanded placeholder run
+		// would not be reproducible. Refuse rather than emit a
+		// non-deterministic statement.
+		return nil, fmt.Errorf("sets are not supported as SQL args; use a list")
+	case value.Type().IsTupleType(), value.Type().IsListType():
+		return convertListArg(value)
 	default:
 		return nil, fmt.Errorf("%s", value.Type().FriendlyName())
 	}
+}
+
+// convertListArg lowers a cty tuple / list into a ListArg. Nesting is
+// rejected: a placeholder can expand into a flat run of values only.
+func convertListArg(value cty.Value) (ListArg, error) {
+	elements := value.AsValueSlice()
+	out := make(ListArg, 0, len(elements))
+
+	for i, element := range elements {
+		converted, err := ConvertArg(element)
+		if err != nil {
+			return nil, fmt.Errorf("at index %d: %w", i, err)
+		}
+
+		if _, nested := converted.(ListArg); nested {
+			return nil, fmt.Errorf("nested list arguments are not supported at index %d", i)
+		}
+
+		out = append(out, converted)
+	}
+
+	return out, nil
 }
 
 // numberToDriverValue converts a cty.Number to int64 when it represents a

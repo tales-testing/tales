@@ -411,18 +411,24 @@ func buildScenarioWorkspace(opts Options, scenario *model.Scenario) (string, str
 		return "", "", nil, fmt.Errorf("create scenario workspace: %w", err)
 	}
 
-	scopeVars := map[string]cty.Value{
+	return workdir, artifactsDir, workspaceScopeVars(scenario.Name, workdir, artifactsDir, opts.ProjectDir), nil
+}
+
+// workspaceScopeVars builds the scenario / project namespaces exposed on the
+// evaluator for one workspace. The suite-level teardown reuses it with its
+// reserved pseudo-scenario name, so ${scenario.workdir} and friends keep
+// working there without a phase-specific variable.
+func workspaceScopeVars(scenarioName, workdir, artifactsDir, projectDir string) map[string]cty.Value {
+	return map[string]cty.Value{
 		"scenario": cty.ObjectVal(map[string]cty.Value{
-			"name":          cty.StringVal(scenario.Name),
+			"name":          cty.StringVal(scenarioName),
 			"workdir":       cty.StringVal(workdir),
 			"artifacts_dir": cty.StringVal(artifactsDir),
 		}),
 		"project": cty.ObjectVal(map[string]cty.Value{
-			"dir": cty.StringVal(opts.ProjectDir),
+			"dir": cty.StringVal(projectDir),
 		}),
 	}
-
-	return workdir, artifactsDir, scopeVars, nil
 }
 
 // runScenarioSteps executes a scenario's steps sequentially in .tales file

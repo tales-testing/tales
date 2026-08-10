@@ -1,0 +1,37 @@
+// Verifies that an empty list argument is rejected with a clear message
+// instead of being silently rewritten. SQL has no valid form for "IN ()", and
+// substituting NULL would change the meaning of the statement (correct for IN,
+// wrong for NOT IN), which a testing tool must never do behind the user's back.
+//
+// The DSN points at a closed port on purpose: list expansion happens before the
+// connection is acquired, so this pins the rejection without needing a database.
+
+version = 1
+
+config {
+  sql = {
+    connections = {
+      down = {
+        driver = "postgres"
+        dsn    = "postgres://user:pass@127.0.0.1:1/db"
+      }
+    }
+  }
+}
+
+scenario "SQL empty list argument" {
+  tags = ["sql", "failure"]
+
+  step "sql" "query_with_empty_list" {
+    connection = "down"
+
+    query {
+      sql  = "SELECT id FROM orgs WHERE id IN ($1)"
+      args = [[]]
+    }
+
+    expect {
+      status = 200
+    }
+  }
+}

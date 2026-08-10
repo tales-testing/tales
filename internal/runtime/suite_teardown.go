@@ -91,9 +91,9 @@ func suiteTeardownSetupFailure(file string, err error) ([]*report.StepResult, []
 // on the evaluator. The layout mirrors buildScenarioWorkspace but lives under
 // <base>/suite-teardown, so it can never collide with a scenario directory.
 //
-// The `scenario` namespace is kept (naming the pseudo-scenario) so save / file
-// / exec and every documented ${scenario.workdir} expression keep working
-// unchanged inside the block; `suite` is the honest alias to prefer.
+// The `scenario` namespace is reused (naming the pseudo-scenario) rather than
+// replaced by a phase-specific one, so save / file / exec and every documented
+// ${scenario.workdir} expression keep working unchanged inside the block.
 func buildSuiteTeardownWorkspace(opts Options, teardownFile string) (string, string, map[string]cty.Value, error) {
 	rel := filepath.Join(opts.ArtifactsBase, "suite-teardown", artifacts.Hash(teardownFile, suiteTeardownScenario))
 
@@ -108,22 +108,5 @@ func buildSuiteTeardownWorkspace(opts Options, teardownFile string) (string, str
 		return "", "", nil, fmt.Errorf("create suite teardown workspace: %w", err)
 	}
 
-	dirs := cty.ObjectVal(map[string]cty.Value{
-		"workdir":       cty.StringVal(workdir),
-		"artifacts_dir": cty.StringVal(artifactsDir),
-	})
-
-	scopeVars := map[string]cty.Value{
-		"scenario": cty.ObjectVal(map[string]cty.Value{
-			"name":          cty.StringVal(suiteTeardownScenario),
-			"workdir":       cty.StringVal(workdir),
-			"artifacts_dir": cty.StringVal(artifactsDir),
-		}),
-		"suite": dirs,
-		"project": cty.ObjectVal(map[string]cty.Value{
-			"dir": cty.StringVal(opts.ProjectDir),
-		}),
-	}
-
-	return workdir, artifactsDir, scopeVars, nil
+	return workdir, artifactsDir, workspaceScopeVars(suiteTeardownScenario, workdir, artifactsDir, opts.ProjectDir), nil
 }
