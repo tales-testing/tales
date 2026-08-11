@@ -29,6 +29,7 @@ const mobileValueAttr = "value"
 const mobileDurationAttr = "duration"
 const mobileFirstAttr = "first"
 const mobileLabelAttr = "label"
+const mobileTextLocAttr = "text"
 
 // decodeMobileStep builds a model.MobileStep from a parsed step block when any
 // mobile-specific attribute or block is present. It returns nil when the step
@@ -293,27 +294,38 @@ func validateMobilePlatform(rs stepBlock) hcl.Diagnostics {
 	return diags
 }
 
-// requireExpectLocator enforces id-XOR-label on the locator pair of an
-// expect block, mirroring requireIDOrLabel for actions. The expect blocks
-// are decoded via gohcl so the expressions are pre-extracted; the helper
-// only validates them and emits diags through the provided block name.
-func requireExpectLocator(blockName string, idExpr, labelExpr hcl.Expression) hcl.Diagnostics {
-	hasID := exprIsSet(idExpr)
-	hasLabel := exprIsSet(labelExpr)
+// mobileLocatorNames lists the element locators, in the order messages
+// should present them: most stable first.
+var mobileLocatorNames = []string{"id", "label", "text"}
+
+// requireExpectLocator enforces that exactly one locator is set on an
+// expect block, mirroring requireIDOrLabel for actions. The expect
+// blocks are decoded via gohcl so the expressions are pre-extracted; the
+// helper only validates them and emits diags through the block name.
+func requireExpectLocator(blockName string, idExpr, labelExpr, textExpr hcl.Expression) hcl.Diagnostics {
+	set := make([]hcl.Expression, 0, len(mobileLocatorNames))
+
+	for _, e := range []hcl.Expression{idExpr, labelExpr, textExpr} {
+		if exprIsSet(e) {
+			set = append(set, e)
+		}
+	}
 
 	switch {
-	case hasID && hasLabel:
-		conflictRange := labelExpr.Range()
+	case len(set) > 1:
+		// Point at the second one: it is the attribute the author added
+		// to an already-complete locator.
+		conflictRange := set[1].Range()
 
 		return hcl.Diagnostics{diagError(
 			"Conflicting element locator",
-			fmt.Sprintf("%s block must declare exactly one of id or label, not both.", blockName),
+			fmt.Sprintf("%s block must declare exactly one of %s.", blockName, strings.Join(mobileLocatorNames, ", ")),
 			&conflictRange,
 		)}
-	case !hasID && !hasLabel:
+	case len(set) == 0:
 		return hcl.Diagnostics{diagError(
 			"Missing element locator",
-			fmt.Sprintf("%s block must declare id = \"...\" or label = \"...\".", blockName),
+			fmt.Sprintf("%s block must declare one of %s.", blockName, strings.Join(mobileLocatorNames, ", ")),
 			nil,
 		)}
 	}
@@ -326,11 +338,12 @@ func mobileVisibilityFromBlock(path, blockName string, v *visibleBlock) (model.M
 		return model.MobileVisibility{}, nil
 	}
 
-	diags := requireExpectLocator(blockName, v.ID, v.Label)
+	diags := requireExpectLocator(blockName, v.ID, v.Label, v.Text)
 
 	return model.MobileVisibility{
 		ID:       optionalExpr(path, v.ID),
 		Label:    optionalExpr(path, v.Label),
+		Text:     optionalExpr(path, v.Text),
 		Timeout:  optionalExpr(path, v.Timeout),
 		Interval: optionalExpr(path, v.Interval),
 	}, diags
@@ -341,11 +354,12 @@ func mobileValueExpectationFromBlock(path, blockName string, v *valueBlock) (mod
 		return model.MobileValueExpectation{}, nil
 	}
 
-	diags := requireExpectLocator(blockName, v.ID, v.Label)
+	diags := requireExpectLocator(blockName, v.ID, v.Label, v.Text)
 
 	return model.MobileValueExpectation{
 		ID:       optionalExpr(path, v.ID),
 		Label:    optionalExpr(path, v.Label),
+		Text:     optionalExpr(path, v.Text),
 		Expected: optionalExpr(path, v.Value),
 		Timeout:  optionalExpr(path, v.Timeout),
 		Interval: optionalExpr(path, v.Interval),
@@ -357,11 +371,12 @@ func mobileStateExpectationFromBlock(path, blockName string, v *stateBlock) (mod
 		return model.MobileStateExpectation{}, nil
 	}
 
-	diags := requireExpectLocator(blockName, v.ID, v.Label)
+	diags := requireExpectLocator(blockName, v.ID, v.Label, v.Text)
 
 	return model.MobileStateExpectation{
 		ID:       optionalExpr(path, v.ID),
 		Label:    optionalExpr(path, v.Label),
+		Text:     optionalExpr(path, v.Text),
 		Timeout:  optionalExpr(path, v.Timeout),
 		Interval: optionalExpr(path, v.Interval),
 	}, diags
@@ -479,18 +494,18 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 func decodeScrollToBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0, len(block.Body.Attributes)+len(block.Body.Blocks))
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, "scroll_to")
+	locator, locatorDiags := requireActionLocator(block, "scroll_to")
 	diags = append(diags, locatorDiags...)
 
 	for name, attr := range block.Body.Attributes {
-		if name == "id" || name == mobileLabelAttr {
+		if name == "id" || name == mobileLabelAttr || name == mobileTextLocAttr {
 			continue
 		}
 
 		attrRange := attr.Range()
 		diags = append(diags, diagError(
 			"Unknown scroll_to attribute",
-			fmt.Sprintf("scroll_to attribute %q is not supported; allowed: id, label.", name),
+			fmt.Sprintf("scroll_to attribute %q is not supported; allowed: id, label, text, text.", name),
 			&attrRange,
 		))
 	}
@@ -508,8 +523,9 @@ func decodeScrollToBlock(path string, block *hclsyntax.Block) (*model.MobileActi
 		Kind:  model.MobileActionScrollTo,
 		File:  path,
 		Line:  block.DefRange().Start.Line,
-		ID:    expr(path, idExpr),
-		Label: expr(path, labelExpr),
+		ID:    expr(path, locator.ID),
+		Label: expr(path, locator.Label),
+		Text:  expr(path, locator.Text),
 	}
 
 	return action, diags
@@ -553,7 +569,7 @@ func decodeDismissKeyboardBlock(path string, block *hclsyntax.Block) (*model.Mob
 func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0)
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, "tap")
+	locator, locatorDiags := requireActionLocator(block, "tap")
 	diags = append(diags, locatorDiags...)
 
 	timeoutExpr := hcl.Expression(nil)
@@ -562,7 +578,7 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", mobileLabelAttr:
+		case "id", mobileLabelAttr, mobileTextLocAttr:
 			continue
 		case mobileTimeoutAttr:
 			timeoutExpr = attr.Expr
@@ -572,7 +588,7 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown tap attribute", fmt.Sprintf("tap attribute %q is not supported; allowed: id, label, timeout, interval, first.", name), &attrRange))
+			diags = append(diags, diagError("Unknown tap attribute", fmt.Sprintf("tap attribute %q is not supported; allowed: id, label, text, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -580,8 +596,9 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 		Kind:     model.MobileActionTap,
 		File:     path,
 		Line:     block.DefRange().Start.Line,
-		ID:       expr(path, idExpr),
-		Label:    expr(path, labelExpr),
+		ID:       expr(path, locator.ID),
+		Label:    expr(path, locator.Label),
+		Text:     expr(path, locator.Text),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
 		First:    expr(path, firstExpr),
@@ -593,7 +610,7 @@ func decodeTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, h
 func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0)
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, "input_text")
+	locator, locatorDiags := requireActionLocator(block, "input_text")
 	diags = append(diags, locatorDiags...)
 
 	valueExpr, valueDiags := requireActionAttr(block, "input_text", mobileValueAttr)
@@ -608,7 +625,7 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", mobileLabelAttr, mobileValueAttr:
+		case "id", mobileLabelAttr, mobileTextLocAttr, mobileValueAttr:
 			continue
 		case "secure":
 			secureExpr = attr.Expr
@@ -620,7 +637,7 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown input_text attribute", fmt.Sprintf("input_text attribute %q is not supported; allowed: id, label, value, secure, timeout, interval, first.", name), &attrRange))
+			diags = append(diags, diagError("Unknown input_text attribute", fmt.Sprintf("input_text attribute %q is not supported; allowed: id, label, text, value, secure, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -628,8 +645,9 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		Kind:     model.MobileActionInputText,
 		File:     path,
 		Line:     block.DefRange().Start.Line,
-		ID:       expr(path, idExpr),
-		Label:    expr(path, labelExpr),
+		ID:       expr(path, locator.ID),
+		Label:    expr(path, locator.Label),
+		Text:     expr(path, locator.Text),
 		Value:    expr(path, valueExpr),
 		Secure:   expr(path, secureExpr),
 		Timeout:  expr(path, timeoutExpr),
@@ -643,7 +661,7 @@ func decodeInputTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0)
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, "clear_text")
+	locator, locatorDiags := requireActionLocator(block, "clear_text")
 	diags = append(diags, locatorDiags...)
 
 	timeoutExpr := hcl.Expression(nil)
@@ -652,7 +670,7 @@ func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", mobileLabelAttr:
+		case "id", mobileLabelAttr, mobileTextLocAttr:
 			continue
 		case mobileTimeoutAttr:
 			timeoutExpr = attr.Expr
@@ -662,7 +680,7 @@ func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown clear_text attribute", fmt.Sprintf("clear_text attribute %q is not supported; allowed: id, label, timeout, interval, first.", name), &attrRange))
+			diags = append(diags, diagError("Unknown clear_text attribute", fmt.Sprintf("clear_text attribute %q is not supported; allowed: id, label, text, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -670,8 +688,9 @@ func decodeClearTextBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		Kind:     model.MobileActionClearText,
 		File:     path,
 		Line:     block.DefRange().Start.Line,
-		ID:       expr(path, idExpr),
-		Label:    expr(path, labelExpr),
+		ID:       expr(path, locator.ID),
+		Label:    expr(path, locator.Label),
+		Text:     expr(path, locator.Text),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
 		First:    expr(path, firstExpr),
@@ -684,7 +703,7 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 	diags := make(hcl.Diagnostics, 0)
 	actionName := string(kind)
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, actionName)
+	locator, locatorDiags := requireActionLocator(block, actionName)
 	diags = append(diags, locatorDiags...)
 
 	timeoutExpr := hcl.Expression(nil)
@@ -693,7 +712,7 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", mobileLabelAttr:
+		case "id", mobileLabelAttr, mobileTextLocAttr:
 			continue
 		case mobileTimeoutAttr:
 			timeoutExpr = attr.Expr
@@ -703,7 +722,7 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, label, timeout, interval, first.", actionName, name), &attrRange))
+			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, label, text, timeout, interval, first.", actionName, name), &attrRange))
 		}
 	}
 
@@ -711,8 +730,9 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 		Kind:     kind,
 		File:     path,
 		Line:     block.DefRange().Start.Line,
-		ID:       expr(path, idExpr),
-		Label:    expr(path, labelExpr),
+		ID:       expr(path, locator.ID),
+		Label:    expr(path, locator.Label),
+		Text:     expr(path, locator.Text),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
 		First:    expr(path, firstExpr),
@@ -724,7 +744,7 @@ func decodeWaitBlock(path string, block *hclsyntax.Block, kind model.MobileActio
 func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0)
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, "double_tap")
+	locator, locatorDiags := requireActionLocator(block, "double_tap")
 	diags = append(diags, locatorDiags...)
 
 	timeoutExpr := hcl.Expression(nil)
@@ -733,7 +753,7 @@ func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", mobileLabelAttr:
+		case "id", mobileLabelAttr, mobileTextLocAttr:
 			continue
 		case mobileTimeoutAttr:
 			timeoutExpr = attr.Expr
@@ -743,7 +763,7 @@ func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown double_tap attribute", fmt.Sprintf("double_tap attribute %q is not supported; allowed: id, label, timeout, interval, first.", name), &attrRange))
+			diags = append(diags, diagError("Unknown double_tap attribute", fmt.Sprintf("double_tap attribute %q is not supported; allowed: id, label, text, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -751,8 +771,9 @@ func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		Kind:     model.MobileActionDoubleTap,
 		File:     path,
 		Line:     block.DefRange().Start.Line,
-		ID:       expr(path, idExpr),
-		Label:    expr(path, labelExpr),
+		ID:       expr(path, locator.ID),
+		Label:    expr(path, locator.Label),
+		Text:     expr(path, locator.Text),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
 		First:    expr(path, firstExpr),
@@ -764,14 +785,14 @@ func decodeDoubleTapBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 func decodeLongPressBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0)
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, "long_press")
+	locator, locatorDiags := requireActionLocator(block, "long_press")
 	diags = append(diags, locatorDiags...)
 
 	var durationExpr, timeoutExpr, intervalExpr, firstExpr hcl.Expression
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", mobileLabelAttr:
+		case "id", mobileLabelAttr, mobileTextLocAttr:
 			continue
 		case mobileDurationAttr:
 			durationExpr = attr.Expr
@@ -783,7 +804,7 @@ func decodeLongPressBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown long_press attribute", fmt.Sprintf("long_press attribute %q is not supported; allowed: id, label, duration, timeout, interval, first.", name), &attrRange))
+			diags = append(diags, diagError("Unknown long_press attribute", fmt.Sprintf("long_press attribute %q is not supported; allowed: id, label, text, duration, timeout, interval, first.", name), &attrRange))
 		}
 	}
 
@@ -791,8 +812,9 @@ func decodeLongPressBlock(path string, block *hclsyntax.Block) (*model.MobileAct
 		Kind:     model.MobileActionLongPress,
 		File:     path,
 		Line:     block.DefRange().Start.Line,
-		ID:       expr(path, idExpr),
-		Label:    expr(path, labelExpr),
+		ID:       expr(path, locator.ID),
+		Label:    expr(path, locator.Label),
+		Text:     expr(path, locator.Text),
 		Duration: expr(path, durationExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
@@ -806,7 +828,7 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 	diags := make(hcl.Diagnostics, 0)
 	actionName := string(kind)
 
-	idExpr, labelExpr, locatorDiags := requireIDOrLabel(block, actionName)
+	locator, locatorDiags := requireActionLocator(block, actionName)
 	diags = append(diags, locatorDiags...)
 
 	directionExpr, dirDiags := requireActionAttr(block, actionName, "direction")
@@ -816,7 +838,7 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 
 	for name, attr := range block.Body.Attributes {
 		switch name {
-		case "id", mobileLabelAttr, "direction":
+		case "id", mobileLabelAttr, mobileTextLocAttr, "direction":
 			continue
 		case "distance":
 			distanceExpr = attr.Expr
@@ -830,7 +852,7 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 			firstExpr = attr.Expr
 		default:
 			attrRange := attr.Range()
-			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, label, direction, distance, duration, timeout, interval, first.", actionName, name), &attrRange))
+			diags = append(diags, diagError("Unknown "+actionName+" attribute", fmt.Sprintf("%s attribute %q is not supported; allowed: id, label, text, direction, distance, duration, timeout, interval, first.", actionName, name), &attrRange))
 		}
 	}
 
@@ -838,8 +860,9 @@ func decodeSwipeBlock(path string, block *hclsyntax.Block, kind model.MobileActi
 		Kind:      kind,
 		File:      path,
 		Line:      block.DefRange().Start.Line,
-		ID:        expr(path, idExpr),
-		Label:     expr(path, labelExpr),
+		ID:        expr(path, locator.ID),
+		Label:     expr(path, locator.Label),
+		Text:      expr(path, locator.Text),
 		Direction: expr(path, directionExpr),
 		Distance:  expr(path, distanceExpr),
 		Duration:  expr(path, durationExpr),
@@ -902,44 +925,62 @@ func requireActionAttr(block *hclsyntax.Block, action, name string) (hcl.Express
 	return attr.Expr, nil
 }
 
-// requireIDOrLabel reads the id / label attributes on an action body and
-// enforces that exactly one is set. Returns the bound expressions
+// actionLocator holds the element locator read off an action body.
+// Exactly one field is set on a well-formed action.
+type actionLocator struct {
+	ID    hcl.Expression
+	Label hcl.Expression
+	Text  hcl.Expression
+}
+
+// requireActionLocator reads the locator attributes on an action body
+// and enforces that exactly one is set. Returns the bound expressions
 // (nil-safe) plus any diagnostics. Used by every action that resolves an
 // element so the surface stays consistent.
-func requireIDOrLabel(block *hclsyntax.Block, action string) (hcl.Expression, hcl.Expression, hcl.Diagnostics) {
+func requireActionLocator(block *hclsyntax.Block, action string) (actionLocator, hcl.Diagnostics) {
 	var (
-		idAttr, labelAttr *hclsyntax.Attribute
-		idExpr, labelExpr hcl.Expression
+		locator actionLocator
+		present []*hclsyntax.Attribute
 	)
 
-	if attr, ok := block.Body.Attributes["id"]; ok {
-		idAttr = attr
-		idExpr = attr.Expr
+	bind := map[string]*hcl.Expression{
+		"id":              &locator.ID,
+		mobileLabelAttr:   &locator.Label,
+		mobileTextLocAttr: &locator.Text,
 	}
 
-	if attr, ok := block.Body.Attributes[mobileLabelAttr]; ok {
-		labelAttr = attr
-		labelExpr = attr.Expr
+	// Iterate the declared names rather than the map so the order the
+	// conflict is reported in does not depend on map iteration.
+	for _, name := range mobileLocatorNames {
+		attr, ok := block.Body.Attributes[name]
+		if !ok {
+			continue
+		}
+
+		present = append(present, attr)
+		*bind[name] = attr.Expr
 	}
 
 	switch {
-	case idAttr != nil && labelAttr != nil:
-		conflictRange := labelAttr.Range()
+	case len(present) > 1:
+		// Point at the second one: it is the attribute the author added
+		// to an already-complete locator.
+		conflictRange := present[1].Range()
 
-		return idExpr, labelExpr, hcl.Diagnostics{diagError(
+		return locator, hcl.Diagnostics{diagError(
 			"Conflicting element locator",
-			fmt.Sprintf("%s block must declare exactly one of id or label, not both.", action),
+			fmt.Sprintf("%s block must declare exactly one of %s.", action, strings.Join(mobileLocatorNames, ", ")),
 			&conflictRange,
 		)}
-	case idAttr == nil && labelAttr == nil:
+	case len(present) == 0:
 		blockRange := block.DefRange()
 
-		return nil, nil, hcl.Diagnostics{diagError(
+		return actionLocator{}, hcl.Diagnostics{diagError(
 			"Missing element locator",
-			fmt.Sprintf("%s block must declare id = \"...\" or label = \"...\".", action),
+			fmt.Sprintf("%s block must declare one of %s.", action, strings.Join(mobileLocatorNames, ", ")),
 			&blockRange,
 		)}
 	}
 
-	return idExpr, labelExpr, nil
+	return locator, nil
 }

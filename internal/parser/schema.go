@@ -262,6 +262,7 @@ type webPerfBlock struct {
 type visibleBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
 	Label    hcl.Expression `hcl:"label,optional"`
+	Text     hcl.Expression `hcl:"text,optional"`
 	Selector hcl.Expression `hcl:"selector,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
 	Interval hcl.Expression `hcl:"interval,optional"`
@@ -270,6 +271,7 @@ type visibleBlock struct {
 type valueBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
 	Label    hcl.Expression `hcl:"label,optional"`
+	Text     hcl.Expression `hcl:"text,optional"`
 	Selector hcl.Expression `hcl:"selector,optional"`
 	Value    hcl.Expression `hcl:"value,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
@@ -279,6 +281,7 @@ type valueBlock struct {
 type stateBlock struct {
 	ID       hcl.Expression `hcl:"id,optional"`
 	Label    hcl.Expression `hcl:"label,optional"`
+	Text     hcl.Expression `hcl:"text,optional"`
 	Selector hcl.Expression `hcl:"selector,optional"`
 	Timeout  hcl.Expression `hcl:"timeout,optional"`
 	Interval hcl.Expression `hcl:"interval,optional"`

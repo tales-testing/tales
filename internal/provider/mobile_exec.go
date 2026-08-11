@@ -45,7 +45,9 @@ type MobileActionExec struct {
 	// snapshot lookup and the driver-side element search. Mutually
 	// exclusive with ID by parser construction; the runtime sets only
 	// one of the two from the evaluated step.
-	Label    string
+	Label string
+	// Text locates the element by visible text (label fallback).
+	Text     string
 	Value    string
 	Secure   bool
 	Timeout  time.Duration
@@ -87,16 +89,20 @@ func (e MobileExpectExec) HasAny() bool {
 
 // MobileVisibilityExec is a resolved visible / not_visible expectation.
 type MobileVisibilityExec struct {
-	ID       string
-	Label    string
+	ID    string
+	Label string
+	// Text locates the element by visible text (label fallback).
+	Text     string
 	Timeout  time.Duration
 	Interval time.Duration
 }
 
 // MobileValueExpectationExec compares text/value content for an element.
 type MobileValueExpectationExec struct {
-	ID       string
-	Label    string
+	ID    string
+	Label string
+	// Text locates the element by visible text (label fallback).
+	Text     string
 	Expected cty.Value
 	Timeout  time.Duration
 	Interval time.Duration
@@ -104,8 +110,10 @@ type MobileValueExpectationExec struct {
 
 // MobileStateExpectationExec checks enabled/disabled state for an element.
 type MobileStateExpectationExec struct {
-	ID       string
-	Label    string
+	ID    string
+	Label string
+	// Text locates the element by visible text (label fallback).
+	Text     string
 	Timeout  time.Duration
 	Interval time.Duration
 }

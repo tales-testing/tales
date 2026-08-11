@@ -84,7 +84,11 @@ type MobileAction struct {
 	// enforces XOR. Reserved for iOS system controllers whose buttons
 	// expose a label but leave the identifier empty
 	// (PHPickerViewController, document picker, share sheet, ...).
-	Label    Expression
+	Label Expression
+	// Text locates the element by its visible text, falling back to
+	// the accessibility label when the node has none. Mutually
+	// exclusive with ID and Label; the parser enforces the XOR.
+	Text     Expression
 	Value    Expression
 	Secure   Expression
 	Timeout  Expression
@@ -118,16 +122,24 @@ type MobileExpect struct {
 
 // MobileVisibility describes one element visibility expectation with optional polling timeout.
 type MobileVisibility struct {
-	ID       Expression
-	Label    Expression
+	ID    Expression
+	Label Expression
+	// Text locates the element by its visible text, falling back to
+	// the accessibility label when the node has none. Mutually
+	// exclusive with ID and Label; the parser enforces the XOR.
+	Text     Expression
 	Timeout  Expression
 	Interval Expression
 }
 
 // MobileValueExpectation compares text/value content for an element.
 type MobileValueExpectation struct {
-	ID       Expression
-	Label    Expression
+	ID    Expression
+	Label Expression
+	// Text locates the element by its visible text, falling back to
+	// the accessibility label when the node has none. Mutually
+	// exclusive with ID and Label; the parser enforces the XOR.
+	Text     Expression
 	Expected Expression
 	Timeout  Expression
 	Interval Expression
@@ -135,8 +147,12 @@ type MobileValueExpectation struct {
 
 // MobileStateExpectation checks enabled / disabled state for an element.
 type MobileStateExpectation struct {
-	ID       Expression
-	Label    Expression
+	ID    Expression
+	Label Expression
+	// Text locates the element by its visible text, falling back to
+	// the accessibility label when the node has none. Mutually
+	// exclusive with ID and Label; the parser enforces the XOR.
+	Text     Expression
 	Timeout  Expression
 	Interval Expression
 }

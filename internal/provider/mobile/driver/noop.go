@@ -22,16 +22,18 @@ func (NoopDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error)
 }
 
 // Tap does nothing.
-func (NoopDriver) Tap(_ context.Context, _, _, _ string, _, _ float64) error { return nil }
+func (NoopDriver) Tap(_ context.Context, _ string, _ Locator, _, _ float64) error { return nil }
 
 // Swipe does nothing.
 func (NoopDriver) Swipe(_ context.Context, _ string, _, _, _, _, _ float64) error { return nil }
 
 // LongPress does nothing.
-func (NoopDriver) LongPress(_ context.Context, _, _, _ string, _, _, _ float64) error { return nil }
+func (NoopDriver) LongPress(_ context.Context, _ string, _ Locator, _, _, _ float64) error {
+	return nil
+}
 
 // DoubleTap does nothing.
-func (NoopDriver) DoubleTap(_ context.Context, _, _, _ string, _, _ float64) error { return nil }
+func (NoopDriver) DoubleTap(_ context.Context, _ string, _ Locator, _, _ float64) error { return nil }
 
 // PressKey does nothing.
 func (NoopDriver) PressKey(_ context.Context, _, _ string) error { return nil }
@@ -43,7 +45,9 @@ func (NoopDriver) PressButton(_ context.Context, _, _ string) error { return nil
 func (NoopDriver) SetOrientation(_ context.Context, _ string) error { return nil }
 
 // InputText does nothing.
-func (NoopDriver) InputText(_ context.Context, _, _, _, _ string, _ bool) error { return nil }
+func (NoopDriver) InputText(_ context.Context, _ string, _ Locator, _ string, _ bool) error {
+	return nil
+}
 
 // EraseText does nothing.
 func (NoopDriver) EraseText(_ context.Context, _ string, _ int) error { return nil }
@@ -52,7 +56,7 @@ func (NoopDriver) EraseText(_ context.Context, _ string, _ int) error { return n
 func (NoopDriver) DismissKeyboard(_ context.Context, _ string) error { return nil }
 
 // ScrollTo does nothing.
-func (NoopDriver) ScrollTo(_ context.Context, _, _, _ string) error { return nil }
+func (NoopDriver) ScrollTo(_ context.Context, _ string, _ Locator) error { return nil }
 
 // Screenshot returns an empty image.
 func (NoopDriver) Screenshot(_ context.Context) ([]byte, error) { return []byte{}, nil }

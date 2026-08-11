@@ -1179,3 +1179,99 @@ scenario "not-visible" {
 		t.Fatalf("expected 1 not_visible entry, got %d", len(step.Mobile.Expect.NotVisible))
 	}
 }
+
+func TestLoadPathMobileAcceptsTheTextLocator(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "text-locator" {
+  step "mobile" "confirm" {
+    platform = "android"
+    target   = "phone"
+    actions {
+      tap {
+        text = "Allow"
+      }
+    }
+    expect {
+      visible {
+        text = "Allowed"
+      }
+    }
+  }
+}
+`
+
+	if _, diags := LoadPath(writeTales(t, content)); diags.HasErrors() {
+		t.Fatalf("the text locator should parse, got: %s", diags.Error())
+	}
+}
+
+func TestLoadPathMobileRejectsTwoLocatorsOnOneAction(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "conflict" {
+  step "mobile" "confirm" {
+    platform = "android"
+    target   = "phone"
+    actions {
+      tap {
+        id   = "dialog.allow"
+        text = "Allow"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected an error when two locators are set")
+	}
+
+	msg := diags.Error()
+
+	if !strings.Contains(msg, "Conflicting element locator") {
+		t.Fatalf("unexpected diagnostic: %s", msg)
+	}
+
+	// The message lists every locator, so an author who set the wrong
+	// pair can see the full menu rather than guessing.
+	for _, want := range []string{"id", "label", "text"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("diagnostic should mention %q, got: %s", want, msg)
+		}
+	}
+}
+
+func TestLoadPathMobileRejectsTwoLocatorsOnOneExpect(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "conflict" {
+  step "mobile" "confirm" {
+    platform = "android"
+    target   = "phone"
+    expect {
+      visible {
+        label = "Allow"
+        text  = "Allow"
+      }
+    }
+  }
+}
+`
+
+	_, diags := LoadPath(writeTales(t, content))
+	if !diags.HasErrors() {
+		t.Fatal("expected an error when two locators are set on an expect block")
+	}
+
+	if !strings.Contains(diags.Error(), "Conflicting element locator") {
+		t.Fatalf("unexpected diagnostic: %s", diags.Error())
+	}
+}

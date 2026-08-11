@@ -20,6 +20,7 @@ import (
 type fakeTap struct {
 	id    string
 	label string
+	text  string
 	x, y  float64
 }
 
@@ -147,11 +148,11 @@ func (f *fakeDriverAll) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, 
 	return node, nil
 }
 
-func (f *fakeDriverAll) Tap(_ context.Context, _, id, label string, x, y float64) error {
+func (f *fakeDriverAll) Tap(_ context.Context, _ string, locator driver.Locator, x, y float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.taps = append(f.taps, fakeTap{id: id, label: label, x: x, y: y})
+	f.taps = append(f.taps, fakeTap{id: locator.ID, label: locator.Label, text: locator.Text, x: x, y: y})
 
 	return f.tapErr
 }
@@ -167,20 +168,20 @@ func (f *fakeDriverAll) Swipe(_ context.Context, _ string, startX, startY, endX,
 	return nil
 }
 
-func (f *fakeDriverAll) LongPress(_ context.Context, _, id, label string, x, y, duration float64) error {
+func (f *fakeDriverAll) LongPress(_ context.Context, _ string, locator driver.Locator, x, y, duration float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.longPresses = append(f.longPresses, fakeLongPress{id: id, label: label, x: x, y: y, duration: duration})
+	f.longPresses = append(f.longPresses, fakeLongPress{id: locator.ID, label: locator.Label, x: x, y: y, duration: duration})
 
 	return nil
 }
 
-func (f *fakeDriverAll) DoubleTap(_ context.Context, _, id, label string, x, y float64) error {
+func (f *fakeDriverAll) DoubleTap(_ context.Context, _ string, locator driver.Locator, x, y float64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.doubleTaps = append(f.doubleTaps, fakeTap{id: id, label: label, x: x, y: y})
+	f.doubleTaps = append(f.doubleTaps, fakeTap{id: locator.ID, label: locator.Label, text: locator.Text, x: x, y: y})
 
 	return nil
 }
@@ -212,11 +213,11 @@ func (f *fakeDriverAll) SetOrientation(_ context.Context, orientation string) er
 	return nil
 }
 
-func (f *fakeDriverAll) InputText(_ context.Context, _, id, label, text string, paste bool) error {
+func (f *fakeDriverAll) InputText(_ context.Context, _ string, locator driver.Locator, text string, paste bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.inputs = append(f.inputs, fakeInput{id: id, label: label, text: text, paste: paste})
+	f.inputs = append(f.inputs, fakeInput{id: locator.ID, label: locator.Label, text: text, paste: paste})
 
 	return nil
 }
@@ -239,11 +240,11 @@ func (f *fakeDriverAll) DismissKeyboard(_ context.Context, bundleID string) erro
 	return nil
 }
 
-func (f *fakeDriverAll) ScrollTo(_ context.Context, _, id, label string) error {
+func (f *fakeDriverAll) ScrollTo(_ context.Context, _ string, locator driver.Locator) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.scrollTos = append(f.scrollTos, fakeScrollTo{id: id, label: label})
+	f.scrollTos = append(f.scrollTos, fakeScrollTo{id: locator.ID, label: locator.Label})
 
 	return nil
 }
@@ -2272,5 +2273,115 @@ func TestAcquireSessionSerializesSameTarget(t *testing.T) {
 
 	if got := builds.Load(); got != 1 {
 		t.Fatalf("expected exactly 1 Build call, got %d", got)
+	}
+}
+
+// newTextOnlyHierarchy mirrors a screen that ships no identifiers at
+// all — system dialogs and most third-party UI — where visible text is
+// the only handle a scenario has.
+func newTextOnlyHierarchy() *tree.ViewNode {
+	return &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{Text: "Cancel", Visible: true, Enabled: true, Bounds: tree.Rect{X: 0, Y: 40, Width: 80, Height: 30}},
+			{Text: "Allow", Visible: true, Enabled: true, Bounds: tree.Rect{X: 100, Y: 40, Width: 80, Height: 30}},
+		},
+	}
+}
+
+func TestExecuteTapByText(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newTextOnlyHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "permissions",
+		Step:     newStep("tap-text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, Text: "Allow"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(drv.taps) != 1 {
+		t.Fatalf("expected 1 tap, got %d", len(drv.taps))
+	}
+
+	tap := drv.taps[0]
+
+	// The authored text rides along so the driver can re-resolve
+	// against the live UI rather than trusting stale coordinates.
+	if tap.text != "Allow" {
+		t.Fatalf("expected the driver to receive text=\"Allow\", got %q", tap.text)
+	}
+
+	// Center of (100,40)-(180,70).
+	if tap.x != 140 || tap.y != 55 {
+		t.Fatalf("expected the tap on the Allow button center (140,55), got %+v", tap)
+	}
+}
+
+func TestExecuteExpectVisibleByText(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newTextOnlyHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "permissions",
+		Step:     newStep("visible-text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Visible: []provider.MobileVisibilityExec{
+					{Text: "Cancel", Timeout: 50 * time.Millisecond},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected the visibility expectation to resolve by text, got %v", err)
+	}
+}
+
+func TestExecuteMissingTextSurfacesTheLocatorInTheError(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newTextOnlyHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "permissions",
+		Step:     newStep("tap-missing-text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionTap, Text: "Absent", Timeout: 30 * time.Millisecond},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected an error for a text locator that matches nothing")
+	}
+
+	if !strings.Contains(err.Error(), `text="Absent"`) {
+		t.Fatalf("error should cite the text locator, got %v", err)
 	}
 }
