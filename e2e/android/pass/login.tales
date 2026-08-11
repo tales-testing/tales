@@ -1,0 +1,112 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android sign-in happy path" {
+  tags = ["android", "mobile", "demo", "login"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  step "mobile" "android_open_login" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.signin"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id      = "login.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  step "mobile" "android_submit_credentials" {
+    depends_on = ["android_open_login"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      input_text {
+        id    = "login.email"
+        value = "user@example.com"
+      }
+      input_text {
+        id     = "login.password"
+        value  = "Secret123!"
+        secure = true
+      }
+      tap {
+        id = "login.submit"
+      }
+    }
+
+    # The store waits 400ms before authenticating, so the feed is not
+    # on screen when the tap returns. The default 10s poll covers it.
+    expect {
+      visible {
+        id = "feed.screen"
+      }
+    }
+  }
+
+  # The email typed above survives into the profile screen, which proves
+  # the value reached the app rather than only the accessibility tree.
+  step "mobile" "android_profile_shows_email" {
+    depends_on = ["android_submit_credentials"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      tap {
+        id = "feed.profile"
+      }
+      wait_visible {
+        id = "profile.screen"
+      }
+    }
+
+    expect {
+      text {
+        id    = "profile.email"
+        value = "user@example.com"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}

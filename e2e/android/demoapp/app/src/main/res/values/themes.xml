@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Compose draws the whole UI, so the platform theme only needs to
+      avoid an ActionBar the tests would otherwise have to account for.
+    -->
+    <style name="Theme.TalesDemo" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

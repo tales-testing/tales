@@ -24,7 +24,14 @@ const (
 	bodySnippetLimit      = 256
 
 	payloadBundleIDKey = "bundleId"
-	payloadDurationKey = "duration"
+	// payloadInputValueKey carries the text /inputText should type.
+	//
+	// It is deliberately not "text": "text" names the text *locator* on
+	// every route, and reusing it here made an input_text action send
+	// its own content as the element to look for. The DSL calls this
+	// field value, so the wire does too.
+	payloadInputValueKey = "value"
+	payloadDurationKey   = "duration"
 )
 
 // Client is the HTTP/JSON implementation of Driver, targeting the
@@ -169,7 +176,7 @@ func (c *Client) SetOrientation(ctx context.Context, orientation string) error {
 
 // InputText posts to /inputText.
 func (c *Client) InputText(ctx context.Context, bundleID string, locator Locator, text string, paste bool) error {
-	payload := map[string]any{payloadBundleIDKey: bundleID, "text": text}
+	payload := map[string]any{payloadBundleIDKey: bundleID, payloadInputValueKey: text}
 	applyLocator(payload, locator)
 
 	if paste {
