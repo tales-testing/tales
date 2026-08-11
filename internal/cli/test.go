@@ -20,6 +20,7 @@ import (
 	loadprovider "github.com/tales-testing/tales/internal/provider/load"
 	mailprovider "github.com/tales-testing/tales/internal/provider/mail"
 	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
+	androidmobile "github.com/tales-testing/tales/internal/provider/mobile/android"
 	applemobile "github.com/tales-testing/tales/internal/provider/mobile/apple"
 	rpcprovider "github.com/tales-testing/tales/internal/provider/rpc"
 	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
@@ -161,7 +162,9 @@ func resolveCaptureMode(raw, htmlPath string) (mobileprovider.CaptureMode, error
 // given backend reports that platform as unsupported rather than failing
 // obscurely later.
 func mobileOptions(captureMode mobileprovider.CaptureMode) []mobileprovider.Option {
-	backends := applemobile.Options()
+	backends := make([]mobileprovider.Option, 0, 4)
+	backends = append(backends, applemobile.Options()...)
+	backends = append(backends, androidmobile.Options()...)
 
 	opts := make([]mobileprovider.Option, 0, 1+len(backends))
 	opts = append(opts, mobileprovider.WithCaptureMode(captureMode))
