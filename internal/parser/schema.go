@@ -37,17 +37,26 @@ type scenarioBlock struct {
 	Record     *recordBlock  `hcl:"record,block"`
 }
 
-// recordBlock declares scenario-level screen recording. V1 is wired to the
-// iOS mobile provider via the ScenarioHook capability; other providers ignore
-// it. output is required; codec / mask / display / target / force are
-// optional passthroughs to `xcrun simctl io recordVideo`.
+// recordBlock declares scenario-level screen recording. It is wired to
+// the mobile provider via the ScenarioHook capability; other providers
+// ignore it.
+//
+// output and target are platform-neutral. The rest are passthroughs to
+// one platform's recorder — codec / mask / display / force to
+// `xcrun simctl io recordVideo`, bit_rate / size to Android's
+// `screenrecord` — and the parser accepts the union so a shared scenario
+// stays writable. The backend rejects the ones its platform does not
+// implement, by name, rather than ignoring them and recording something
+// other than what was asked for.
 type recordBlock struct {
 	Output  hcl.Expression `hcl:"output,optional"`
+	Target  hcl.Expression `hcl:"target,optional"`
 	Codec   hcl.Expression `hcl:"codec,optional"`
 	Mask    hcl.Expression `hcl:"mask,optional"`
 	Display hcl.Expression `hcl:"display,optional"`
-	Target  hcl.Expression `hcl:"target,optional"`
 	Force   hcl.Expression `hcl:"force,optional"`
+	BitRate hcl.Expression `hcl:"bit_rate,optional"`
+	Size    hcl.Expression `hcl:"size,optional"`
 }
 
 type teardownDef struct {

@@ -42,6 +42,8 @@ func decodeScenarioRecord(path string, rb *recordBlock, scenarioBody *hclsyntax.
 		Display: optionalExpr(path, rb.Display),
 		Target:  optionalExpr(path, rb.Target),
 		Force:   optionalExpr(path, rb.Force),
+		BitRate: optionalExpr(path, rb.BitRate),
+		Size:    optionalExpr(path, rb.Size),
 		Range:   rng,
 	}, diags
 }

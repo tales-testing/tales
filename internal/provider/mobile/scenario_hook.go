@@ -245,6 +245,16 @@ func resolveRecordSpec(spec *model.ScenarioRecord, hctx provider.ScenarioContext
 		force = b
 	}
 
+	bitRate, err := evalOptionalRecordString(spec.BitRate, ctx, "bit_rate")
+	if err != nil {
+		return nil, err
+	}
+
+	size, err := evalOptionalRecordString(spec.Size, ctx, "size")
+	if err != nil {
+		return nil, err
+	}
+
 	return &pendingRecord{
 		targetName: target,
 		options: RecordOptions{
@@ -253,6 +263,8 @@ func resolveRecordSpec(spec *model.ScenarioRecord, hctx provider.ScenarioContext
 			Mask:    mask,
 			Display: display,
 			Force:   force,
+			BitRate: bitRate,
+			Size:    size,
 		},
 	}, nil
 }
