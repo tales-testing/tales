@@ -20,6 +20,7 @@ import (
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
 	"github.com/tales-testing/tales/internal/provider/artifacts"
+	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -723,6 +724,7 @@ func visibilityFromAction(action provider.MobileActionExec) provider.MobileVisib
 	return provider.MobileVisibilityExec{
 		ID:       action.ID,
 		Label:    action.Label,
+		Text:     action.Text,
 		Timeout:  action.Timeout,
 		Interval: action.Interval,
 	}
@@ -750,15 +752,15 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 
 	switch action.Kind {
 	case model.MobileActionTap:
-		return executeTap(ctx, session, action.Label, node)
+		return executeTap(ctx, session, actionLocator(action), node)
 	case model.MobileActionDoubleTap:
-		return executeDoubleTap(ctx, session, action.Label, node)
+		return executeDoubleTap(ctx, session, actionLocator(action), node)
 	case model.MobileActionLongPress:
 		return executeLongPress(ctx, session, action, node)
 	case model.MobileActionInputText:
 		return executeInputText(ctx, session, action, node)
 	case model.MobileActionClearText:
-		return executeClearText(ctx, session, action.Label, node)
+		return executeClearText(ctx, session, actionLocator(action), node)
 	case model.MobileActionSwipe:
 		return executeSwipe(ctx, session, action, node, false)
 	case model.MobileActionScroll:
@@ -813,7 +815,7 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	}
 
 	if action.Kind == model.MobileActionScrollTo {
-		if err := session.Driver.ScrollTo(ctx, session.Target.BundleID, action.ID, action.Label); err != nil {
+		if err := session.Driver.ScrollTo(ctx, session.Target.BundleID, actionLocator(action)); err != nil {
 			return true, fmt.Errorf("scroll to: %w", err)
 		}
 
@@ -823,18 +825,18 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	return false, nil
 }
 
-func executeTap(ctx context.Context, session *Session, label string, node *tree.ViewNode) error {
+func executeTap(ctx context.Context, session *Session, locator driver.Locator, node *tree.ViewNode) error {
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, label, x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, resolvedLocator(locator, node), x, y); err != nil {
 		return fmt.Errorf("tap: %w", err)
 	}
 
 	return nil
 }
 
-func executeDoubleTap(ctx context.Context, session *Session, label string, node *tree.ViewNode) error {
+func executeDoubleTap(ctx context.Context, session *Session, locator driver.Locator, node *tree.ViewNode) error {
 	x, y := tree.Center(node)
-	if err := session.Driver.DoubleTap(ctx, session.Target.BundleID, node.ID, label, x, y); err != nil {
+	if err := session.Driver.DoubleTap(ctx, session.Target.BundleID, resolvedLocator(locator, node), x, y); err != nil {
 		return fmt.Errorf("double tap: %w", err)
 	}
 
@@ -849,7 +851,7 @@ func executeLongPress(ctx context.Context, session *Session, action provider.Mob
 		duration = defaultLongPressDuration
 	}
 
-	if err := session.Driver.LongPress(ctx, session.Target.BundleID, node.ID, action.Label, x, y, duration.Seconds()); err != nil {
+	if err := session.Driver.LongPress(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), x, y, duration.Seconds()); err != nil {
 		return fmt.Errorf("long press: %w", err)
 	}
 
@@ -858,7 +860,7 @@ func executeLongPress(ctx context.Context, session *Session, action provider.Mob
 
 func executeInputText(ctx context.Context, session *Session, action provider.MobileActionExec, node *tree.ViewNode) error {
 	if usePasteInput(node) {
-		if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Label, action.Value, true); err != nil {
+		if err := session.Driver.InputText(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), action.Value, true); err != nil {
 			return fmt.Errorf("input text: %w", err)
 		}
 
@@ -866,18 +868,18 @@ func executeInputText(ctx context.Context, session *Session, action provider.Mob
 	}
 
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, action.Label, x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), x, y); err != nil {
 		return fmt.Errorf("focus element: %w", err)
 	}
 
-	if err := session.Driver.InputText(ctx, session.Target.BundleID, node.ID, action.Label, action.Value, false); err != nil {
+	if err := session.Driver.InputText(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), action.Value, false); err != nil {
 		return fmt.Errorf("input text: %w", err)
 	}
 
 	return nil
 }
 
-func executeClearText(ctx context.Context, session *Session, label string, node *tree.ViewNode) error {
+func executeClearText(ctx context.Context, session *Session, locator driver.Locator, node *tree.ViewNode) error {
 	count := len([]rune(tree.Value(node)))
 
 	// SecureField on iOS exposes its value as one "•" per typed
@@ -892,7 +894,7 @@ func executeClearText(ctx context.Context, session *Session, label string, node 
 	}
 
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, node.ID, label, x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.BundleID, resolvedLocator(locator, node), x, y); err != nil {
 		return fmt.Errorf("focus element: %w", err)
 	}
 
@@ -986,7 +988,7 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 
 	var found *tree.ViewNode
 
-	locator := elementLocator{ID: action.ID, Label: action.Label, First: action.First}
+	locator := elementLocator{ID: action.ID, Label: action.Label, Text: action.Text, First: action.First}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElement(pollCtx, session, locator)
@@ -1054,7 +1056,7 @@ func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v pr
 
 	var found bool
 
-	locator := elementLocator{ID: v.ID, Label: v.Label, First: first}
+	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text, First: first}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElement(pollCtx, session, locator)
@@ -1265,7 +1267,32 @@ func poll(ctx context.Context, opts PollOptions, fn func(context.Context) (pollR
 type elementLocator struct {
 	ID    string
 	Label string
+	Text  string
 	First bool
+}
+
+// actionLocator extracts the element locator the author wrote on an
+// action.
+func actionLocator(action provider.MobileActionExec) driver.Locator {
+	return driver.Locator{ID: action.ID, Label: action.Label, Text: action.Text}
+}
+
+// resolvedLocator is what the driver is actually sent.
+//
+// The id comes from the node the provider just resolved rather than from
+// the scenario, so a label- or text-located element still reaches the
+// driver with whatever identifier it turned out to have. The authored
+// label and text ride along so the driver can re-resolve against the
+// live UI: the coordinates were computed from a snapshot, and the screen
+// may have moved since.
+func resolvedLocator(authored driver.Locator, node *tree.ViewNode) driver.Locator {
+	locator := authored
+
+	if node != nil {
+		locator.ID = node.ID
+	}
+
+	return locator
 }
 
 // String returns a user-facing rendering of the locator for error
@@ -1274,6 +1301,10 @@ type elementLocator struct {
 func (l elementLocator) String() string {
 	if l.Label != "" {
 		return fmt.Sprintf("label=%q", l.Label)
+	}
+
+	if l.Text != "" {
+		return fmt.Sprintf("text=%q", l.Text)
 	}
 
 	return fmt.Sprintf("id=%q", l.ID)
@@ -1287,6 +1318,15 @@ func findElement(ctx context.Context, session *Session, locator elementLocator) 
 
 	if locator.Label != "" {
 		node, ok, err := tree.FindFirstByLabel(hierarchy, locator.Label)
+		if err != nil {
+			return nil, false, fmt.Errorf("find element: %w", err)
+		}
+
+		return node, ok, nil
+	}
+
+	if locator.Text != "" {
+		node, ok, err := tree.FindFirstByText(hierarchy, locator.Text)
 		if err != nil {
 			return nil, false, fmt.Errorf("find element: %w", err)
 		}

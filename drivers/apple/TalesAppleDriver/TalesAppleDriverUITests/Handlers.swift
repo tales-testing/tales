@@ -216,7 +216,7 @@ final class TalesRouter {
 
         let app = XCUIApplication(bundleIdentifier: bundleID)
         let id = (payload["id"] as? String) ?? ""
-        let label = (payload["label"] as? String) ?? ""
+        let label = locatorLabel(from: payload)
 
         // Prefer label-based resolution when set — iOS system controllers
         // (PHPickerViewController, UIDocumentPickerViewController, share
@@ -318,7 +318,7 @@ final class TalesRouter {
         }
 
         let id = (payload["id"] as? String) ?? ""
-        let label = (payload["label"] as? String) ?? ""
+        let label = locatorLabel(from: payload)
         let duration = doubleField(payload["duration"]) ?? 1.0
 
         // Label-based long press: same rationale as handleTap.
@@ -365,7 +365,7 @@ final class TalesRouter {
         }
 
         let id = (payload["id"] as? String) ?? ""
-        let label = (payload["label"] as? String) ?? ""
+        let label = locatorLabel(from: payload)
 
         // Label-based double tap: same rationale as handleTap.
         if !label.isEmpty {
@@ -564,7 +564,7 @@ final class TalesRouter {
 
         let app = XCUIApplication(bundleIdentifier: bundleID)
         let id = (payload["id"] as? String) ?? ""
-        let label = (payload["label"] as? String) ?? ""
+        let label = locatorLabel(from: payload)
         let paste = (payload["paste"] as? Bool) ?? false
 
         if paste {
@@ -692,7 +692,7 @@ final class TalesRouter {
         // press_key brought up a search bar), keep the existing
         // app.typeText path so we do not regress that intent.
         if !id.isEmpty || !label.isEmpty {
-            let element = resolveLocatorElement(in: app, id: id, label: label)
+            let element = resolveLocatorElement(in: app, id: id, label: label, text: "")
             guard element.exists else {
                 let locator = label.isEmpty ? id : label
                 return HTTPResponse.error("element \(locator) not found", status: 404)
@@ -719,10 +719,37 @@ final class TalesRouter {
     /// handler). Returns a placeholder XCUIElement whose `.exists` is
     /// false when nothing matches; the caller is expected to guard on
     /// `.exists` before using it.
-    private func resolveLocatorElement(in app: XCUIApplication, id: String, label: String) -> XCUIElement {
-        if !label.isEmpty {
+    /// Reads the label-shaped locator out of a request payload.
+    ///
+    /// `label` and `text` collapse to one value on iOS because an
+    /// element's visible copy *is* its accessibility label here; see
+    /// resolveLocatorElement for why that keeps the locator portable.
+    /// `label` wins when both are present, though the parser makes that
+    /// combination impossible.
+    private func locatorLabel(from payload: [String: Any]) -> String {
+        if let label = payload["label"] as? String, !label.isEmpty {
+            return label
+        }
+
+        return (payload["text"] as? String) ?? ""
+    }
+
+    /// Resolves the element a request names.
+    ///
+    /// `text` matches on `label` here, the same predicate the `label`
+    /// locator uses. That is not a shortcut: on iOS an element's visible
+    /// copy *is* its accessibility label, so a button reading "Done"
+    /// carries it as the label and exposes no separate text attribute.
+    /// The Go-side resolver mirrors this by falling back to the label
+    /// when a node has no text, which is what lets one `text = "Done"`
+    /// locator reach the same control on iOS and on Android, where the
+    /// caption arrives as text instead.
+    private func resolveLocatorElement(in app: XCUIApplication, id: String, label: String, text: String) -> XCUIElement {
+        let byLabel = !label.isEmpty ? label : text
+
+        if !byLabel.isEmpty {
             return app.descendants(matching: .any)
-                .matching(NSPredicate(format: "label == %@", label))
+                .matching(NSPredicate(format: "label == %@", byLabel))
                 .firstMatch
         }
 
@@ -1029,7 +1056,7 @@ final class TalesRouter {
         }
 
         let id = (payload["id"] as? String) ?? ""
-        let label = (payload["label"] as? String) ?? ""
+        let label = locatorLabel(from: payload)
 
         guard !id.isEmpty || !label.isEmpty else {
             return HTTPResponse.error("scroll_to requires an element id or label", status: 400)

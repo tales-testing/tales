@@ -82,6 +82,49 @@ func FindFirstByLabel(root *ViewNode, label string) (*ViewNode, bool, error) {
 	return nil, false, nil
 }
 
+// FindFirstByText returns the first node whose visible text equals text
+// in pre-order depth-first traversal. It returns (nil, false, nil) on
+// miss and never errors.
+//
+// Matching goes through Text(), so a node with no text of its own falls
+// back to its label. That keeps one locator working across platforms:
+// Android reports a button's caption as text while iOS reports it as the
+// accessibility label, and a scenario should not have to know which.
+//
+// This is the locator of last resort — visible copy changes far more
+// often than an accessibility id — but it is the only one available for
+// screens that ship no identifiers at all, which is most third-party and
+// system UI.
+func FindFirstByText(root *ViewNode, text string) (*ViewNode, bool, error) {
+	if root == nil || text == "" {
+		return nil, false, nil
+	}
+
+	if node := firstByText(root, text); node != nil {
+		return node, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func firstByText(node *ViewNode, text string) *ViewNode {
+	if node == nil {
+		return nil
+	}
+
+	if Text(node) == text {
+		return node
+	}
+
+	for _, child := range node.Children {
+		if found := firstByText(child, text); found != nil {
+			return found
+		}
+	}
+
+	return nil
+}
+
 func firstByLabel(node *ViewNode, label string) *ViewNode {
 	if node == nil {
 		return nil

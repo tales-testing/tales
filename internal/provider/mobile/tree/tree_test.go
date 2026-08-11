@@ -396,3 +396,67 @@ func TestValue(t *testing.T) {
 		t.Fatal("expected empty value for nil")
 	}
 }
+
+func TestFindFirstByTextMatchesVisibleText(t *testing.T) {
+	t.Parallel()
+
+	root := &ViewNode{
+		ID: "root",
+		Children: []*ViewNode{
+			{ID: "a", Text: "Cancel"},
+			{ID: "b", Text: "Sign in"},
+			{ID: "c", Text: "Sign in"},
+		},
+	}
+
+	node, found, err := FindFirstByText(root, "Sign in")
+	if err != nil || !found {
+		t.Fatalf("expected a match, got found=%v err=%v", found, err)
+	}
+
+	// Pre-order first match, like the id and label locators: two
+	// elements sharing visible copy is common (a list of identical
+	// rows) and must not be an error.
+	if node.ID != "b" {
+		t.Fatalf("expected the first match in pre-order, got %q", node.ID)
+	}
+}
+
+func TestFindFirstByTextFallsBackToLabel(t *testing.T) {
+	t.Parallel()
+
+	// Android reports a button's caption as text; iOS reports it as the
+	// accessibility label. One locator has to reach both, or a
+	// cross-platform scenario would need a per-platform spelling.
+	root := &ViewNode{
+		ID:       "root",
+		Children: []*ViewNode{{ID: "done", Label: "Done"}},
+	}
+
+	node, found, err := FindFirstByText(root, "Done")
+	if err != nil || !found {
+		t.Fatalf("expected the label fallback to match, got found=%v err=%v", found, err)
+	}
+
+	if node.ID != "done" {
+		t.Fatalf("matched %q", node.ID)
+	}
+}
+
+func TestFindFirstByTextMissAndEmptyAreNotErrors(t *testing.T) {
+	t.Parallel()
+
+	root := &ViewNode{ID: "root", Children: []*ViewNode{{ID: "a", Text: "Cancel"}}}
+
+	if _, found, err := FindFirstByText(root, "Absent"); found || err != nil {
+		t.Fatalf("a miss must report found=false with no error, got found=%v err=%v", found, err)
+	}
+
+	if _, found, err := FindFirstByText(root, ""); found || err != nil {
+		t.Fatalf("an empty locator must not match, got found=%v err=%v", found, err)
+	}
+
+	if _, found, err := FindFirstByText(nil, "Cancel"); found || err != nil {
+		t.Fatalf("a nil tree must not match, got found=%v err=%v", found, err)
+	}
+}

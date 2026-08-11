@@ -215,7 +215,7 @@ func TestClientTapSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.Tap(context.Background(), "com.example.MyApp", "", "", 12.5, 34.25); err != nil {
+	if err := client.Tap(context.Background(), "com.example.MyApp", Locator{}, 12.5, 34.25); err != nil {
 		t.Fatalf("tap: %v", err)
 	}
 
@@ -272,7 +272,7 @@ func TestClientLongPressSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.LongPress(context.Background(), "com.example.MyApp", "menu.item", "", 5, 6, 1.5); err != nil {
+	if err := client.LongPress(context.Background(), "com.example.MyApp", Locator{ID: "menu.item"}, 5, 6, 1.5); err != nil {
 		t.Fatalf("longPress: %v", err)
 	}
 
@@ -299,7 +299,7 @@ func TestClientDoubleTapSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.DoubleTap(context.Background(), "com.example.MyApp", "feed.item", "", 7, 8); err != nil {
+	if err := client.DoubleTap(context.Background(), "com.example.MyApp", Locator{ID: "feed.item"}, 7, 8); err != nil {
 		t.Fatalf("doubleTap: %v", err)
 	}
 
@@ -399,7 +399,7 @@ func TestClientTapIncludesIDWhenProvided(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.Tap(context.Background(), "com.example.MyApp", "auth.signup.accept_terms", "", 12.5, 34.25); err != nil {
+	if err := client.Tap(context.Background(), "com.example.MyApp", Locator{ID: "auth.signup.accept_terms"}, 12.5, 34.25); err != nil {
 		t.Fatalf("tap: %v", err)
 	}
 
@@ -425,7 +425,7 @@ func TestClientInputTextSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.InputText(context.Background(), "com.example.MyApp", "", "", "hello@example.com", false); err != nil {
+	if err := client.InputText(context.Background(), "com.example.MyApp", Locator{}, "hello@example.com", false); err != nil {
 		t.Fatalf("inputText: %v", err)
 	}
 
@@ -455,7 +455,7 @@ func TestClientInputTextIncludesIDAndPasteWhenSet(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.InputText(context.Background(), "com.example.MyApp", "auth.signup.password", "", "p@ssw0rd!", true); err != nil {
+	if err := client.InputText(context.Background(), "com.example.MyApp", Locator{ID: "auth.signup.password"}, "p@ssw0rd!", true); err != nil {
 		t.Fatalf("inputText: %v", err)
 	}
 
@@ -485,7 +485,7 @@ func TestClientTapIncludesLabelWhenSet(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.Tap(context.Background(), "com.example.MyApp", "", "Done", 10, 20); err != nil {
+	if err := client.Tap(context.Background(), "com.example.MyApp", Locator{Label: "Done"}, 10, 20); err != nil {
 		t.Fatalf("tap: %v", err)
 	}
 
@@ -515,7 +515,7 @@ func TestClientScrollToSendsLocator(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.ScrollTo(context.Background(), "com.example.MyApp", "form.identifier_value", ""); err != nil {
+	if err := client.ScrollTo(context.Background(), "com.example.MyApp", Locator{ID: "form.identifier_value"}); err != nil {
 		t.Fatalf("scrollTo: %v", err)
 	}
 
@@ -545,7 +545,7 @@ func TestClientScrollToSendsLabel(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.ScrollTo(context.Background(), "com.example.MyApp", "", "Done"); err != nil {
+	if err := client.ScrollTo(context.Background(), "com.example.MyApp", Locator{Label: "Done"}); err != nil {
 		t.Fatalf("scrollTo: %v", err)
 	}
 
@@ -597,7 +597,7 @@ func TestClientInputTextIncludesLabelWhenSet(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.InputText(context.Background(), "com.example.MyApp", "", "Search", "needle", false); err != nil {
+	if err := client.InputText(context.Background(), "com.example.MyApp", Locator{Label: "Search"}, "needle", false); err != nil {
 		t.Fatalf("inputText: %v", err)
 	}
 
@@ -670,5 +670,68 @@ func TestClientScreenshotNon200(t *testing.T) {
 
 	if _, err := client.Screenshot(context.Background()); err == nil || !strings.Contains(err.Error(), "500") {
 		t.Fatalf("expected 500 error, got %v", err)
+	}
+}
+
+func TestTapSendsTheTextLocator(t *testing.T) {
+	t.Parallel()
+
+	var payload map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+
+	if err := client.Tap(context.Background(), "com.example.MyApp", Locator{Text: "Sign in"}, 10, 20); err != nil {
+		t.Fatalf("tap: %v", err)
+	}
+
+	if payload["text"] != "Sign in" {
+		t.Fatalf("expected the text locator on the wire, got %v", payload)
+	}
+
+	// Only the locator that was set travels: sending empty id/label keys
+	// would have the driver search for an element with a blank
+	// identifier instead of matching on text.
+	for _, absent := range []string{"id", "label"} {
+		if _, ok := payload[absent]; ok {
+			t.Fatalf("payload should not carry an empty %q, got %v", absent, payload)
+		}
+	}
+}
+
+func TestCoordinateOnlyTapSendsNoLocator(t *testing.T) {
+	t.Parallel()
+
+	var payload map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+
+	if err := client.Tap(context.Background(), "com.example.MyApp", Locator{}, 10, 20); err != nil {
+		t.Fatalf("tap: %v", err)
+	}
+
+	for _, absent := range []string{"id", "label", "text"} {
+		if _, ok := payload[absent]; ok {
+			t.Fatalf("a coordinate-only tap must send no locator keys, got %v", payload)
+		}
+	}
+}
+
+func TestLocatorIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	if !(Locator{}).IsEmpty() {
+		t.Fatal("a zero Locator must report empty")
+	}
+
+	for _, locator := range []Locator{{ID: "a"}, {Label: "b"}, {Text: "c"}} {
+		if locator.IsEmpty() {
+			t.Fatalf("%+v must not report empty", locator)
+		}
 	}
 }

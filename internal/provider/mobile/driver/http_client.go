@@ -115,15 +115,9 @@ func (c *Client) Hierarchy(ctx context.Context, bundleID string) (*tree.ViewNode
 }
 
 // Tap posts to /tap.
-func (c *Client) Tap(ctx context.Context, bundleID, id, label string, x, y float64) error {
+func (c *Client) Tap(ctx context.Context, bundleID string, locator Locator, x, y float64) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y}
-	if id != "" {
-		payload["id"] = id
-	}
-
-	if label != "" {
-		payload["label"] = label
-	}
+	applyLocator(payload, locator)
 
 	return c.postJSON(ctx, "/tap", payload)
 }
@@ -143,29 +137,17 @@ func (c *Client) Swipe(ctx context.Context, bundleID string, startX, startY, end
 }
 
 // LongPress posts to /longPress.
-func (c *Client) LongPress(ctx context.Context, bundleID, id, label string, x, y, duration float64) error {
+func (c *Client) LongPress(ctx context.Context, bundleID string, locator Locator, x, y, duration float64) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y, payloadDurationKey: duration}
-	if id != "" {
-		payload["id"] = id
-	}
-
-	if label != "" {
-		payload["label"] = label
-	}
+	applyLocator(payload, locator)
 
 	return c.postJSON(ctx, "/longPress", payload)
 }
 
 // DoubleTap posts to /doubleTap.
-func (c *Client) DoubleTap(ctx context.Context, bundleID, id, label string, x, y float64) error {
+func (c *Client) DoubleTap(ctx context.Context, bundleID string, locator Locator, x, y float64) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "x": x, "y": y}
-	if id != "" {
-		payload["id"] = id
-	}
-
-	if label != "" {
-		payload["label"] = label
-	}
+	applyLocator(payload, locator)
 
 	return c.postJSON(ctx, "/doubleTap", payload)
 }
@@ -186,15 +168,9 @@ func (c *Client) SetOrientation(ctx context.Context, orientation string) error {
 }
 
 // InputText posts to /inputText.
-func (c *Client) InputText(ctx context.Context, bundleID, id, label, text string, paste bool) error {
+func (c *Client) InputText(ctx context.Context, bundleID string, locator Locator, text string, paste bool) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID, "text": text}
-	if id != "" {
-		payload["id"] = id
-	}
-
-	if label != "" {
-		payload["label"] = label
-	}
+	applyLocator(payload, locator)
 
 	if paste {
 		payload["paste"] = true
@@ -218,15 +194,9 @@ func (c *Client) DismissKeyboard(ctx context.Context, bundleID string) error {
 }
 
 // ScrollTo posts to /scrollTo.
-func (c *Client) ScrollTo(ctx context.Context, bundleID, id, label string) error {
+func (c *Client) ScrollTo(ctx context.Context, bundleID string, locator Locator) error {
 	payload := map[string]any{payloadBundleIDKey: bundleID}
-	if id != "" {
-		payload["id"] = id
-	}
-
-	if label != "" {
-		payload["label"] = label
-	}
+	applyLocator(payload, locator)
 
 	return c.postJSON(ctx, "/scrollTo", payload)
 }
@@ -321,4 +291,23 @@ func (c *Client) errorFromResponse(endpoint string, resp *http.Response) error {
 	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, bodySnippetLimit))
 
 	return fmt.Errorf("driver %s returned %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(string(snippet)))
+}
+
+// applyLocator writes the locator onto a request payload.
+//
+// Only non-empty fields are written, so a coordinate-only command sends
+// no locator keys at all and the driver takes the (x,y) path rather than
+// searching for an element with an empty identifier.
+func applyLocator(payload map[string]any, locator Locator) {
+	if locator.ID != "" {
+		payload["id"] = locator.ID
+	}
+
+	if locator.Label != "" {
+		payload["label"] = locator.Label
+	}
+
+	if locator.Text != "" {
+		payload["text"] = locator.Text
+	}
 }

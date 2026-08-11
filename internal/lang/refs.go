@@ -293,6 +293,7 @@ func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
 	for _, action := range mob.Actions {
 		collect(action.ID)
 		collect(action.Label)
+		collect(action.Text)
 		collect(action.Value)
 		collect(action.Secure)
 		collect(action.Timeout)
@@ -311,29 +312,29 @@ func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
 
 func collectMobileExpectRefs(expect model.MobileExpect, collect func(model.Expression)) {
 	for _, v := range expect.Visible {
-		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Text, v.Timeout, v.Interval, collect)
 	}
 
 	for _, v := range expect.NotVisible {
-		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Text, v.Timeout, v.Interval, collect)
 	}
 
 	for _, v := range expect.Text {
-		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Text, v.Timeout, v.Interval, collect)
 		collect(v.Expected)
 	}
 
 	for _, v := range expect.Value {
-		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Text, v.Timeout, v.Interval, collect)
 		collect(v.Expected)
 	}
 
 	for _, v := range expect.Enabled {
-		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Text, v.Timeout, v.Interval, collect)
 	}
 
 	for _, v := range expect.Disabled {
-		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Text, v.Timeout, v.Interval, collect)
 	}
 }
 
@@ -342,9 +343,10 @@ func collectMobileExpectRefs(expect model.MobileExpect, collect func(model.Expre
 // verbatim, which is how Label came to be missing from all of them at
 // once: a locator field added to the model has to be threaded through six
 // identical loops, and was not. Adding one here now covers every block.
-func collectMobileLocatorRefs(id, label, timeout, interval model.Expression, collect func(model.Expression)) {
+func collectMobileLocatorRefs(id, label, text, timeout, interval model.Expression, collect func(model.Expression)) {
 	collect(id)
 	collect(label)
+	collect(text)
 	collect(timeout)
 	collect(interval)
 }
