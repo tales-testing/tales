@@ -217,14 +217,39 @@ scenario "rich" {
 	}
 }
 
-func TestLoadPathMobileRejectsUnsupportedPlatform(t *testing.T) {
+func TestLoadPathMobileAcceptsEverySupportedPlatform(t *testing.T) {
+	t.Parallel()
+
+	for _, platform := range supportedMobilePlatforms {
+		t.Run(platform, func(t *testing.T) {
+			t.Parallel()
+
+			content := `version = 1
+
+scenario "platform" {
+  step "mobile" "terminate" {
+    platform = "` + platform + `"
+    target = "phone"
+    terminate {}
+  }
+}
+`
+
+			if _, diags := LoadPath(writeTales(t, content)); diags.HasErrors() {
+				t.Fatalf("platform %q should parse, got: %s", platform, diags.Error())
+			}
+		})
+	}
+}
+
+func TestLoadPathMobileRejectsUnknownPlatform(t *testing.T) {
 	t.Parallel()
 
 	content := `version = 1
 
-scenario "android-attempt" {
+scenario "windows-phone" {
   step "mobile" "launch" {
-    platform = "android"
+    platform = "windows"
     target = "phone"
     terminate {}
   }
@@ -233,11 +258,17 @@ scenario "android-attempt" {
 
 	_, diags := LoadPath(writeTales(t, content))
 	if !diags.HasErrors() {
-		t.Fatal("expected diagnostics for unsupported platform")
+		t.Fatal("expected diagnostics for an unknown platform")
 	}
 
-	if !strings.Contains(diags.Error(), "not supported yet") {
-		t.Fatalf("expected unsupported-platform diagnostic, got: %s", diags.Error())
+	// The message has to name the alternatives: a typo'd platform is the
+	// likeliest cause, and listing them turns the error into the fix.
+	msg := diags.Error()
+
+	for _, want := range []string{"windows", "android", "ios"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("diagnostic should mention %q, got: %s", want, msg)
+		}
 	}
 }
 
