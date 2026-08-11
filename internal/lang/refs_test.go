@@ -100,6 +100,62 @@ func TestStepDependenciesIncludesMobileAction(t *testing.T) {
 	}
 }
 
+// TestStepDependenciesIncludesMobileActionLabel guards the label locator,
+// which is as much an expression as id is. Without it a step reading
+// `label = result.picker.done_label` would not be ordered after picker,
+// would not be validated against unknown steps, and would not be
+// cascade-skipped when picker skips.
+func TestStepDependenciesIncludesMobileActionLabel(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "confirm_picker",
+		Provider: "mobile",
+		Mobile: &model.MobileStep{
+			Actions: []model.MobileAction{
+				{
+					Kind:  model.MobileActionTap,
+					Label: parseExpr(t, `result.picker.done_label`),
+				},
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["picker"]; !ok {
+		t.Fatalf("missing implicit dep on picker from mobile action label: %#v", deps)
+	}
+}
+
+func TestStepDependenciesIncludesMobileExpectLabel(t *testing.T) {
+	t.Parallel()
+
+	step := &model.Step{
+		Name:     "verify_picker",
+		Provider: "mobile",
+		Mobile: &model.MobileStep{
+			Expect: model.MobileExpect{
+				Visible: []model.MobileVisibility{
+					{Label: parseExpr(t, `result.picker.done_label`)},
+				},
+			},
+		},
+	}
+
+	deps, err := StepDependencies(step)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := deps["picker"]; !ok {
+		t.Fatalf("missing implicit dep on picker from mobile expect.visible label: %#v", deps)
+	}
+}
+
 func TestStepDependenciesIncludesMobileExpect(t *testing.T) {
 	t.Parallel()
 

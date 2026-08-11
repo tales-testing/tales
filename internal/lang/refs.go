@@ -292,6 +292,7 @@ func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
 
 	for _, action := range mob.Actions {
 		collect(action.ID)
+		collect(action.Label)
 		collect(action.Value)
 		collect(action.Secure)
 		collect(action.Timeout)
@@ -310,42 +311,42 @@ func collectMobileRefs(mob *model.MobileStep, collect func(model.Expression)) {
 
 func collectMobileExpectRefs(expect model.MobileExpect, collect func(model.Expression)) {
 	for _, v := range expect.Visible {
-		collect(v.ID)
-		collect(v.Timeout)
-		collect(v.Interval)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
 	}
 
 	for _, v := range expect.NotVisible {
-		collect(v.ID)
-		collect(v.Timeout)
-		collect(v.Interval)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
 	}
 
 	for _, v := range expect.Text {
-		collect(v.ID)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
 		collect(v.Expected)
-		collect(v.Timeout)
-		collect(v.Interval)
 	}
 
 	for _, v := range expect.Value {
-		collect(v.ID)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
 		collect(v.Expected)
-		collect(v.Timeout)
-		collect(v.Interval)
 	}
 
 	for _, v := range expect.Enabled {
-		collect(v.ID)
-		collect(v.Timeout)
-		collect(v.Interval)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
 	}
 
 	for _, v := range expect.Disabled {
-		collect(v.ID)
-		collect(v.Timeout)
-		collect(v.Interval)
+		collectMobileLocatorRefs(v.ID, v.Label, v.Timeout, v.Interval, collect)
 	}
+}
+
+// collectMobileLocatorRefs walks the attributes every mobile expect block
+// shares. Factored out because the six blocks repeated the same triple
+// verbatim, which is how Label came to be missing from all of them at
+// once: a locator field added to the model has to be threaded through six
+// identical loops, and was not. Adding one here now covers every block.
+func collectMobileLocatorRefs(id, label, timeout, interval model.Expression, collect func(model.Expression)) {
+	collect(id)
+	collect(label)
+	collect(timeout)
+	collect(interval)
 }
 
 func collectSQLRefs(sql *model.SQLCall, collect func(model.Expression)) {
