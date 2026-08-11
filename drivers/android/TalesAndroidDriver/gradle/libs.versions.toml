@@ -1,0 +1,27 @@
+[versions]
+# AGP 8.13 requires JDK 17. Kotlin 2.2 matches it.
+agp = "8.13.2"
+kotlin = "2.2.0"
+# compileSdk/targetSdk track the current stable platform. minSdk 26 is
+# deliberately above the ecosystem's usual 24: the driver relies on
+# UiAutomator's executeShellCommand and AccessibilityNodeInfo's
+# ACTION_SET_TEXT, both of which are markedly more reliable from O on,
+# and Tales has no legacy install base to carry.
+compileSdk = "36"
+minSdk = "26"
+targetSdk = "36"
+
+uiautomator = "2.3.0"
+androidxTestRunner = "1.6.2"
+androidxTestJunit = "1.2.1"
+junit = "4.13.2"
+
+[libraries]
+androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

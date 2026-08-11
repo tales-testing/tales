@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The driver app itself is an empty shell: UiAutomator drives other
+  apps from the instrumentation process, so nothing here needs a UI.
+  It exists because an instrumentation APK must target a package, and
+  because that package is where the driver's own permissions live.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Needed to resolve launch intents for the app under test on
+         API 30+, where package visibility is filtered by default. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission"
+        xmlns:tools="http://schemas.android.com/tools" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Tales Driver"
+        android:supportsRtl="true" />
+
+</manifest>
