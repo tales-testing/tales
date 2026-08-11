@@ -23,12 +23,23 @@ class JsonTest {
     }
 
     @Test
-    fun `escapes control characters in strings`() {
-        // Accessibility labels routinely carry stray control bytes;
-        // emitting them raw would produce invalid JSON.
-        val json = Json.write(mapOf("label" to "ab\nc\"d"))
+    fun `escapes control characters as unicode escapes`() {
+        // A raw control byte is illegal inside a JSON string, and custom
+        // views put them in content descriptions often enough that
+        // emitting one would produce a body the Go client cannot decode.
+        // Both the input byte and the expected escape are built from
+        // ordinary characters so no invisible byte lives in this file.
+        val label = "a" + Char(1) + "b"
+        val want = "{\"label\":\"a\\u0001b\"}"
 
-        assertEquals("""{"label":"ab\nc\"d"}""", json)
+        assertEquals(want, Json.write(mapOf("label" to label)))
+    }
+
+    @Test
+    fun `escapes the structural characters`() {
+        val json = Json.write(mapOf("label" to "ab\nc\"d"))
+
+        assertEquals("""{"label":"ab\nc\"d"}""", json)
     }
 
     @Test
@@ -52,8 +63,9 @@ class JsonTest {
 
     @Test
     fun `parses escapes including unicode`() {
-        @Suppress("UNCHECKED_CAST")
-        val parsed = Json.parse("""{"s":"aé\n\t\"b\""}""") as Map<String, Any?>
+        val source = "{\"s\":\"a\\u00e9\\n\\t\\\"b\\\"\"}"
+
+        val parsed = Json.parseObject(source)
 
         assertEquals("aé\n\t\"b\"", parsed["s"])
     }
