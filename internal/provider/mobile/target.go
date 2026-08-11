@@ -59,6 +59,9 @@ type DriverConfig struct {
 	External   bool
 	Mode       string
 	SourcePath string
+	// ADBPath overrides adb discovery (Android only). Empty falls back
+	// to ANDROID_HOME, then PATH, then the well-known SDK locations.
+	ADBPath string
 }
 
 // BaseURL returns the HTTP base URL the driver client should hit.
@@ -178,6 +181,10 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 
 	if sourcePath, ok := readOptionalString(driverVal, "source_path"); ok {
 		driver.SourcePath = sourcePath
+	}
+
+	if adbPath, ok := readOptionalString(driverVal, "adb_path"); ok {
+		driver.ADBPath = adbPath
 	}
 
 	return driver, nil
