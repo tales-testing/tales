@@ -143,7 +143,7 @@ func (l *Lifecycle) InstallApp(ctx context.Context, deviceID string, target mobi
 // uninstall plus a keychain reset plus a reinstall to achieve. The app
 // stays installed, so this is also markedly faster.
 func (l *Lifecycle) ClearAppState(ctx context.Context, deviceID string, target mobile.Target) error {
-	installed, err := l.ADB.IsInstalled(ctx, deviceID, target.BundleID)
+	installed, err := l.ADB.IsInstalled(ctx, deviceID, target.AppID)
 	if err != nil {
 		return fmt.Errorf("clear state: %w", err)
 	}
@@ -153,7 +153,7 @@ func (l *Lifecycle) ClearAppState(ctx context.Context, deviceID string, target m
 		return l.InstallApp(ctx, deviceID, target)
 	}
 
-	out, err := l.ADB.Shell(ctx, deviceID, "pm clear "+target.BundleID)
+	out, err := l.ADB.Shell(ctx, deviceID, "pm clear "+target.AppID)
 	if err != nil {
 		return fmt.Errorf("clear state: %w", err)
 	}
@@ -178,7 +178,7 @@ func (l *Lifecycle) SetPermission(ctx context.Context, deviceID string, target m
 	}
 
 	for _, permission := range permissions {
-		command := fmt.Sprintf("pm %s %s %s", verb, target.BundleID, permission)
+		command := fmt.Sprintf("pm %s %s %s", verb, target.AppID, permission)
 
 		out, err := l.ADB.Shell(ctx, deviceID, command)
 		if err == nil && !isUnchangeablePermission(out, nil) {
@@ -202,7 +202,7 @@ func (l *Lifecycle) SetPermission(ctx context.Context, deviceID string, target m
 // force-stop rather than a back-press or an intent: the app must be
 // gone, not backgrounded, so the next scenario's launch starts cold.
 func (l *Lifecycle) TerminateApp(ctx context.Context, deviceID string, target mobile.Target) error {
-	if _, err := l.ADB.Shell(ctx, deviceID, "am force-stop "+target.BundleID); err != nil {
+	if _, err := l.ADB.Shell(ctx, deviceID, "am force-stop "+target.AppID); err != nil {
 		return fmt.Errorf("terminate app: %w", err)
 	}
 

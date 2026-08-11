@@ -40,7 +40,7 @@ func TestResolveTargetFullyPopulated(t *testing.T) {
 		t.Fatalf("unexpected target: %+v", target)
 	}
 
-	if target.AppPath != "./build/MyApp.app" || target.BundleID != "com.example.MyApp" {
+	if target.AppPath != "./build/MyApp.app" || target.AppID != "com.example.MyApp" {
 		t.Fatalf("unexpected target app/bundle: %+v", target)
 	}
 
@@ -162,7 +162,7 @@ func TestResolveTargetSupportsMapTypedConfig(t *testing.T) {
 		t.Fatalf("resolve: %v", err)
 	}
 
-	if target.DeviceName != "iPhone 17" || target.BundleID != "com.example.MyApp" {
+	if target.DeviceName != "iPhone 17" || target.AppID != "com.example.MyApp" {
 		t.Fatalf("unexpected target: %+v", target)
 	}
 }
@@ -233,5 +233,86 @@ func TestResolveTargetRejectsMissingRequiredField(t *testing.T) {
 	_, err := ResolveTarget(config, "iphone")
 	if err == nil || !strings.Contains(err.Error(), "bundle_id") {
 		t.Fatalf("expected bundle_id error, got %v", err)
+	}
+}
+
+func TestResolveTargetPrefersAppID(t *testing.T) {
+	t.Parallel()
+
+	config := map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.ObjectVal(map[string]cty.Value{
+				"phone": cty.ObjectVal(map[string]cty.Value{
+					"platform":    cty.StringVal("android"),
+					"device_name": cty.StringVal("tales-e2e"),
+					"app":         cty.StringVal("./app.apk"),
+					"app_id":      cty.StringVal("com.example.app"),
+				}),
+			}),
+		}),
+	}
+
+	target, err := ResolveTarget(config, "phone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.AppID != "com.example.app" {
+		t.Fatalf("app_id = %q", target.AppID)
+	}
+}
+
+func TestResolveTargetAcceptsTheDeprecatedBundleID(t *testing.T) {
+	t.Parallel()
+
+	// Existing iOS suites are all written with bundle_id; they must keep
+	// working, warning rather than failing.
+	config := map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.ObjectVal(map[string]cty.Value{
+				"legacy-phone": cty.ObjectVal(map[string]cty.Value{
+					"platform":    cty.StringVal("ios"),
+					"device_name": cty.StringVal("iPhone 17"),
+					"app":         cty.StringVal("./MyApp.app"),
+					"bundle_id":   cty.StringVal("com.example.MyApp"),
+				}),
+			}),
+		}),
+	}
+
+	target, err := ResolveTarget(config, "legacy-phone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.AppID != "com.example.MyApp" {
+		t.Fatalf("app id = %q", target.AppID)
+	}
+}
+
+func TestResolveTargetReportsTheCanonicalNameWhenBothAreMissing(t *testing.T) {
+	t.Parallel()
+
+	config := map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.ObjectVal(map[string]cty.Value{
+				"phone": cty.ObjectVal(map[string]cty.Value{
+					"platform":    cty.StringVal("android"),
+					"device_name": cty.StringVal("tales-e2e"),
+					"app":         cty.StringVal("./app.apk"),
+				}),
+			}),
+		}),
+	}
+
+	_, err := ResolveTarget(config, "phone")
+	if err == nil {
+		t.Fatal("expected an error when no application identifier is set")
+	}
+
+	// Point at app_id, not the deprecated spelling: the error is what an
+	// author reads while writing a new target.
+	if !strings.Contains(err.Error(), "app_id") {
+		t.Fatalf("error should name app_id, got: %v", err)
 	}
 }

@@ -50,7 +50,7 @@ func (s *Session) Close(ctx context.Context) error {
 		return nil
 	}
 
-	if s.Lifecycle != nil && s.DeviceID != "" && s.Target.BundleID != "" {
+	if s.Lifecycle != nil && s.DeviceID != "" && s.Target.AppID != "" {
 		_ = s.Lifecycle.TerminateApp(ctx, s.DeviceID, s.Target)
 	}
 

@@ -51,7 +51,7 @@ func TestSessionCloseWithExternalDriverDoesNotRequireHandle(t *testing.T) {
 	t.Parallel()
 
 	session := &Session{
-		Target:    Target{Name: "iphone", BundleID: "com.example.MyApp"},
+		Target:    Target{Name: "iphone", AppID:      "com.example.MyApp"},
 		DeviceID:  "UDID",
 		Lifecycle: (&fakeLifecycle{udid: "UDID"}),
 	}
