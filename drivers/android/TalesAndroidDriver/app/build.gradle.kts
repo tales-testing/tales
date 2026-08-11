@@ -143,8 +143,13 @@ val updateSourceSentinel by tasks.registering {
     }
 }
 
-tasks.named("assembleDebug") { finalizedBy(copyDriverApk, updateSourceSentinel) }
-tasks.named("assembleDebugAndroidTest") { finalizedBy(copyDriverTestApk, updateSourceSentinel) }
+// AGP registers its variant tasks lazily, so assembleDebug does not
+// exist while this file is being evaluated. afterEvaluate is where they
+// are reachable by name.
+afterEvaluate {
+    tasks.named("assembleDebug") { finalizedBy(copyDriverApk, updateSourceSentinel) }
+    tasks.named("assembleDebugAndroidTest") { finalizedBy(copyDriverTestApk, updateSourceSentinel) }
+}
 
 tasks.register("checkPrebuiltFresh") {
     description = "Fails when the committed APKs are older than the driver source."

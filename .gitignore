@@ -19,3 +19,9 @@ dist/
 # Agent-managed git worktrees. These are nested checkouts of this same
 # repository, so `git add -A` would otherwise stage them as embedded repos.
 .claude/worktrees/
+
+# Gradle's per-project caches. The wrapper, the keystore and the built
+# APKs under drivers/android/prebuilt/ ARE committed; this is only the
+# local build state.
+.gradle/
+local.properties
