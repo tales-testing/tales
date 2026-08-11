@@ -128,9 +128,9 @@ func (l *Lifecycle) InstallApp(ctx context.Context, udid string, target mobile.T
 // keychain, then installs it again. This is the V1 implementation of
 // `launch { clear_state = true }`.
 func (l *Lifecycle) ClearAppState(ctx context.Context, udid string, target mobile.Target) error {
-	_ = l.Simctl.Terminate(ctx, udid, target.BundleID)
+	_ = l.Simctl.Terminate(ctx, udid, target.AppID)
 
-	if err := l.Simctl.Uninstall(ctx, udid, target.BundleID); err != nil {
+	if err := l.Simctl.Uninstall(ctx, udid, target.AppID); err != nil {
 		return fmt.Errorf("clear state (uninstall): %w", err)
 	}
 
@@ -152,7 +152,7 @@ func (l *Lifecycle) ClearAppState(ctx context.Context, udid string, target mobil
 // SetPermission grants or revokes a privacy permission for the target app.
 // action is "grant" or "revoke"; service is a simctl privacy service name.
 func (l *Lifecycle) SetPermission(ctx context.Context, udid string, target mobile.Target, action, service string) error {
-	if err := l.Simctl.Privacy(ctx, udid, action, service, target.BundleID); err != nil {
+	if err := l.Simctl.Privacy(ctx, udid, action, service, target.AppID); err != nil {
 		return fmt.Errorf("set permission %s %s: %w", action, service, err)
 	}
 
@@ -161,7 +161,7 @@ func (l *Lifecycle) SetPermission(ctx context.Context, udid string, target mobil
 
 // LaunchApp launches the configured app on the given simulator.
 func (l *Lifecycle) LaunchApp(ctx context.Context, udid string, target mobile.Target) error {
-	if err := l.Simctl.Launch(ctx, udid, target.BundleID); err != nil {
+	if err := l.Simctl.Launch(ctx, udid, target.AppID); err != nil {
 		return fmt.Errorf("launch app: %w", err)
 	}
 
@@ -172,7 +172,7 @@ func (l *Lifecycle) LaunchApp(ctx context.Context, udid string, target mobile.Ta
 // app was not running, simctl reports a clean exit and the lifecycle treats it
 // as a no-op.
 func (l *Lifecycle) TerminateApp(ctx context.Context, udid string, target mobile.Target) error {
-	if err := l.Simctl.Terminate(ctx, udid, target.BundleID); err != nil {
+	if err := l.Simctl.Terminate(ctx, udid, target.AppID); err != nil {
 		return fmt.Errorf("terminate app: %w", err)
 	}
 

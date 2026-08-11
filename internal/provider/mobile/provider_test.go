@@ -339,7 +339,7 @@ func sampleProviderTarget() Target {
 		Platform:   PlatformIOS,
 		DeviceName: "iPhone 16",
 		AppPath:    "./MyApp.app",
-		BundleID:   "com.example.MyApp",
+		AppID:      "com.example.MyApp",
 		Driver:     DriverConfig{Host: "127.0.0.1", Port: 9080},
 	}
 }
@@ -1214,7 +1214,7 @@ func TestExecuteDismissKeyboardDispatchesToDriver(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	if len(drv.dismissals) != 1 || drv.dismissals[0] != sampleProviderTarget().BundleID {
+	if len(drv.dismissals) != 1 || drv.dismissals[0] != sampleProviderTarget().AppID {
 		t.Fatalf("expected one dismiss_keyboard call carrying the target bundle id, got %v", drv.dismissals)
 	}
 

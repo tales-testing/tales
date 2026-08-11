@@ -149,7 +149,7 @@ func sampleTarget(external bool) mobile.Target {
 		Platform:   "ios",
 		DeviceName: "iPhone 16",
 		AppPath:    "./MyApp.app",
-		BundleID:   "com.example.MyApp",
+		AppID:      "com.example.MyApp",
 		Driver: mobile.DriverConfig{
 			Host:     "127.0.0.1",
 			Port:     9080,

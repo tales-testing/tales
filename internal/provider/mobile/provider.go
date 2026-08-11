@@ -422,7 +422,11 @@ func (p *Provider) executeMobile(ctx context.Context, input provider.Input, sess
 
 	output.ActionResults = results
 	output.Response["target"] = cty.StringVal(session.Target.Name)
-	output.Response["bundle_id"] = cty.StringVal(session.Target.BundleID)
+	output.Response["app_id"] = cty.StringVal(session.Target.AppID)
+	// bundle_id is the previous spelling, kept so captures written
+	// against it keep resolving. It is removed on the same schedule as
+	// the config attribute of the same name.
+	output.Response["bundle_id"] = cty.StringVal(session.Target.AppID)
 
 	if actionErr != nil {
 		return actionErr
@@ -477,7 +481,7 @@ func (p *Provider) finalizeStep(ctx context.Context, session *Session, exec *pro
 		}
 	}
 
-	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID)
+	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.AppID)
 	if err == nil {
 		p.recordHierarchy(input.Scenario, input.Step.Name, hierarchy)
 	}
@@ -487,7 +491,7 @@ func (p *Provider) finalizeStep(ctx context.Context, session *Session, exec *pro
 		// XCTest deregisters the app process. Tearing it down out-of-band
 		// via simctl would leave XCTest bound to a now-dead process, and the
 		// next scenario reusing this session would hang on /hierarchy.
-		if err := session.Driver.Terminate(ctx, session.Target.BundleID); err != nil {
+		if err := session.Driver.Terminate(ctx, session.Target.AppID); err != nil {
 			return fmt.Errorf("terminate: %w", err)
 		}
 	}
@@ -566,7 +570,7 @@ func (p *Provider) captureForAction(ctx context.Context, session *Session, stepD
 		result.Screenshot = a.Path
 	}
 
-	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID); err == nil {
+	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.AppID); err == nil {
 		if a, werr := writeHierarchy(dir, hierarchy); werr == nil {
 			result.Hierarchy = a.Path
 		}
@@ -598,7 +602,7 @@ func (p *Provider) captureStepEnd(ctx context.Context, session *Session, stepDir
 		captured = true
 	}
 
-	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID); err == nil {
+	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.AppID); err == nil {
 		if a, werr := writeHierarchy(dir, hierarchy); werr == nil {
 			result.Hierarchy = a.Path
 
@@ -692,7 +696,7 @@ func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *p
 	// instance, launches a fresh one, and re-establishes XCTest's automation
 	// session with the new process — without it, a scenario reusing a cached
 	// session would snapshot a stale process and time out on /hierarchy.
-	if err := session.Driver.Launch(ctx, session.Target.BundleID); err != nil {
+	if err := session.Driver.Launch(ctx, session.Target.AppID); err != nil {
 		return fmt.Errorf("launch app: %w", err)
 	}
 
@@ -783,7 +787,7 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 // handling.
 func handleDeviceAction(ctx context.Context, session *Session, action provider.MobileActionExec) (bool, error) {
 	if action.Kind == model.MobileActionPressKey {
-		if err := session.Driver.PressKey(ctx, session.Target.BundleID, action.Value); err != nil {
+		if err := session.Driver.PressKey(ctx, session.Target.AppID, action.Value); err != nil {
 			return true, fmt.Errorf("press key: %w", err)
 		}
 
@@ -791,7 +795,7 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	}
 
 	if action.Kind == model.MobileActionPressButton {
-		if err := session.Driver.PressButton(ctx, session.Target.BundleID, action.Value); err != nil {
+		if err := session.Driver.PressButton(ctx, session.Target.AppID, action.Value); err != nil {
 			return true, fmt.Errorf("press button: %w", err)
 		}
 
@@ -807,7 +811,7 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	}
 
 	if action.Kind == model.MobileActionDismissKeyboard {
-		if err := session.Driver.DismissKeyboard(ctx, session.Target.BundleID); err != nil {
+		if err := session.Driver.DismissKeyboard(ctx, session.Target.AppID); err != nil {
 			return true, fmt.Errorf("dismiss keyboard: %w", err)
 		}
 
@@ -815,7 +819,7 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	}
 
 	if action.Kind == model.MobileActionScrollTo {
-		if err := session.Driver.ScrollTo(ctx, session.Target.BundleID, actionLocator(action)); err != nil {
+		if err := session.Driver.ScrollTo(ctx, session.Target.AppID, actionLocator(action)); err != nil {
 			return true, fmt.Errorf("scroll to: %w", err)
 		}
 
@@ -827,7 +831,7 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 
 func executeTap(ctx context.Context, session *Session, locator driver.Locator, node *tree.ViewNode) error {
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, resolvedLocator(locator, node), x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.AppID, resolvedLocator(locator, node), x, y); err != nil {
 		return fmt.Errorf("tap: %w", err)
 	}
 
@@ -836,7 +840,7 @@ func executeTap(ctx context.Context, session *Session, locator driver.Locator, n
 
 func executeDoubleTap(ctx context.Context, session *Session, locator driver.Locator, node *tree.ViewNode) error {
 	x, y := tree.Center(node)
-	if err := session.Driver.DoubleTap(ctx, session.Target.BundleID, resolvedLocator(locator, node), x, y); err != nil {
+	if err := session.Driver.DoubleTap(ctx, session.Target.AppID, resolvedLocator(locator, node), x, y); err != nil {
 		return fmt.Errorf("double tap: %w", err)
 	}
 
@@ -851,7 +855,7 @@ func executeLongPress(ctx context.Context, session *Session, action provider.Mob
 		duration = defaultLongPressDuration
 	}
 
-	if err := session.Driver.LongPress(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), x, y, duration.Seconds()); err != nil {
+	if err := session.Driver.LongPress(ctx, session.Target.AppID, resolvedLocator(actionLocator(action), node), x, y, duration.Seconds()); err != nil {
 		return fmt.Errorf("long press: %w", err)
 	}
 
@@ -860,7 +864,7 @@ func executeLongPress(ctx context.Context, session *Session, action provider.Mob
 
 func executeInputText(ctx context.Context, session *Session, action provider.MobileActionExec, node *tree.ViewNode) error {
 	if usePasteInput(node) {
-		if err := session.Driver.InputText(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), action.Value, true); err != nil {
+		if err := session.Driver.InputText(ctx, session.Target.AppID, resolvedLocator(actionLocator(action), node), action.Value, true); err != nil {
 			return fmt.Errorf("input text: %w", err)
 		}
 
@@ -868,11 +872,11 @@ func executeInputText(ctx context.Context, session *Session, action provider.Mob
 	}
 
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.AppID, resolvedLocator(actionLocator(action), node), x, y); err != nil {
 		return fmt.Errorf("focus element: %w", err)
 	}
 
-	if err := session.Driver.InputText(ctx, session.Target.BundleID, resolvedLocator(actionLocator(action), node), action.Value, false); err != nil {
+	if err := session.Driver.InputText(ctx, session.Target.AppID, resolvedLocator(actionLocator(action), node), action.Value, false); err != nil {
 		return fmt.Errorf("input text: %w", err)
 	}
 
@@ -894,7 +898,7 @@ func executeClearText(ctx context.Context, session *Session, locator driver.Loca
 	}
 
 	x, y := tree.Center(node)
-	if err := session.Driver.Tap(ctx, session.Target.BundleID, resolvedLocator(locator, node), x, y); err != nil {
+	if err := session.Driver.Tap(ctx, session.Target.AppID, resolvedLocator(locator, node), x, y); err != nil {
 		return fmt.Errorf("focus element: %w", err)
 	}
 
@@ -902,7 +906,7 @@ func executeClearText(ctx context.Context, session *Session, locator driver.Loca
 		count = defaultClearTextErase
 	}
 
-	if err := session.Driver.EraseText(ctx, session.Target.BundleID, count); err != nil {
+	if err := session.Driver.EraseText(ctx, session.Target.AppID, count); err != nil {
 		return fmt.Errorf("erase text: %w", err)
 	}
 
@@ -929,7 +933,7 @@ func executeSwipe(ctx context.Context, session *Session, action provider.MobileA
 		duration = defaultSwipeDuration
 	}
 
-	if err := session.Driver.Swipe(ctx, session.Target.BundleID, startX, startY, endX, endY, duration.Seconds()); err != nil {
+	if err := session.Driver.Swipe(ctx, session.Target.AppID, startX, startY, endX, endY, duration.Seconds()); err != nil {
 		return fmt.Errorf("%s: %w", action.Kind, err)
 	}
 
@@ -1311,7 +1315,7 @@ func (l elementLocator) String() string {
 }
 
 func findElement(ctx context.Context, session *Session, locator elementLocator) (*tree.ViewNode, bool, error) {
-	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID)
+	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.AppID)
 	if err != nil {
 		return nil, false, fmt.Errorf("fetch hierarchy: %w", err)
 	}
@@ -1363,7 +1367,7 @@ func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Inp
 	dir := artifactDir(p.artifactsBase, inputFile(input), input.Scenario, stepName(input), inputPhase(input), inputAttempt(input))
 	artifacts := make([]Artifact, 0, 2)
 
-	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.BundleID); err == nil {
+	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.AppID); err == nil {
 		p.recordHierarchy(input.Scenario, stepName(input), hierarchy)
 
 		if a, werr := writeHierarchy(dir, hierarchy); werr == nil {

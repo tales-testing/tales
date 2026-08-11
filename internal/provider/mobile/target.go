@@ -2,6 +2,8 @@ package mobile
 
 import (
 	"fmt"
+	"os"
+	"sync"
 
 	"github.com/zclconf/go-cty/cty"
 )
@@ -37,10 +39,10 @@ type Target struct {
 	// AppPath points at the installable build: a simulator .app bundle on
 	// iOS, an .apk on Android.
 	AppPath string
-	// BundleID is the application identifier: a bundle id on iOS, a package
+	// AppID is the application identifier: a bundle id on iOS, a package
 	// name on Android.
-	BundleID string
-	Driver   DriverConfig
+	AppID  string
+	Driver DriverConfig
 }
 
 // DriverConfig captures how the mobile provider should talk to the driver.
@@ -117,9 +119,9 @@ func ResolveTarget(config map[string]cty.Value, name string) (Target, error) {
 		return Target{}, fmt.Errorf("config.mobile.targets.%s.app: %w", name, err)
 	}
 
-	bundleID, err := readRequiredString(targetVal, "bundle_id")
+	appID, err := resolveAppID(targetVal, name)
 	if err != nil {
-		return Target{}, fmt.Errorf("config.mobile.targets.%s.bundle_id: %w", name, err)
+		return Target{}, err
 	}
 
 	driver, err := resolveDriverConfig(targetVal)
@@ -133,9 +135,45 @@ func ResolveTarget(config map[string]cty.Value, name string) (Target, error) {
 		DeviceName: device,
 		Serial:     serial,
 		AppPath:    app,
-		BundleID:   bundleID,
+		AppID:      appID,
 		Driver:     driver,
 	}, nil
+}
+
+// deprecatedBundleIDWarned tracks which targets have already warned, so
+// a suite with many steps on one target prints the migration notice once
+// rather than on every step.
+var deprecatedBundleIDWarned sync.Map
+
+// resolveAppID reads the application identifier, accepting the
+// deprecated `bundle_id` spelling.
+//
+// `bundle_id` is Apple's word; on Android the same field carries a
+// package name, and a cross-platform config reading `bundle_id =
+// "com.example.app"` for an APK is quietly wrong. `app_id` is the
+// neutral name and is now canonical.
+//
+// The deprecation is warned about here rather than through the parser's
+// registry because this value lives inside a cty object literal
+// (`config { mobile = { targets = { ... } } }`), not an HCL block, so
+// the registry's body walk never sees it.
+func resolveAppID(targetVal cty.Value, name string) (string, error) {
+	if appID, err := readRequiredString(targetVal, "app_id"); err == nil {
+		return appID, nil
+	}
+
+	bundleID, err := readRequiredString(targetVal, "bundle_id")
+	if err != nil {
+		return "", fmt.Errorf("config.mobile.targets.%s.app_id: %w", name, err)
+	}
+
+	if _, warned := deprecatedBundleIDWarned.LoadOrStore(name, struct{}{}); !warned {
+		fmt.Fprintf(os.Stderr,
+			"warning: config.mobile.targets.%s.bundle_id is deprecated; rename it to app_id "+
+				"(it carries a package name on Android, not a bundle identifier)\n", name)
+	}
+
+	return bundleID, nil
 }
 
 func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
