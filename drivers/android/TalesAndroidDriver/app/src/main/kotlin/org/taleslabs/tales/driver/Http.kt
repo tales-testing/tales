@@ -6,6 +6,8 @@ import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /** One parsed request: method, path, decoded query and raw body. */
 data class HttpRequest(
@@ -73,6 +75,15 @@ class HttpServer(
     private var socket: ServerSocket? = null
 
     /**
+     * Serves connections off the accept loop. Cached rather than
+     * fixed-size: the driver's real concurrency is one, and the extra
+     * threads exist only to absorb connections that never send.
+     */
+    private val workers: ExecutorService = Executors.newCachedThreadPool { r ->
+        Thread(r, "tales-driver-http").apply { isDaemon = true }
+    }
+
+    /**
      * Binds the port and serves until [stop] or the thread is
      * interrupted. Blocks the caller, which is what the instrumentation
      * entry point wants: the test method must not return.
@@ -94,18 +105,38 @@ class HttpServer(
                 continue
             }
 
-            handleConnection(connection)
+            // Serve off the accept loop.
+            //
+            // Handling connections inline looks simpler — the driver
+            // only ever has one caller — but it makes any connection
+            // that opens without sending a complete request wedge the
+            // whole server: the accept loop is blocked reading from it
+            // and never reaches the next one. An HTTP client's
+            // connection pool does exactly that routinely, and the
+            // symptom is brutal to diagnose, because the driver stays
+            // alive and simply stops answering, so the next request
+            // fails with a bare EOF and nothing at all in the log.
+            //
+            // The read timeout below is the second half of the same
+            // guard: it bounds how long such a connection can occupy a
+            // thread. Concurrency is safe here — snapshots are
+            // single-flighted in SnapshotService, and every other route
+            // is a short UiAutomator call.
+            workers.execute { handleConnection(connection) }
         }
     }
 
     fun stop() {
         socket?.close()
         socket = null
+        workers.shutdownNow()
     }
 
     private fun handleConnection(connection: Socket) {
         connection.use { conn ->
             conn.tcpNoDelay = true
+            // Bounds a connection that opens and then says nothing.
+            conn.soTimeout = READ_TIMEOUT_MS
 
             try {
                 val request = readRequest(conn.getInputStream())
@@ -241,7 +272,8 @@ class HttpServer(
     }
 
     private companion object {
-        const val BACKLOG = 8
+        const val BACKLOG = 16
+        const val READ_TIMEOUT_MS = 30_000
         const val MAX_HEAD_BYTES = 16 * 1024
     }
 }

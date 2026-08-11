@@ -245,7 +245,7 @@ class Router(
     // -- text ----------------------------------------------------------
 
     private fun inputText(payload: Map<String, Any?>): HttpResponse {
-        val value = payload.stringOrNull("text")
+        val value = payload.stringOrNull("value")
             ?: return HttpResponse.error(400, "expected {bundleId, text}")
 
         return text.input(locatorOf(payload), value)

@@ -429,7 +429,7 @@ func TestClientInputTextSendsPayload(t *testing.T) {
 		t.Fatalf("inputText: %v", err)
 	}
 
-	if captured["bundleId"] != "com.example.MyApp" || captured["text"] != "hello@example.com" {
+	if captured["bundleId"] != "com.example.MyApp" || captured[payloadInputValueKey] != "hello@example.com" {
 		t.Fatalf("unexpected payload %v", captured)
 	}
 
@@ -733,5 +733,38 @@ func TestLocatorIsEmpty(t *testing.T) {
 		if locator.IsEmpty() {
 			t.Fatalf("%+v must not report empty", locator)
 		}
+	}
+}
+
+func TestInputTextKeepsContentAndLocatorApart(t *testing.T) {
+	t.Parallel()
+
+	var payload map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+
+	// Typing into an element located by its visible text is the case
+	// that conflated the two: sending the content under "text" made the
+	// driver look for an element named after what was being typed.
+	err := client.InputText(
+		context.Background(),
+		"com.example.MyApp",
+		Locator{Text: "Email"},
+		"user@example.com",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("input text: %v", err)
+	}
+
+	if payload[payloadInputValueKey] != "user@example.com" {
+		t.Fatalf("content should travel as %q, got %v", payloadInputValueKey, payload)
+	}
+
+	if payload["text"] != "Email" {
+		t.Fatalf("the text locator should stay under \"text\", got %v", payload)
 	}
 }

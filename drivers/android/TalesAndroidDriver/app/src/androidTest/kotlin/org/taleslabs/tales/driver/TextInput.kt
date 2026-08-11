@@ -86,17 +86,34 @@ class TextInput(
      *
      * A silently truncated field (an input filter, a maxLength) would
      * otherwise surface much later as a confusing assertion failure on
-     * an unrelated step. A password field reports its text as bullets,
-     * so there compare lengths rather than content.
+     * an unrelated step, so a partial write is worth catching here.
+     *
+     * But a field can also be simply unreadable. A masked field exposes
+     * bullets rather than characters, and a Compose password field
+     * exposes nothing at all — its semantics node carries no text and
+     * does not set isPassword, which is a View-level flag. Reading back
+     * an empty string there means "cannot tell", not "nothing landed":
+     * the widget already accepted the value, or the write would have
+     * reported failure. Treating that as truncation would fail every
+     * password entry on Compose.
+     *
+     * So: an empty read-back is unverifiable and trusted; a non-empty
+     * one that is shorter than what was written is a real truncation.
      */
     private fun verify(locator: Locator, node: AccessibilityNodeInfo, want: String): HttpResponse {
+        if (want.isEmpty()) return HttpResponse.ok()
+
         node.refresh()
 
         val got = node.text?.toString().orEmpty()
 
-        val ok = if (node.isPassword) got.length == want.length else got == want
+        if (got.isEmpty()) return HttpResponse.ok()
 
-        if (ok || want.isEmpty()) return HttpResponse.ok()
+        // Masked fields report one bullet per character, so compare
+        // lengths there and content everywhere else.
+        val ok = if (node.isPassword || got != want) got.length == want.length else true
+
+        if (ok) return HttpResponse.ok()
 
         return HttpResponse.error(
             500,

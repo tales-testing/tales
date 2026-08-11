@@ -568,10 +568,14 @@ final class TalesRouter {
     }
 
     private func handleInputText(request: HTTPRequest) -> HTTPResponse {
+        // The content to type arrives as "value", not "text": "text"
+        // names the text *locator* on every route, and reusing it here
+        // made an input_text action send its own content as the element
+        // to search for. The DSL calls this field value, so does the wire.
         guard let payload = jsonObject(request.body),
               let bundleID = payload["bundleId"] as? String,
-              let text = payload["text"] as? String else {
-            return HTTPResponse.error("expected {bundleId, text}", status: 400)
+              let text = payload["value"] as? String else {
+            return HTTPResponse.error("expected {bundleId, value}", status: 400)
         }
 
         let app = XCUIApplication(bundleIdentifier: bundleID)

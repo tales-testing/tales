@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Declared so the permissions e2e scenario has something real to
+         grant and revoke. The app never uses them; it only reports what
+         it has been granted. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Tales Demo"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TalesDemo">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="Tales Demo"
+            android:theme="@style/Theme.TalesDemo">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>
