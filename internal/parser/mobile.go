@@ -2,7 +2,9 @@ package parser
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -12,8 +14,14 @@ import (
 // mobileProviderType is the provider label that triggers mobile step decoding.
 const mobileProviderType = "mobile"
 
-// supportedMobilePlatform is the only platform accepted by V1.
-const supportedMobilePlatform = "ios"
+// supportedMobilePlatforms are the platform names a mobile step may
+// declare, in the order error messages list them.
+//
+// The parser only checks the name is one Tales knows; whether the
+// running binary carries a backend for it is a runtime question, and
+// answering it here would make `tales validate` depend on how the
+// binary was built.
+var supportedMobilePlatforms = []string{"android", "ios"}
 
 const mobileTimeoutAttr = "timeout"
 const mobileIntervalAttr = "interval"
@@ -240,7 +248,11 @@ func validateMobilePlatform(rs stepBlock) hcl.Diagnostics {
 	diags := make(hcl.Diagnostics, 0)
 
 	if !exprIsSet(rs.Platform) {
-		diags = append(diags, diagError("Missing mobile platform", "mobile step must declare platform = \"ios\".", nil))
+		diags = append(diags, diagError(
+			"Missing mobile platform",
+			fmt.Sprintf("mobile step must declare platform = one of %s.", strings.Join(supportedMobilePlatforms, ", ")),
+			nil,
+		))
 
 		return diags
 	}
@@ -268,9 +280,14 @@ func validateMobilePlatform(rs stepBlock) hcl.Diagnostics {
 
 	platform := value.AsString()
 
-	if platform != supportedMobilePlatform {
+	if !slices.Contains(supportedMobilePlatforms, platform) {
 		platformRange := rs.Platform.Range()
-		diags = append(diags, diagError("Unsupported mobile platform", fmt.Sprintf("mobile platform %q is not supported yet, use \"ios\".", platform), &platformRange))
+		diags = append(diags, diagError(
+			"Unsupported mobile platform",
+			fmt.Sprintf("mobile platform %q is not supported; use one of %s.",
+				platform, strings.Join(supportedMobilePlatforms, ", ")),
+			&platformRange,
+		))
 	}
 
 	return diags
