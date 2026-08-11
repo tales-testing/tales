@@ -197,22 +197,18 @@ func waitForHealth(ctx context.Context, opts Options, pinger Pinger) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	var lastErr error
-
 	for {
-		if err := pinger.Health(deadline); err == nil {
+		err := pinger.Health(deadline)
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
 
 		select {
 		case <-deadline.Done():
-			if lastErr != nil {
-				return fmt.Errorf("driver did not become healthy within %s: %w", timeout, lastErr)
-			}
-
-			return fmt.Errorf("driver did not become healthy within %s", timeout)
+			// Carry the last transport error: "did not become healthy"
+			// alone does not distinguish a crashed driver from a wrong
+			// port, and that is the first thing a user needs to know.
+			return fmt.Errorf("driver did not become healthy within %s: %w", timeout, err)
 		case <-ticker.C:
 		}
 	}
