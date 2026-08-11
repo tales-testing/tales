@@ -15,3 +15,7 @@ dist/
 
 # Local reference checkout of Maestro for driver parity work (not committed).
 .maestro-ref/
+
+# Agent-managed git worktrees. These are nested checkouts of this same
+# repository, so `git add -A` would otherwise stage them as embedded repos.
+.claude/worktrees/
