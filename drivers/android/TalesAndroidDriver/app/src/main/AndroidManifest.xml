@@ -3,15 +3,23 @@
   The driver app itself is an empty shell: UiAutomator drives other
   apps from the instrumentation process, so nothing here needs a UI.
   It exists because an instrumentation APK must target a package, and
-  because that package is where the driver's own permissions live.
+  because that package is where the driver's permissions live —
+  `am instrument` runs the test code under this application's identity,
+  so a permission missing here is missing from the driver.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The driver binds a local TCP socket for its HTTP API. Without
+         this the bind fails with EPERM, which surfaces as a driver that
+         never answers /health. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Needed to resolve launch intents for the app under test on
          API 30+, where package visibility is filtered by default. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission"
-        xmlns:tools="http://schemas.android.com/tools" />
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
 
     <application
         android:allowBackup="false"
