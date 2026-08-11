@@ -635,6 +635,68 @@ func TestExecuteExpectVisibleByLabel(t *testing.T) {
 	}
 }
 
+// TestExecuteWaitVisibleActionByLabel is the actions-block counterpart of
+// TestExecuteExpectVisibleByLabel. The expect form passes the decoded
+// MobileVisibilityExec straight through, so it always carried Label; the
+// action form rebuilds the struct in handleAction and used to drop it,
+// leaving the locator empty and timing out on a element that was right
+// there. e2e/ios/pass/picker_label.tales exercises exactly this path.
+func TestExecuteWaitVisibleActionByLabel(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newSystemPickerHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("wait-visible-label"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionWaitVisible, Label: "Done", Timeout: 50 * time.Millisecond},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected wait_visible action to resolve by label, got %v", err)
+	}
+}
+
+// TestExecuteWaitNotVisibleActionByLabel guards the mirror case: the
+// element must be looked up by label so its absence is a genuine
+// observation rather than the side effect of an empty locator, which
+// would make the assertion pass for the wrong reason.
+func TestExecuteWaitNotVisibleActionByLabel(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newSystemPickerHierarchy()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "picker",
+		Step:     newStep("wait-not-visible-label"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionWaitNotVisible, Label: "Done", Timeout: 50 * time.Millisecond},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected wait_not_visible to fail while the labelled element is still visible")
+	}
+
+	if !strings.Contains(err.Error(), `label="Done"`) {
+		t.Fatalf("expected the error to cite the label locator, got %v", err)
+	}
+}
+
 func TestExecuteTapByMissingLabelSurfacesLocatorInError(t *testing.T) {
 	t.Parallel()
 

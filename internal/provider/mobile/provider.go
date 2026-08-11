@@ -654,13 +654,31 @@ func applyPermissions(ctx context.Context, session *Session, permissions []provi
 	return nil
 }
 
+// visibilityFromAction narrows a wait_visible / wait_not_visible action
+// into the visibility expectation the shared wait helper consumes.
+//
+// It exists so the locator is carried across in one place: an earlier
+// inline literal only copied ID, silently dropping Label. That made
+// `wait_visible { label = "Done" }` poll for an empty id and time out,
+// and — worse — made `wait_not_visible { label = ... }` pass for the
+// wrong reason, since an unresolvable locator reads as "not visible".
+// Any locator field added later must be threaded here too.
+func visibilityFromAction(action provider.MobileActionExec) provider.MobileVisibilityExec {
+	return provider.MobileVisibilityExec{
+		ID:       action.ID,
+		Label:    action.Label,
+		Timeout:  action.Timeout,
+		Interval: action.Interval,
+	}
+}
+
 func (p *Provider) handleAction(ctx context.Context, session *Session, action provider.MobileActionExec) error {
 	if action.Kind == model.MobileActionWaitVisible {
-		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, true, action.First)
+		return p.waitForVisibility(ctx, session, visibilityFromAction(action), true, action.First)
 	}
 
 	if action.Kind == model.MobileActionWaitNotVisible {
-		return p.waitForVisibility(ctx, session, provider.MobileVisibilityExec{ID: action.ID, Timeout: action.Timeout, Interval: action.Interval}, false, action.First)
+		return p.waitForVisibility(ctx, session, visibilityFromAction(action), false, action.First)
 	}
 
 	// Device-level actions target no element, so they skip the
