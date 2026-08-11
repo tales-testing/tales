@@ -481,7 +481,14 @@ final class TalesRouter {
             // No public API for the lock button; the selector is stable.
             XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
         default:
-            return HTTPResponse.error("unsupported button \(button)", status: 400)
+            // Name the platform and list what it does support: the DSL
+            // accepts the union of both platforms' buttons (back and
+            // recent_apps exist only on Android), so this is the message
+            // an author of a shared scenario reads.
+            return HTTPResponse.error(
+                "button \"\(button)\" is not supported on ios (supported: home, lock)",
+                status: 400
+            )
         }
 
         return HTTPResponse.json(["ok": true])
@@ -494,7 +501,12 @@ final class TalesRouter {
         }
 
         guard let deviceOrientation = Self.deviceOrientations[orientation] else {
-            return HTTPResponse.error("unsupported orientation \(orientation)", status: 400)
+            let supported = Self.deviceOrientations.keys.sorted().joined(separator: ", ")
+
+            return HTTPResponse.error(
+                "unsupported orientation \"\(orientation)\" (supported: \(supported))",
+                status: 400
+            )
         }
 
         XCUIDevice.shared.orientation = deviceOrientation

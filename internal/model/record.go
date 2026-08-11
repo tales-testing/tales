@@ -19,5 +19,10 @@ type ScenarioRecord struct {
 	Display Expression
 	Target  Expression
 	Force   Expression
+	// BitRate and Size are Android screenrecord options; Codec, Mask
+	// and Display are simctl ones. The backend rejects the ones its
+	// platform does not implement.
+	BitRate Expression
+	Size    Expression
 	Range   hcl.Range
 }
