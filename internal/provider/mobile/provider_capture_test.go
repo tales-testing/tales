@@ -11,7 +11,6 @@ import (
 
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 )
@@ -76,12 +75,12 @@ func newCaptureProvider(t *testing.T, drv *recordingDriver, mode CaptureMode) *P
 
 	target := sampleProviderTarget()
 	lc := &fakeLifecycle{udid: "UDID"}
-	builder := SessionBuilderFunc(func(_ context.Context, _ apple.Target) (*Session, error) {
+	builder := SessionBuilderFunc(func(_ context.Context, _ Target) (*Session, error) {
 		return &Session{
 			Target:    target,
-			UDID:      lc.udid,
+			DeviceID:  lc.udid,
 			Driver:    drv,
-			Lifecycle: lc.toAppleLifecycle(),
+			Lifecycle: lc,
 		}, nil
 	})
 

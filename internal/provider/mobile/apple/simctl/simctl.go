@@ -1,7 +1,7 @@
 // Package simctl wraps a small, curated subset of `xcrun simctl` commands
 // behind a Runner-backed API so the rest of the mobile provider can drive
 // iOS Simulator lifecycle (boot, install, launch, terminate, ...) without
-// shelling out from multiple places. All commands take an apple.Runner so
+// shelling out from multiple places. All commands take a Runner so
 // unit tests can substitute a fake executor.
 package simctl
 
@@ -14,18 +14,26 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 )
+
+// Runner executes an external command and returns its combined output.
+//
+// Declared here rather than imported from the parent apple package so
+// this package stays a leaf: apple wires simctl into the iOS backend, so
+// depending back on it would form a cycle. Go interfaces are structural,
+// so apple.ExecRunner satisfies this without any declaration.
+type Runner interface {
+	Run(ctx context.Context, name string, args ...string) ([]byte, error)
+}
 
 // Tool is the simctl facade. Construct one with apple.ExecRunner{} in
 // production and a fake Runner in tests.
 type Tool struct {
-	runner apple.Runner
+	runner Runner
 }
 
 // New returns a Tool that executes commands through the given runner.
-func New(runner apple.Runner) *Tool {
+func New(runner Runner) *Tool {
 	return &Tool{runner: runner}
 }
 

@@ -7,13 +7,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/parser"
 	"github.com/tales-testing/tales/internal/provider"
 	"github.com/tales-testing/tales/internal/provider/mobile"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 	"github.com/tales-testing/tales/internal/report"
@@ -45,30 +43,29 @@ func (s *stubMobileDriver) Screenshot(_ context.Context) ([]byte, error) {
 	return []byte("png"), nil
 }
 
-type noopSim struct{}
+// noopLifecycle satisfies mobile.Lifecycle without touching any device,
+// so runtime tests can drive whole mobile steps in-process.
+type noopLifecycle struct{}
 
-func (noopSim) FindDeviceByName(_ context.Context, _ string) (apple.Device, error) {
-	return apple.Device{UDID: "UDID"}, nil
+func (noopLifecycle) InstallApp(_ context.Context, _ string, _ mobile.Target) error { return nil }
+func (noopLifecycle) ClearAppState(_ context.Context, _ string, _ mobile.Target) error {
+	return nil
 }
-func (noopSim) Boot(_ context.Context, _ string) error                        { return nil }
-func (noopSim) WaitBooted(_ context.Context, _ string, _ time.Duration) error { return nil }
-func (noopSim) Install(_ context.Context, _, _ string) error                  { return nil }
-func (noopSim) Uninstall(_ context.Context, _, _ string) error                { return nil }
-func (noopSim) Launch(_ context.Context, _, _ string) error                   { return nil }
-func (noopSim) Terminate(_ context.Context, _, _ string) error                { return nil }
-func (noopSim) Privacy(_ context.Context, _, _, _, _ string) error            { return nil }
-func (noopSim) ResetKeychain(_ context.Context, _ string) error               { return nil }
-func (noopSim) Screenshot(_ context.Context, _, _ string) error               { return nil }
+
+func (noopLifecycle) SetPermission(_ context.Context, _ string, _ mobile.Target, _, _ string) error {
+	return nil
+}
+func (noopLifecycle) TerminateApp(_ context.Context, _ string, _ mobile.Target) error { return nil }
+func (noopLifecycle) TerminateDriverRunner(_ context.Context, _ string) error         { return nil }
+func (noopLifecycle) ScreenshotFallback(_ context.Context, _, _ string) error         { return nil }
 
 func newStubProvider(drv *stubMobileDriver) *mobile.Provider {
-	builder := mobile.SessionBuilderFunc(func(_ context.Context, target apple.Target) (*mobile.Session, error) {
+	builder := mobile.SessionBuilderFunc(func(_ context.Context, target mobile.Target) (*mobile.Session, error) {
 		return &mobile.Session{
-			Target: target,
-			UDID:   "UDID",
-			Driver: drv,
-			Lifecycle: &apple.Lifecycle{
-				Simctl: noopSim{},
-			},
+			Target:    target,
+			DeviceID:  "UDID",
+			Driver:    drv,
+			Lifecycle: noopLifecycle{},
 		}, nil
 	})
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tales-testing/tales/internal/provider/mobile"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/tales-testing/tales/internal/provider/mobile/driver"
@@ -87,17 +88,11 @@ const driverLogsBase = "build/artifacts/mobile/driver"
 
 var unsafeDriverLogSegment = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
-// DriverHandle is returned alongside a Driver and lets the caller stop the
-// xcodebuild subprocess Tales started. It is nil in external-driver mode.
-type DriverHandle interface {
-	Stop(ctx context.Context) error
-}
-
 // EnsureBooted finds the simulator and boots it if needed, returning the
 // resolved Device (UDID, runtime, etc.). The runtime field feeds the
 // embedded-driver cache key so builds remain valid across iOS runtime
 // versions.
-func (l *Lifecycle) EnsureBooted(ctx context.Context, target Target) (Device, error) {
+func (l *Lifecycle) EnsureBooted(ctx context.Context, target mobile.Target) (Device, error) {
 	device, err := l.Simctl.FindDeviceByName(ctx, target.DeviceName)
 	if err != nil {
 		return Device{}, fmt.Errorf("find simulator %q: %w", target.DeviceName, err)
@@ -121,7 +116,7 @@ func (l *Lifecycle) EnsureBooted(ctx context.Context, target Target) (Device, er
 }
 
 // InstallApp installs (or reinstalls) the app on the simulator.
-func (l *Lifecycle) InstallApp(ctx context.Context, udid string, target Target) error {
+func (l *Lifecycle) InstallApp(ctx context.Context, udid string, target mobile.Target) error {
 	if err := l.Simctl.Install(ctx, udid, target.AppPath); err != nil {
 		return fmt.Errorf("install app: %w", err)
 	}
@@ -132,7 +127,7 @@ func (l *Lifecycle) InstallApp(ctx context.Context, udid string, target Target) 
 // ClearAppState terminates the app, uninstalls it, resets the simulator
 // keychain, then installs it again. This is the V1 implementation of
 // `launch { clear_state = true }`.
-func (l *Lifecycle) ClearAppState(ctx context.Context, udid string, target Target) error {
+func (l *Lifecycle) ClearAppState(ctx context.Context, udid string, target mobile.Target) error {
 	_ = l.Simctl.Terminate(ctx, udid, target.BundleID)
 
 	if err := l.Simctl.Uninstall(ctx, udid, target.BundleID); err != nil {
@@ -156,7 +151,7 @@ func (l *Lifecycle) ClearAppState(ctx context.Context, udid string, target Targe
 
 // SetPermission grants or revokes a privacy permission for the target app.
 // action is "grant" or "revoke"; service is a simctl privacy service name.
-func (l *Lifecycle) SetPermission(ctx context.Context, udid string, target Target, action, service string) error {
+func (l *Lifecycle) SetPermission(ctx context.Context, udid string, target mobile.Target, action, service string) error {
 	if err := l.Simctl.Privacy(ctx, udid, action, service, target.BundleID); err != nil {
 		return fmt.Errorf("set permission %s %s: %w", action, service, err)
 	}
@@ -165,7 +160,7 @@ func (l *Lifecycle) SetPermission(ctx context.Context, udid string, target Targe
 }
 
 // LaunchApp launches the configured app on the given simulator.
-func (l *Lifecycle) LaunchApp(ctx context.Context, udid string, target Target) error {
+func (l *Lifecycle) LaunchApp(ctx context.Context, udid string, target mobile.Target) error {
 	if err := l.Simctl.Launch(ctx, udid, target.BundleID); err != nil {
 		return fmt.Errorf("launch app: %w", err)
 	}
@@ -176,7 +171,7 @@ func (l *Lifecycle) LaunchApp(ctx context.Context, udid string, target Target) e
 // TerminateApp terminates the configured app on the given simulator. If the
 // app was not running, simctl reports a clean exit and the lifecycle treats it
 // as a no-op.
-func (l *Lifecycle) TerminateApp(ctx context.Context, udid string, target Target) error {
+func (l *Lifecycle) TerminateApp(ctx context.Context, udid string, target mobile.Target) error {
 	if err := l.Simctl.Terminate(ctx, udid, target.BundleID); err != nil {
 		return fmt.Errorf("terminate app: %w", err)
 	}
@@ -208,32 +203,35 @@ func (l *Lifecycle) TerminateDriverRunner(ctx context.Context, udid string) erro
 	return nil
 }
 
-// DriverDiagnostics carries the on-disk paths that hold the most useful
-// post-mortem information when the driver process dies mid-scenario.
-// Populated by EnsureDriver and threaded into the mobile session so the
-// provider can mention them in transport-level error messages
-// (`connect: connection refused`, `EOF` on a POST, etc.). External-driver
-// mode leaves every field empty: Tales does not own the runner there,
-// so no Tales-managed log exists.
-type DriverDiagnostics struct {
-	// DriverLog is the stdout+stderr capture of the
-	// `xcodebuild test-without-building` invocation that hosts the
-	// XCUITest driver. Already populated by xcodebuild.Options.LogPath
-	// today; surfaced here so error messages can quote the path.
-	DriverLog string
-	// XCResultDir is the directory under derivedData where xcodebuild
-	// writes the .xcresult bundle for the test session. The bundle
-	// itself is named with a timestamp by Xcode at the end of the
-	// run, so users have to glob the directory; pointing at the
-	// directory is enough to let them run `open <path>/*.xcresult`
-	// in Xcode and read the full crash report (SIGABRT, XCTest
-	// API Violation, accessibility-engine bailouts, ...).
-	XCResultDir string
-	// BuildLog is the embedded driver's build-for-testing log (under
-	// the cache directory). Less useful for live-run crashes but
-	// surfaces here when the runner died because the build itself was
-	// broken (rare, but cheap to expose).
-	BuildLog string
+// appleDiagnostics assembles the post-mortem file paths Tales allocated
+// for this driver session, in the order a user should read them:
+//
+//   - the driver log: stdout+stderr of the
+//     `xcodebuild test-without-building` invocation hosting the XCUITest
+//     driver.
+//   - the .xcresult directory under derivedData. Xcode names the bundle
+//     itself with a timestamp only at the end of the run, so pointing at
+//     the directory is what lets users run `open <dir>/*.xcresult` and
+//     read the full crash report (SIGABRT, XCTest API Violation,
+//     accessibility-engine bailouts, ...).
+//   - the embedded driver's build-for-testing log, which matters when the
+//     runner died because the build itself was broken.
+func appleDiagnostics(driverLog, xcresultDir, buildLog string) mobile.Diagnostics {
+	var out []mobile.Artifact
+
+	if driverLog != "" {
+		out = append(out, mobile.Artifact{Type: mobile.ArtifactTypeDriverLog, Path: driverLog})
+	}
+
+	if xcresultDir != "" {
+		out = append(out, mobile.Artifact{Type: mobile.ArtifactTypeXCResultDir, Path: xcresultDir})
+	}
+
+	if buildLog != "" {
+		out = append(out, mobile.Artifact{Type: mobile.ArtifactTypeDriverBuildLog, Path: buildLog})
+	}
+
+	return mobile.Diagnostics{Artifacts: out}
 }
 
 // EnsureDriver returns a driver client connected to the running driver
@@ -250,40 +248,36 @@ type DriverDiagnostics struct {
 // driver fails to answer /health: the cached build is invalidated and
 // rebuilt from scratch before the second attempt, in case Xcode has
 // upgraded between Tales runs in a way the cache key did not capture.
-func (l *Lifecycle) EnsureDriver(ctx context.Context, device Device, target Target) (driver.Driver, DriverHandle, DriverDiagnostics, error) {
+func (l *Lifecycle) EnsureDriver(ctx context.Context, device Device, target mobile.Target) (driver.Driver, mobile.DriverHandle, mobile.Diagnostics, error) {
 	if l.NewDriver == nil {
-		return nil, nil, DriverDiagnostics{}, errors.New("driver factory is not configured")
+		return nil, nil, mobile.Diagnostics{}, errors.New("driver factory is not configured")
 	}
 
 	client := l.NewDriver(target.Driver.BaseURL())
 
 	if target.Driver.External {
 		if err := client.Health(ctx); err != nil {
-			return nil, nil, DriverDiagnostics{}, fmt.Errorf("external driver health: %w", err)
+			return nil, nil, mobile.Diagnostics{}, fmt.Errorf("external driver health: %w", err)
 		}
 
-		return client, nil, DriverDiagnostics{}, nil
+		return client, nil, mobile.Diagnostics{}, nil
 	}
 
 	return l.startEmbeddedDriver(ctx, device, target, client)
 }
 
-func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, target Target, client driver.Driver) (driver.Driver, DriverHandle, DriverDiagnostics, error) {
+func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, target mobile.Target, client driver.Driver) (driver.Driver, mobile.DriverHandle, mobile.Diagnostics, error) {
 	if l.Embedded == nil {
-		return nil, nil, DriverDiagnostics{}, fmt.Errorf("config.mobile.targets.%s.driver: embedded driver manager is not configured on the apple.Lifecycle (set driver.external = true to connect to an already-running driver)", target.Name)
+		return nil, nil, mobile.Diagnostics{}, fmt.Errorf("config.mobile.targets.%s.driver: embedded driver manager is not configured on the apple.Lifecycle (set driver.external = true to connect to an already-running driver)", target.Name)
 	}
 
 	prepared, err := l.Embedded.Prepare(ctx, target.Driver.SourcePath, device.Runtime)
 	if err != nil {
-		return nil, nil, DriverDiagnostics{}, fmt.Errorf("prepare embedded driver: %w", err)
+		return nil, nil, mobile.Diagnostics{}, fmt.Errorf("prepare embedded driver: %w", err)
 	}
 
 	logPath := driverLogPath(target.Name)
-	diagnostics := DriverDiagnostics{
-		DriverLog:   logPath,
-		XCResultDir: filepath.Join(prepared.DerivedData, "Logs", "Test"),
-		BuildLog:    prepared.BuildLogPath,
-	}
+	diagnostics := appleDiagnostics(logPath, filepath.Join(prepared.DerivedData, "Logs", "Test"), prepared.BuildLogPath)
 	opts := xcodebuild.Options{
 		UDID:          device.UDID,
 		XCTestRunPath: prepared.XCTestRunPath,
@@ -314,8 +308,7 @@ func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, targ
 	}
 
 	opts.XCTestRunPath = rebuilt.XCTestRunPath
-	diagnostics.XCResultDir = filepath.Join(rebuilt.DerivedData, "Logs", "Test")
-	diagnostics.BuildLog = rebuilt.BuildLogPath
+	diagnostics = appleDiagnostics(logPath, filepath.Join(rebuilt.DerivedData, "Logs", "Test"), rebuilt.BuildLogPath)
 
 	retryHandle, retryErr := l.Xcodebuild.Start(ctx, opts, client)
 	if retryErr != nil {
@@ -325,7 +318,7 @@ func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, targ
 	return client, retryHandle, diagnostics, nil
 }
 
-func driverEnv(cfg DriverConfig) map[string]string {
+func driverEnv(cfg mobile.DriverConfig) map[string]string {
 	return map[string]string{
 		"TALES_DRIVER_HOST": cfg.Host,
 		"TALES_DRIVER_PORT": fmt.Sprintf("%d", cfg.Port),

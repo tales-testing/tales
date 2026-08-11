@@ -1,0 +1,75 @@
+package mobile
+
+import "context"
+
+// Lifecycle is everything the provider needs from a platform's device
+// tooling once a session exists: installing the app under test, resetting
+// it, granting permissions, and stopping it again.
+//
+// It deliberately excludes session construction (booting a device,
+// starting the driver). That is the Backend's job and is inherently
+// platform-shaped — simctl + xcodebuild on iOS, adb + am instrument on
+// Android — whereas the operations below map one-to-one across platforms
+// and are called from the shared step execution path.
+//
+// deviceID is the platform's device handle: a simulator UDID on iOS, an
+// adb serial on Android. The provider treats it as an opaque string and
+// only ever passes back what the Backend put on the Session.
+type Lifecycle interface {
+	// InstallApp installs (or reinstalls) Target.AppPath on the device.
+	InstallApp(ctx context.Context, deviceID string, target Target) error
+
+	// ClearAppState returns the app to a first-launch state, then leaves it
+	// installed and ready to launch. Backs `launch { clear_state = true }`.
+	ClearAppState(ctx context.Context, deviceID string, target Target) error
+
+	// SetPermission grants or revokes one privacy permission for the app.
+	// action is "grant" or "revoke"; service is a Tales service name that
+	// the backend maps onto its platform's permission model.
+	SetPermission(ctx context.Context, deviceID string, target Target, action, service string) error
+
+	// TerminateApp stops the app under test. Terminating an app that is not
+	// running is a no-op, not an error.
+	TerminateApp(ctx context.Context, deviceID string, target Target) error
+
+	// TerminateDriverRunner kills any on-device process hosting the driver,
+	// as a defensive companion to stopping the driver subprocess: the host
+	// process can die while its on-device child briefly survives and squats
+	// the port the next session needs.
+	TerminateDriverRunner(ctx context.Context, deviceID string) error
+
+	// ScreenshotFallback captures a PNG straight from the device tooling,
+	// for when the driver's own screenshot endpoint is unreachable (which
+	// is precisely when a failure screenshot matters most).
+	ScreenshotFallback(ctx context.Context, deviceID, path string) error
+}
+
+// DriverHandle stops the driver process Tales started. Backends return a
+// nil handle when the driver is external, since Tales does not own it.
+type DriverHandle interface {
+	Stop(ctx context.Context) error
+}
+
+// Diagnostics carries the on-disk paths holding the most useful
+// post-mortem information when the driver dies mid-scenario. The provider
+// quotes them in transport-level error messages ("connection refused",
+// "EOF" on a POST) and attaches them to the step report, so users land on
+// the file with the crash report instead of a bare network error.
+//
+// It is a list rather than named fields because the useful files differ by
+// platform — an .xcresult bundle on iOS, a logcat dump on Android — while
+// the provider only ever forwards them verbatim. Backends choose the type
+// strings; they surface as-is in the visual and JSONL reports.
+//
+// Empty for external drivers: Tales owns none of their files.
+type Diagnostics struct {
+	Artifacts []Artifact
+}
+
+// driverStartError is implemented by backend errors that know where the
+// driver's startup log landed. It lets the provider attach that log to a
+// failed session without importing any platform's launcher package.
+type driverStartError interface {
+	// DriverLogPath returns the log path, or "" when none was written.
+	DriverLogPath() string
+}
