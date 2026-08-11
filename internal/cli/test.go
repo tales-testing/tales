@@ -20,6 +20,7 @@ import (
 	loadprovider "github.com/tales-testing/tales/internal/provider/load"
 	mailprovider "github.com/tales-testing/tales/internal/provider/mail"
 	mobileprovider "github.com/tales-testing/tales/internal/provider/mobile"
+	applemobile "github.com/tales-testing/tales/internal/provider/mobile/apple"
 	rpcprovider "github.com/tales-testing/tales/internal/provider/rpc"
 	sqlprovider "github.com/tales-testing/tales/internal/provider/sql"
 	webhookprovider "github.com/tales-testing/tales/internal/provider/webhook"
@@ -154,6 +155,21 @@ func resolveCaptureMode(raw, htmlPath string) (mobileprovider.CaptureMode, error
 	return mode, nil
 }
 
+// mobileOptions assembles the mobile provider options: the shared capture
+// mode plus one registration per compiled-in platform backend. A step's
+// `platform` selects among them at runtime, so a binary built without a
+// given backend reports that platform as unsupported rather than failing
+// obscurely later.
+func mobileOptions(captureMode mobileprovider.CaptureMode) []mobileprovider.Option {
+	backends := applemobile.Options()
+
+	opts := make([]mobileprovider.Option, 0, 1+len(backends))
+	opts = append(opts, mobileprovider.WithCaptureMode(captureMode))
+	opts = append(opts, backends...)
+
+	return opts
+}
+
 func runTest(ctx context.Context, cmd *cli.Command) error {
 	path := "."
 	if cmd.NArg() > 0 {
@@ -194,7 +210,7 @@ func runTest(ctx context.Context, cmd *cli.Command) error {
 	runner := talesruntime.NewRunner(provider.NewRegistry(
 		httpprovider.New(),
 		keywordprovider.New(),
-		mobileprovider.NewApple(mobileprovider.WithCaptureMode(captureMode)),
+		mobileprovider.New(mobileOptions(captureMode)...),
 		sqlprovider.New(),
 		mailprovider.New(),
 		chromebrowser.New(browserprovider.WithCaptureMode(captureMode)),

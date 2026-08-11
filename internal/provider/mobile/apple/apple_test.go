@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tales-testing/tales/internal/provider/mobile"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/tales-testing/tales/internal/provider/mobile/driver"
@@ -142,14 +143,14 @@ func newLifecycleWithDriver(d driver.Driver) (*Lifecycle, *fakeSimctl, *fakeXcod
 	}, sim, xc
 }
 
-func sampleTarget(external bool) Target {
-	return Target{
+func sampleTarget(external bool) mobile.Target {
+	return mobile.Target{
 		Name:       "iphone",
 		Platform:   "ios",
 		DeviceName: "iPhone 16",
 		AppPath:    "./MyApp.app",
 		BundleID:   "com.example.MyApp",
-		Driver: DriverConfig{
+		Driver: mobile.DriverConfig{
 			Host:     "127.0.0.1",
 			Port:     9080,
 			External: external,

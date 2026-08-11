@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,9 +20,6 @@ import (
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
 	"github.com/tales-testing/tales/internal/provider/artifacts"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple/simrecord"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -29,12 +27,24 @@ import (
 const (
 	artifactTypeKey = "type"
 	artifactPathKey = "path"
+)
 
-	// Artifact type strings, surfaced verbatim in the visual / JSONL
-	// reports and the cty `request.artifacts[*].type` namespace.
-	artifactTypeDriverLog      = "driver_log"
-	artifactTypeXCResultDir    = "xcresult_dir"
-	artifactTypeDriverBuildLog = "driver_build_log"
+// Artifact type strings, surfaced verbatim in the visual / JSONL reports
+// and the cty `request.artifacts[*].type` namespace. Exported because
+// platform backends build the Diagnostics list themselves and must label
+// their files with the same vocabulary the reporters render.
+const (
+	// ArtifactTypeDriverLog is the driver process' stdout+stderr capture.
+	ArtifactTypeDriverLog = "driver_log"
+	// ArtifactTypeXCResultDir is the directory holding Xcode's .xcresult
+	// bundle for the driver test session (iOS).
+	ArtifactTypeXCResultDir = "xcresult_dir"
+	// ArtifactTypeDriverBuildLog is the log of the driver's own build,
+	// relevant when the driver died because the build was broken.
+	ArtifactTypeDriverBuildLog = "driver_build_log"
+	// ArtifactTypeLogcat is a device log dump captured after a driver
+	// death (Android).
+	ArtifactTypeLogcat = "logcat"
 )
 
 // defaultPollInterval is the wait between two hierarchy fetches during mobile
@@ -71,16 +81,15 @@ const (
 	directionRight = "right"
 )
 
-// supportedPlatform is the only mobile platform accepted by V1.
-const supportedPlatform = "ios"
-
 // Provider is the mobile step provider.
 type Provider struct {
 	mu          sync.Mutex
 	sessions    map[string]*Session
 	targetLocks map[string]*sync.Mutex
 	stepLocks   map[string]*sync.Mutex
-	builder     SessionBuilder
+	// backends maps a platform name onto the builder that knows how to
+	// stand a session up for it. A step's `platform` selects the entry.
+	backends map[string]SessionBuilder
 
 	hierarchyMu sync.RWMutex
 	hierarchies map[string]*tree.ViewNode
@@ -88,9 +97,10 @@ type Provider struct {
 	artifactsBase string
 	captureMode   CaptureMode
 
-	// recorderSpawner overrides the simctl recordVideo spawner used by the
-	// scenario-level record hook. Nil falls back to simrecord.ExecSpawner{}.
-	recorderSpawner simrecord.Spawner
+	// recorderFactory builds the Recorder used by the scenario-level
+	// record hook. Registered by the platform backend; nil means the
+	// platform cannot record and a record block fails with that message.
+	recorderFactory RecorderFactory
 	recordOnce      sync.Once
 	recording       *recordController
 }
@@ -98,11 +108,19 @@ type Provider struct {
 // Option configures the Provider.
 type Option func(*Provider)
 
-// WithSessionBuilder overrides the default SessionBuilder; mostly used in tests.
-func WithSessionBuilder(b SessionBuilder) Option {
+// WithBackend registers the session builder handling one platform. The
+// CLI registers every compiled-in backend; tests register a fake for the
+// single platform they exercise.
+func WithBackend(platform string, b SessionBuilder) Option {
 	return func(p *Provider) {
-		p.builder = b
+		p.backends[platform] = b
 	}
+}
+
+// WithSessionBuilder registers b for iOS. Kept as a thin shorthand over
+// WithBackend for the many call sites that only ever drive one platform.
+func WithSessionBuilder(b SessionBuilder) Option {
+	return WithBackend(PlatformIOS, b)
 }
 
 // WithArtifactsBase overrides the artifacts base directory.
@@ -120,13 +138,12 @@ func WithCaptureMode(mode CaptureMode) Option {
 	}
 }
 
-// WithRecorderSpawner overrides the spawner used by the scenario-level
-// record hook. Production callers omit this option so simrecord.ExecSpawner{}
-// is used; tests inject a fake Spawner so unit coverage does not require an
-// iOS simulator.
-func WithRecorderSpawner(spawner simrecord.Spawner) Option {
+// WithRecorderFactory sets the factory backing the scenario-level record
+// block. Platform backends register their own; tests inject a fake so
+// unit coverage does not require a device.
+func WithRecorderFactory(factory RecorderFactory) Option {
 	return func(p *Provider) {
-		p.recorderSpawner = spawner
+		p.recorderFactory = factory
 	}
 }
 
@@ -136,6 +153,7 @@ func New(opts ...Option) *Provider {
 		sessions:      map[string]*Session{},
 		targetLocks:   map[string]*sync.Mutex{},
 		stepLocks:     map[string]*sync.Mutex{},
+		backends:      map[string]SessionBuilder{},
 		hierarchies:   map[string]*tree.ViewNode{},
 		artifactsBase: artifacts.DefaultBase,
 		captureMode:   CaptureFailures,
@@ -143,10 +161,6 @@ func New(opts ...Option) *Provider {
 
 	for _, opt := range opts {
 		opt(p)
-	}
-
-	if p.builder == nil {
-		p.builder = defaultSessionBuilder()
 	}
 
 	return p
@@ -209,16 +223,20 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		return nil, errors.New("mobile: missing pre-evaluated step data")
 	}
 
-	if input.Mobile.Platform != supportedPlatform {
-		return nil, fmt.Errorf("mobile platform %q is not supported yet", input.Mobile.Platform)
-	}
-
-	target, err := apple.ResolveTarget(input.Config, input.Mobile.TargetName)
+	target, err := ResolveTarget(input.Config, input.Mobile.TargetName)
 	if err != nil {
 		return nil, fmt.Errorf("resolve target: %w", err)
 	}
 
-	stepLock := p.stepLock(target.Name)
+	// The step's platform and the target's must agree: the step selects
+	// the backend, the target configures the device, and a mismatch would
+	// silently drive the wrong one.
+	if input.Mobile.Platform != target.Platform {
+		return nil, fmt.Errorf("step declares platform %q but target %q is configured for %q",
+			input.Mobile.Platform, target.Name, target.Platform)
+	}
+
+	stepLock := p.stepLock(sessionKey(target))
 	stepLock.Lock()
 	defer stepLock.Unlock()
 
@@ -278,29 +296,67 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	return output, nil
 }
 
-func (p *Provider) acquireSession(ctx context.Context, target apple.Target) (*Session, error) {
-	if sess, ok := p.lookupSession(target.Name); ok {
+// sessionKey namespaces a target by platform. Two targets may share a
+// name across platforms (an "app" target for iOS and one for Android),
+// and they are different devices with different sessions.
+func sessionKey(target Target) string {
+	return target.Platform + "\x00" + target.Name
+}
+
+// backendFor returns the builder registered for the target's platform.
+func (p *Provider) backendFor(target Target) (SessionBuilder, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if b, ok := p.backends[target.Platform]; ok {
+		return b, nil
+	}
+
+	registered := make([]string, 0, len(p.backends))
+	for platform := range p.backends {
+		registered = append(registered, platform)
+	}
+
+	sort.Strings(registered)
+
+	if len(registered) == 0 {
+		return nil, fmt.Errorf("mobile platform %q is not supported: no platform backend is registered", target.Platform)
+	}
+
+	return nil, fmt.Errorf("mobile platform %q is not supported (available: %s)",
+		target.Platform, strings.Join(registered, ", "))
+}
+
+func (p *Provider) acquireSession(ctx context.Context, target Target) (*Session, error) {
+	key := sessionKey(target)
+
+	if sess, ok := p.lookupSession(key); ok {
 		return sess, nil
+	}
+
+	builder, err := p.backendFor(target)
+	if err != nil {
+		return nil, err
 	}
 
 	// Serialize concurrent Build calls per target without blocking other
-	// targets: p.builder.Build can take tens of seconds (booting simulators,
-	// starting xcodebuild) and we don't want target B to wait on target A.
-	lock := p.targetLock(target.Name)
+	// targets: Build can take tens of seconds (booting devices, starting
+	// the driver) and we don't want target B to wait on target A.
+	lock := p.targetLock(key)
 	lock.Lock()
 	defer lock.Unlock()
 
-	if sess, ok := p.lookupSession(target.Name); ok {
+	if sess, ok := p.lookupSession(key); ok {
 		return sess, nil
 	}
 
-	sess, err := p.builder.Build(ctx, target)
+	sess, err := builder.Build(ctx, target)
 	if err != nil {
 		return nil, fmt.Errorf("build session for %q: %w", target.Name, err)
 	}
 
 	p.mu.Lock()
-	p.sessions[target.Name] = sess
+	p.sessions[key] = sess
 	p.mu.Unlock()
 
 	return sess, nil
@@ -612,10 +668,10 @@ func actionLabel(kind model.MobileActionKind, id, maskedValue string, secure boo
 
 func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *provider.MobileLaunchExec, permissions []provider.MobilePermissionExec) error {
 	if launch.ClearState {
-		if err := session.Lifecycle.ClearAppState(ctx, session.UDID, session.Target); err != nil {
+		if err := session.Lifecycle.ClearAppState(ctx, session.DeviceID, session.Target); err != nil {
 			return fmt.Errorf("clear state: %w", err)
 		}
-	} else if err := session.Lifecycle.InstallApp(ctx, session.UDID, session.Target); err != nil {
+	} else if err := session.Lifecycle.InstallApp(ctx, session.DeviceID, session.Target); err != nil {
 		return fmt.Errorf("install app: %w", err)
 	}
 
@@ -646,7 +702,7 @@ func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *p
 // through simctl.
 func applyPermissions(ctx context.Context, session *Session, permissions []provider.MobilePermissionExec) error {
 	for _, permission := range permissions {
-		if err := session.Lifecycle.SetPermission(ctx, session.UDID, session.Target, permission.Action, permission.Service); err != nil {
+		if err := session.Lifecycle.SetPermission(ctx, session.DeviceID, session.Target, permission.Action, permission.Service); err != nil {
 			return fmt.Errorf("%s %s: %w", permission.Action, permission.Service, err)
 		}
 	}
@@ -1396,13 +1452,22 @@ func inputAttempt(input provider.Input) int {
 	return input.Attempt
 }
 
+// driverLogArtifactFromError pulls the driver startup log out of a failed
+// session build, so a launch failure links straight to the log explaining
+// it. Matching on the driverStartError interface rather than a concrete
+// launcher error keeps this platform-agnostic.
 func driverLogArtifactFromError(err error) (Artifact, bool) {
-	var startErr *xcodebuild.StartError
-	if !errors.As(err, &startErr) || startErr.LogPath == "" {
+	var startErr driverStartError
+	if !errors.As(err, &startErr) {
 		return Artifact{}, false
 	}
 
-	return Artifact{Type: artifactTypeDriverLog, Path: startErr.LogPath}, true
+	path := startErr.DriverLogPath()
+	if path == "" {
+		return Artifact{}, false
+	}
+
+	return Artifact{Type: ArtifactTypeDriverLog, Path: path}, true
 }
 
 // looksLikeDriverDeath reports whether err's chain contains the
@@ -1445,28 +1510,45 @@ func wrapDriverDeathError(err error, session *Session) error {
 		return err
 	}
 
-	diag := session.Diagnostics
-
-	if diag.DriverLog == "" && diag.XCResultDir == "" && diag.BuildLog == "" {
+	artifacts := session.Diagnostics.Artifacts
+	if len(artifacts) == 0 {
 		return err
 	}
 
-	var hints []string
+	hints := make([]string, 0, len(artifacts))
 
-	if diag.DriverLog != "" {
-		hints = append(hints, fmt.Sprintf("driver log: %s", diag.DriverLog))
+	for _, a := range artifacts {
+		if a.Path == "" {
+			continue
+		}
+
+		hints = append(hints, fmt.Sprintf("%s: %s", diagnosticLabel(a.Type), a.Path))
 	}
 
-	if diag.XCResultDir != "" {
-		hints = append(hints, fmt.Sprintf("xcresult bundle dir: %s (open <path>/*.xcresult in Xcode for the full XCTest crash report)", diag.XCResultDir))
-	}
-
-	if diag.BuildLog != "" {
-		hints = append(hints, fmt.Sprintf("build log: %s", diag.BuildLog))
+	if len(hints) == 0 {
+		return err
 	}
 
 	return fmt.Errorf("%w\ndriver process appears to have terminated mid-scenario; diagnostic files:\n  %s",
 		err, strings.Join(hints, "\n  "))
+}
+
+// diagnosticLabel renders a diagnostic artifact type as the phrase shown
+// in a driver-death error. Unknown types fall back to the raw type so a
+// backend can add one without touching this function.
+func diagnosticLabel(artifactType string) string {
+	switch artifactType {
+	case ArtifactTypeDriverLog:
+		return "driver log"
+	case ArtifactTypeXCResultDir:
+		return "xcresult bundle dir (open <path>/*.xcresult in Xcode for the full XCTest crash report)"
+	case ArtifactTypeDriverBuildLog:
+		return "build log"
+	case ArtifactTypeLogcat:
+		return "device log"
+	default:
+		return artifactType
+	}
 }
 
 // appendArtifactsToOutput merges extras into output.Response["artifacts"],
@@ -1517,33 +1599,20 @@ func appendArtifactsToOutput(output *provider.Output, extras []Artifact) {
 	output.Response["artifacts"] = cty.ListVal(merged)
 }
 
-// driverDeathArtifacts builds the visual / JSONL report Artifacts that
-// surface the same diagnostic file paths as wrapDriverDeathError. The
-// reporter writes them under output.ActionResults so a user looking at
-// build/reports/e2e-ios.html sees a clickable link to the .xcresult
-// bundle directly next to the failed step.
-func driverDeathArtifacts(diag apple.DriverDiagnostics) []Artifact {
-	var out []Artifact
+// driverDeathArtifacts surfaces the diagnostic file paths as report
+// Artifacts, so a user looking at build/reports/e2e-*.html sees clickable
+// links to the driver log and crash bundle next to the failed step. The
+// backend already labeled them, so this is a straight hand-off.
+func driverDeathArtifacts(diag Diagnostics) []Artifact {
+	out := make([]Artifact, 0, len(diag.Artifacts))
 
-	if diag.DriverLog != "" {
-		out = append(out, Artifact{Type: artifactTypeDriverLog, Path: diag.DriverLog})
-	}
+	for _, a := range diag.Artifacts {
+		if a.Path == "" {
+			continue
+		}
 
-	if diag.XCResultDir != "" {
-		out = append(out, Artifact{Type: artifactTypeXCResultDir, Path: diag.XCResultDir})
-	}
-
-	if diag.BuildLog != "" {
-		out = append(out, Artifact{Type: artifactTypeDriverBuildLog, Path: diag.BuildLog})
+		out = append(out, a)
 	}
 
 	return out
-}
-
-// defaultSessionBuilder returns a builder that errors out clearly. Callers
-// who want real Apple lifecycle must use NewApple() instead of New().
-func defaultSessionBuilder() SessionBuilder {
-	return SessionBuilderFunc(func(_ context.Context, _ apple.Target) (*Session, error) {
-		return nil, errors.New("mobile: no session builder configured; call mobile.NewApple() or pass mobile.WithSessionBuilder()")
-	})
 }

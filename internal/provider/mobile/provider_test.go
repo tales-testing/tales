@@ -11,7 +11,6 @@ import (
 
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 	"github.com/tales-testing/tales/internal/provider/mobile/tree"
@@ -261,64 +260,71 @@ func (f *fakeDriverAll) Screenshot(_ context.Context) ([]byte, error) {
 	return f.screenshotPNG, nil
 }
 
+// fakeLifecycle implements Lifecycle directly, so provider tests exercise
+// the step path without any platform tooling. It records the calls the
+// tests assert on and no-ops the rest.
 type fakeLifecycle struct {
 	udid       string
 	terminates atomic.Int32
 	privacy    []string
 }
 
-func (f *fakeLifecycle) toAppleLifecycle() *apple.Lifecycle {
-	return &apple.Lifecycle{Simctl: &noopSimctl{terminates: &f.terminates, privacy: &f.privacy}}
-}
+func (*fakeLifecycle) InstallApp(_ context.Context, _ string, _ Target) error { return nil }
 
-type noopSimctl struct {
-	terminates *atomic.Int32
-	privacy    *[]string
-}
+func (*fakeLifecycle) ClearAppState(_ context.Context, _ string, _ Target) error { return nil }
 
-func (n *noopSimctl) FindDeviceByName(_ context.Context, _ string) (apple.Device, error) {
-	return apple.Device{UDID: "UDID"}, nil
-}
+func (f *fakeLifecycle) SetPermission(_ context.Context, _ string, _ Target, action, service string) error {
+	f.privacy = append(f.privacy, action+" "+service)
 
-func (n *noopSimctl) Boot(_ context.Context, _ string) error { return nil }
-func (*noopSimctl) WaitBooted(_ context.Context, _ string, _ time.Duration) error {
 	return nil
 }
-func (*noopSimctl) Install(_ context.Context, _, _ string) error   { return nil }
-func (*noopSimctl) Uninstall(_ context.Context, _, _ string) error { return nil }
-func (*noopSimctl) Launch(_ context.Context, _, _ string) error    { return nil }
 
-func (n *noopSimctl) Terminate(_ context.Context, _, _ string) error {
-	if n.terminates != nil {
-		n.terminates.Add(1)
+func (f *fakeLifecycle) TerminateApp(_ context.Context, _ string, _ Target) error {
+	f.terminates.Add(1)
+
+	return nil
+}
+
+func (f *fakeLifecycle) TerminateDriverRunner(_ context.Context, _ string) error {
+	f.terminates.Add(1)
+
+	return nil
+}
+
+func (*fakeLifecycle) ScreenshotFallback(_ context.Context, _, _ string) error { return nil }
+
+func newProviderWithFake(drv *fakeDriverAll, lifecycle *fakeLifecycle, target Target) *Provider {
+	return newProviderWithFakeAndDiagnostics(drv, lifecycle, target, Diagnostics{})
+}
+
+// iosDiagnostics builds the diagnostics an Apple backend would attach.
+// Empty paths are skipped, mirroring the backend, so a test can pass ""
+// to assert on a partially-populated set.
+func iosDiagnostics(driverLog, xcresultDir, buildLog string) Diagnostics {
+	var out []Artifact
+
+	if driverLog != "" {
+		out = append(out, Artifact{Type: ArtifactTypeDriverLog, Path: driverLog})
 	}
 
-	return nil
-}
-
-func (n *noopSimctl) Privacy(_ context.Context, _, action, service, _ string) error {
-	if n.privacy != nil {
-		*n.privacy = append(*n.privacy, action+" "+service)
+	if xcresultDir != "" {
+		out = append(out, Artifact{Type: ArtifactTypeXCResultDir, Path: xcresultDir})
 	}
 
-	return nil
+	if buildLog != "" {
+		out = append(out, Artifact{Type: ArtifactTypeDriverBuildLog, Path: buildLog})
+	}
+
+	return Diagnostics{Artifacts: out}
 }
 
-func (*noopSimctl) ResetKeychain(_ context.Context, _ string) error { return nil }
-
-func (*noopSimctl) Screenshot(_ context.Context, _, _ string) error { return nil }
-
-func newProviderWithFake(drv *fakeDriverAll, lifecycle *fakeLifecycle, target apple.Target) *Provider {
-	return newProviderWithFakeAndDiagnostics(drv, lifecycle, target, apple.DriverDiagnostics{})
-}
-
-func newProviderWithFakeAndDiagnostics(drv *fakeDriverAll, lifecycle *fakeLifecycle, target apple.Target, diag apple.DriverDiagnostics) *Provider {
-	builder := SessionBuilderFunc(func(_ context.Context, _ apple.Target) (*Session, error) {
+func newProviderWithFakeAndDiagnostics(drv *fakeDriverAll, lifecycle *fakeLifecycle, target Target, diag Diagnostics) *Provider {
+	builder := SessionBuilderFunc(func(_ context.Context, _ Target) (*Session, error) {
 		return &Session{
 			Target:      target,
-			UDID:        lifecycle.udid,
+			DeviceID:    lifecycle.udid,
 			Driver:      drv,
-			Lifecycle:   lifecycle.toAppleLifecycle(),
+			Lifecycle:   lifecycle,
 			Diagnostics: diag,
 		}, nil
 	})
@@ -326,14 +332,14 @@ func newProviderWithFakeAndDiagnostics(drv *fakeDriverAll, lifecycle *fakeLifecy
 	return New(WithSessionBuilder(builder), WithArtifactsBase(""))
 }
 
-func sampleProviderTarget() apple.Target {
-	return apple.Target{
+func sampleProviderTarget() Target {
+	return Target{
 		Name:       "iphone",
-		Platform:   "ios",
+		Platform:   PlatformIOS,
 		DeviceName: "iPhone 16",
 		AppPath:    "./MyApp.app",
 		BundleID:   "com.example.MyApp",
-		Driver:     apple.DriverConfig{Host: "127.0.0.1", Port: 9080},
+		Driver:     DriverConfig{Host: "127.0.0.1", Port: 9080},
 	}
 }
 
@@ -1016,11 +1022,7 @@ func TestWrapDriverDeathErrorAppendsDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	session := &Session{
-		Diagnostics: apple.DriverDiagnostics{
-			DriverLog:   "/tmp/driver.log",
-			XCResultDir: "/tmp/derived/Logs/Test",
-			BuildLog:    "/tmp/build.log",
-		},
+		Diagnostics: iosDiagnostics("/tmp/driver.log", "/tmp/derived/Logs/Test", "/tmp/build.log"),
 	}
 
 	wrapped := wrapDriverDeathError(errors.New("call POST /tap: connection refused"), session)
@@ -1059,7 +1061,7 @@ func TestWrapDriverDeathErrorNoOpForNonTransportError(t *testing.T) {
 	t.Parallel()
 
 	session := &Session{
-		Diagnostics: apple.DriverDiagnostics{DriverLog: "/tmp/driver.log"},
+		Diagnostics: iosDiagnostics("/tmp/driver.log", "", ""),
 	}
 
 	original := errors.New("element id=\"foo\" not found after 30s")
@@ -1073,12 +1075,9 @@ func TestWrapDriverDeathErrorNoOpForNonTransportError(t *testing.T) {
 func TestDriverDeathArtifactsSkipsEmptyFields(t *testing.T) {
 	t.Parallel()
 
-	out := driverDeathArtifacts(apple.DriverDiagnostics{
-		DriverLog: "/tmp/driver.log",
-		// XCResultDir + BuildLog deliberately empty.
-	})
+	out := driverDeathArtifacts(iosDiagnostics("/tmp/driver.log", "", ""))
 
-	if len(out) != 1 || out[0].Type != artifactTypeDriverLog {
+	if len(out) != 1 || out[0].Type != ArtifactTypeDriverLog {
 		t.Fatalf("expected only the driver_log artifact, got %+v", out)
 	}
 }
@@ -1095,11 +1094,9 @@ func TestExecuteSurfacesDriverDeathDiagnostics(t *testing.T) {
 		tapErr:      errors.New("call POST /tap: dial tcp 127.0.0.1:9080: connect: connection refused"),
 	}
 	lc := &fakeLifecycle{udid: "UDID"}
-	diag := apple.DriverDiagnostics{
-		DriverLog:   "/tmp/build/artifacts/mobile/driver/iphone/driver.log",
-		XCResultDir: "/Users/me/Library/Caches/tales/apple-driver/abc/derived-data/Logs/Test",
-		BuildLog:    "/Users/me/Library/Caches/tales/apple-driver/abc/logs/build.log",
-	}
+	driverLog := "/tmp/build/artifacts/mobile/driver/iphone/driver.log"
+	xcresultDir := "/Users/me/Library/Caches/tales/apple-driver/abc/derived-data/Logs/Test"
+	diag := iosDiagnostics(driverLog, xcresultDir, "/Users/me/Library/Caches/tales/apple-driver/abc/logs/build.log")
 	p := newProviderWithFakeAndDiagnostics(drv, lc, sampleProviderTarget(), diag)
 
 	out, err := p.Execute(context.Background(), provider.Input{
@@ -1122,8 +1119,8 @@ func TestExecuteSurfacesDriverDeathDiagnostics(t *testing.T) {
 	for _, want := range []string{
 		"connection refused",
 		"driver process appears to have terminated",
-		diag.DriverLog,
-		diag.XCResultDir,
+		driverLog,
+		xcresultDir,
 		"*.xcresult",
 	} {
 		if !strings.Contains(msg, want) {
@@ -1144,7 +1141,7 @@ func TestExecuteSurfacesDriverDeathDiagnostics(t *testing.T) {
 		gotTypes[v.GetAttr("type").AsString()] = true
 	}
 
-	for _, want := range []string{artifactTypeDriverLog, artifactTypeXCResultDir, artifactTypeDriverBuildLog} {
+	for _, want := range []string{ArtifactTypeDriverLog, ArtifactTypeXCResultDir, ArtifactTypeDriverBuildLog} {
 		if !gotTypes[want] {
 			t.Errorf("expected artifact of type %q in output, got %v", want, gotTypes)
 		}
@@ -1947,12 +1944,12 @@ func TestExecuteWritesArtifactsOnFailure(t *testing.T) {
 	lc := &fakeLifecycle{udid: "UDID"}
 
 	base := t.TempDir()
-	builder := SessionBuilderFunc(func(_ context.Context, _ apple.Target) (*Session, error) {
+	builder := SessionBuilderFunc(func(_ context.Context, _ Target) (*Session, error) {
 		return &Session{
 			Target:    sampleProviderTarget(),
-			UDID:      lc.udid,
+			DeviceID:  lc.udid,
 			Driver:    drv,
-			Lifecycle: lc.toAppleLifecycle(),
+			Lifecycle: lc,
 		}, nil
 	})
 	p := New(WithSessionBuilder(builder), WithArtifactsBase(base))
@@ -1986,7 +1983,7 @@ func TestExecuteWritesArtifactsOnFailure(t *testing.T) {
 func TestExecuteIncludesDriverLogArtifactOnStartupFailure(t *testing.T) {
 	t.Parallel()
 
-	builder := SessionBuilderFunc(func(_ context.Context, _ apple.Target) (*Session, error) {
+	builder := SessionBuilderFunc(func(_ context.Context, _ Target) (*Session, error) {
 		return nil, &xcodebuild.StartError{Err: errors.New("driver did not become healthy"), LogPath: "build/artifacts/mobile/driver/iphone/driver.log"}
 	})
 	p := New(WithSessionBuilder(builder), WithArtifactsBase(""))
@@ -2168,16 +2165,16 @@ func TestAcquireSessionBuildsConcurrentlyAcrossTargets(t *testing.T) {
 	inFlight := make(chan string, 2)
 	released := make(chan string, 2)
 
-	builder := SessionBuilderFunc(func(_ context.Context, target apple.Target) (*Session, error) {
+	builder := SessionBuilderFunc(func(_ context.Context, target Target) (*Session, error) {
 		inFlight <- target.Name
 		<-release
 		released <- target.Name
 
 		return &Session{
 			Target:    target,
-			UDID:      "UDID-" + target.Name,
+			DeviceID:  "UDID-" + target.Name,
 			Driver:    &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}},
-			Lifecycle: (&fakeLifecycle{udid: "UDID-" + target.Name}).toAppleLifecycle(),
+			Lifecycle: (&fakeLifecycle{udid: "UDID-" + target.Name}),
 		}, nil
 	})
 	p := New(WithSessionBuilder(builder), WithArtifactsBase(""))
@@ -2191,7 +2188,7 @@ func TestAcquireSessionBuildsConcurrentlyAcrossTargets(t *testing.T) {
 
 	for _, name := range []string{"iphone-a", "iphone-b"} {
 		go func(target string) {
-			sess, err := p.acquireSession(context.Background(), apple.Target{Name: target, Platform: "ios"})
+			sess, err := p.acquireSession(context.Background(), Target{Name: target, Platform: "ios"})
 			out <- result{sess: sess, err: err}
 		}(name)
 	}
@@ -2238,20 +2235,20 @@ func TestAcquireSessionSerializesSameTarget(t *testing.T) {
 
 	var builds atomic.Int32
 
-	builder := SessionBuilderFunc(func(_ context.Context, target apple.Target) (*Session, error) {
+	builder := SessionBuilderFunc(func(_ context.Context, target Target) (*Session, error) {
 		builds.Add(1)
 		<-release
 
 		return &Session{
 			Target:    target,
-			UDID:      "UDID",
+			DeviceID:  "UDID",
 			Driver:    &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}},
-			Lifecycle: (&fakeLifecycle{udid: "UDID"}).toAppleLifecycle(),
+			Lifecycle: (&fakeLifecycle{udid: "UDID"}),
 		}, nil
 	})
 	p := New(WithSessionBuilder(builder), WithArtifactsBase(""))
 
-	target := apple.Target{Name: "iphone", Platform: "ios"}
+	target := Target{Name: "iphone", Platform: "ios"}
 	done := make(chan struct{}, 2)
 
 	for range 2 {

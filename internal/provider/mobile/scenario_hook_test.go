@@ -2,7 +2,6 @@ package mobile
 
 import (
 	"context"
-	"maps"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -12,8 +11,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple/simrecord"
 )
 
 func recordExpr(t *testing.T, src string) model.Expression {
@@ -27,37 +24,51 @@ func recordExpr(t *testing.T, src string) model.Expression {
 	return model.Expression{Expr: e, File: "test.hcl", Line: 1}
 }
 
-type recordFakeSpawn struct {
-	args []string
-	env  map[string]string
+// recordFakeStart is one Start call captured by the fake recorder.
+type recordFakeStart struct {
+	deviceID string
+	opts     RecordOptions
 }
 
-type recordFakeSpawner struct {
-	calls   []recordFakeSpawn
-	process *recordFakeProcess
+// recordFakeFactory is a RecorderFactory that records which device it was
+// asked for and hands back a single shared recorder, so a test can assert
+// on both the routing and the resulting options.
+type recordFakeFactory struct {
+	starts   []recordFakeStart
+	recorder *recordFakeRecorder
 }
 
-func (f *recordFakeSpawner) Spawn(_ context.Context, _ string, args []string, env map[string]string) (simrecord.Process, error) {
-	envCopy := make(map[string]string, len(env))
-	maps.Copy(envCopy, env)
+func (f *recordFakeFactory) factory() RecorderFactory {
+	return func(deviceID string) Recorder {
+		if f.recorder == nil {
+			f.recorder = &recordFakeRecorder{}
+		}
 
-	f.calls = append(f.calls, recordFakeSpawn{args: append([]string(nil), args...), env: envCopy})
+		f.recorder.parent = f
+		f.recorder.deviceID = deviceID
 
-	if f.process == nil {
-		f.process = &recordFakeProcess{}
+		return f.recorder
 	}
-
-	return f.process, nil
 }
 
-type recordFakeProcess struct {
+type recordFakeRecorder struct {
+	parent    *recordFakeFactory
+	deviceID  string
+	output    string
 	stopCount atomic.Int32
 }
 
-func (p *recordFakeProcess) Stop(_ context.Context) error {
-	p.stopCount.Add(1)
+func (r *recordFakeRecorder) Start(_ context.Context, opts RecordOptions) error {
+	r.output = opts.Output
+	r.parent.starts = append(r.parent.starts, recordFakeStart{deviceID: r.deviceID, opts: opts})
 
 	return nil
+}
+
+func (r *recordFakeRecorder) Stop(_ context.Context) (string, error) {
+	r.stopCount.Add(1)
+
+	return r.output, nil
 }
 
 func TestMobileBeginScenarioNoRecordIsNoop(t *testing.T) {
@@ -166,8 +177,8 @@ func TestMobileMaybeStartRecordingSpawnsAndStops(t *testing.T) {
 	t.Parallel()
 
 	workdir := t.TempDir()
-	spawner := &recordFakeSpawner{}
-	p := New(WithRecorderSpawner(spawner))
+	factory := &recordFakeFactory{}
+	p := New(WithRecorderFactory(factory.factory()))
 
 	scenario := &model.Scenario{
 		Name: "preview",
@@ -181,20 +192,27 @@ func TestMobileMaybeStartRecordingSpawnsAndStops(t *testing.T) {
 	}
 
 	session := &Session{
-		Target: apple.Target{Name: "iphone"},
-		UDID:   "UDID-1",
+		Target:   Target{Name: "iphone"},
+		DeviceID: "UDID-1",
 	}
 
 	if err := p.maybeStartRecording(context.Background(), "preview", session); err != nil {
 		t.Fatalf("maybeStartRecording: %v", err)
 	}
 
-	if len(spawner.calls) != 1 {
-		t.Fatalf("expected one spawner call, got %d", len(spawner.calls))
+	if len(factory.starts) != 1 {
+		t.Fatalf("expected one recorder start, got %d", len(factory.starts))
 	}
 
-	if spawner.calls[0].args[0] != "simctl" || spawner.calls[0].args[2] != "UDID-1" {
-		t.Fatalf("unexpected args: %v", spawner.calls[0].args)
+	// The recorder is built for the session's device and receives the
+	// resolved output path; how a platform turns that into a command is
+	// the backend's business, asserted in its own package.
+	if got := factory.starts[0].deviceID; got != "UDID-1" {
+		t.Fatalf("recorder built for device %q, want UDID-1", got)
+	}
+
+	if got := factory.starts[0].opts.Output; !strings.HasSuffix(got, "preview.mp4") {
+		t.Fatalf("unexpected recorder output path: %q", got)
 	}
 
 	artifacts, err := p.EndScenario(context.Background(), scenario, provider.ScenarioContext{}, nil)
@@ -210,28 +228,28 @@ func TestMobileMaybeStartRecordingSpawnsAndStops(t *testing.T) {
 		t.Fatalf("unexpected artifact path: %q", artifacts[0].Path)
 	}
 
-	if spawner.process.stopCount.Load() != 1 {
-		t.Fatalf("expected one Stop call, got %d", spawner.process.stopCount.Load())
+	if factory.recorder.stopCount.Load() != 1 {
+		t.Fatalf("expected one Stop call, got %d", factory.recorder.stopCount.Load())
 	}
 }
 
 func TestMobileMaybeStartRecordingNoPendingIsNoop(t *testing.T) {
 	t.Parallel()
 
-	spawner := &recordFakeSpawner{}
-	p := New(WithRecorderSpawner(spawner))
+	factory := &recordFakeFactory{}
+	p := New(WithRecorderFactory(factory.factory()))
 
 	session := &Session{
-		Target: apple.Target{Name: "iphone"},
-		UDID:   "UDID-1",
+		Target:   Target{Name: "iphone"},
+		DeviceID: "UDID-1",
 	}
 
 	if err := p.maybeStartRecording(context.Background(), "no-record", session); err != nil {
 		t.Fatalf("maybeStartRecording: %v", err)
 	}
 
-	if len(spawner.calls) != 0 {
-		t.Fatalf("expected no spawner calls, got %d", len(spawner.calls))
+	if len(factory.starts) != 0 {
+		t.Fatalf("expected no recorder starts, got %d", len(factory.starts))
 	}
 }
 
@@ -239,8 +257,8 @@ func TestMobileMaybeStartRecordingTargetMismatchIsNoop(t *testing.T) {
 	t.Parallel()
 
 	workdir := t.TempDir()
-	spawner := &recordFakeSpawner{}
-	p := New(WithRecorderSpawner(spawner))
+	factory := &recordFakeFactory{}
+	p := New(WithRecorderFactory(factory.factory()))
 
 	scenario := &model.Scenario{
 		Name: "preview",
@@ -255,16 +273,16 @@ func TestMobileMaybeStartRecordingTargetMismatchIsNoop(t *testing.T) {
 	}
 
 	session := &Session{
-		Target: apple.Target{Name: "iphone"},
-		UDID:   "UDID-1",
+		Target:   Target{Name: "iphone"},
+		DeviceID: "UDID-1",
 	}
 
 	if err := p.maybeStartRecording(context.Background(), "preview", session); err != nil {
 		t.Fatalf("maybeStartRecording: %v", err)
 	}
 
-	if len(spawner.calls) != 0 {
-		t.Fatalf("expected no spawner calls when target name does not match, got %d", len(spawner.calls))
+	if len(factory.starts) != 0 {
+		t.Fatalf("expected no recorder start when target name does not match, got %d", len(factory.starts))
 	}
 }
 
@@ -272,8 +290,8 @@ func TestMobileMaybeStartRecordingConflictingUDID(t *testing.T) {
 	t.Parallel()
 
 	workdir := t.TempDir()
-	spawner := &recordFakeSpawner{}
-	p := New(WithRecorderSpawner(spawner))
+	factory := &recordFakeFactory{}
+	p := New(WithRecorderFactory(factory.factory()))
 
 	makeScenario := func(name, output string) *model.Scenario {
 		return &model.Scenario{
@@ -296,8 +314,8 @@ func TestMobileMaybeStartRecordingConflictingUDID(t *testing.T) {
 	}
 
 	session := &Session{
-		Target: apple.Target{Name: "iphone"},
-		UDID:   "UDID-SHARED",
+		Target:   Target{Name: "iphone"},
+		DeviceID: "UDID-SHARED",
 	}
 
 	if err := p.maybeStartRecording(context.Background(), "scenarioA", session); err != nil {

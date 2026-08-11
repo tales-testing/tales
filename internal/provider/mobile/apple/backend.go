@@ -1,4 +1,4 @@
-package mobile
+package apple
 
 import (
 	"context"
@@ -6,39 +6,45 @@ import (
 	"time"
 
 	appledriver "github.com/tales-testing/tales/drivers/apple"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
+	"github.com/tales-testing/tales/internal/provider/mobile"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/embeddeddriver"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/simctl"
+	"github.com/tales-testing/tales/internal/provider/mobile/apple/simrecord"
 	"github.com/tales-testing/tales/internal/provider/mobile/apple/xcodebuild"
 	"github.com/tales-testing/tales/internal/provider/mobile/driver"
 )
 
-// NewApple returns a Provider wired with real Apple tooling: ExecRunner for
-// simctl, ExecSpawner for xcodebuild, and the HTTP driver client. Tests
-// should call New(WithSessionBuilder(fake)) instead.
-func NewApple(opts ...Option) *Provider {
-	builder := appleSessionBuilder()
-	all := append([]Option{WithSessionBuilder(builder)}, opts...)
-
-	return New(all...)
+// Options returns the provider options registering the iOS backend with
+// real Apple tooling: ExecRunner for simctl, ExecSpawner for xcodebuild,
+// and the HTTP driver client.
+//
+//	mobile.New(append(Options(), mobile.WithCaptureMode(mode))...)
+//
+// Tests bypass this and register a fake with mobile.WithSessionBuilder.
+func Options() []mobile.Option {
+	return []mobile.Option{
+		mobile.WithBackend(mobile.PlatformIOS, SessionBuilder()),
+		mobile.WithRecorderFactory(RecorderFactory()),
+	}
 }
 
-func appleSessionBuilder() SessionBuilder {
-	runner := apple.ExecRunner{}
+// SessionBuilder returns the production iOS session builder.
+func SessionBuilder() mobile.SessionBuilder {
+	runner := ExecRunner{}
 	tool := simctlAdapter{tool: simctl.New(runner)}
 	launcher := xcodebuild.New(xcodebuild.ExecSpawner{})
 	factory := func(baseURL string) driver.Driver {
 		return driver.New(baseURL)
 	}
 
-	lifecycle := &apple.Lifecycle{
+	lifecycle := &Lifecycle{
 		Simctl:     tool,
 		Xcodebuild: launcher,
 		NewDriver:  factory,
 		Embedded:   newEmbeddedManager(),
 	}
 
-	return SessionBuilderFunc(func(ctx context.Context, target apple.Target) (*Session, error) {
+	return mobile.SessionBuilderFunc(func(ctx context.Context, target mobile.Target) (*mobile.Session, error) {
 		device, err := lifecycle.EnsureBooted(ctx, target)
 		if err != nil {
 			return nil, fmt.Errorf("ensure booted: %w", err)
@@ -48,7 +54,7 @@ func appleSessionBuilder() SessionBuilder {
 		// client, the TALES_DRIVER_PORT env, and the health URL all agree.
 		// In embedded mode with no explicit port this picks a free host port
 		// so multiple simulators do not collide on the shared loopback.
-		resolved, err := apple.ResolveDriverEndpoint(ctx, target)
+		resolved, err := mobile.ResolveDriverEndpoint(ctx, target)
 		if err != nil {
 			return nil, fmt.Errorf("resolve driver endpoint: %w", err)
 		}
@@ -58,9 +64,9 @@ func appleSessionBuilder() SessionBuilder {
 			return nil, fmt.Errorf("ensure driver: %w", err)
 		}
 
-		return &Session{
+		return &mobile.Session{
 			Target:       resolved,
-			UDID:         device.UDID,
+			DeviceID:     device.UDID,
 			Driver:       drv,
 			DriverHandle: handle,
 			Lifecycle:    lifecycle,
@@ -69,13 +75,61 @@ func appleSessionBuilder() SessionBuilder {
 	})
 }
 
+// RecorderFactory returns the production simctl-backed recorder factory.
+func RecorderFactory() mobile.RecorderFactory {
+	return func(deviceID string) mobile.Recorder {
+		return &recorder{udid: deviceID, inner: simrecord.New(simrecord.ExecSpawner{})}
+	}
+}
+
+// recorder adapts simrecord.Recorder to mobile.Recorder, translating the
+// neutral RecordOptions into simctl's own flags and rejecting the options
+// that only exist on another platform.
+type recorder struct {
+	udid  string
+	inner *simrecord.Recorder
+}
+
+func (r *recorder) Start(ctx context.Context, opts mobile.RecordOptions) error {
+	if opts.BitRate != "" {
+		return fmt.Errorf(`record: "bit_rate" is not supported on ios (it is an Android screenrecord option)`)
+	}
+
+	if opts.Size != "" {
+		return fmt.Errorf(`record: "size" is not supported on ios (it is an Android screenrecord option)`)
+	}
+
+	err := r.inner.Start(ctx, simrecord.Options{
+		UDID:    r.udid,
+		Output:  opts.Output,
+		Codec:   opts.Codec,
+		Mask:    opts.Mask,
+		Display: opts.Display,
+		Force:   opts.Force,
+	})
+	if err != nil {
+		return fmt.Errorf("simctl recordVideo: %w", err)
+	}
+
+	return nil
+}
+
+func (r *recorder) Stop(ctx context.Context) (string, error) {
+	path, err := r.inner.Stop(ctx)
+	if err != nil {
+		return path, fmt.Errorf("simctl recordVideo stop: %w", err)
+	}
+
+	return path, nil
+}
+
 // newEmbeddedManager constructs the production embeddeddriver.Manager.
 // Source is taken from the appledriver embed.FS; CacheBase resolves to
 // the per-user cache (overridable via TALES_DRIVER_CACHE_DIR). If
 // cache-base resolution fails (no HOME, sandboxed env, etc.), a
 // brokenManager is returned that surfaces the real cause on every call
 // so users get an actionable error instead of "rebuild Tales".
-func newEmbeddedManager() apple.EmbeddedDriverManager {
+func newEmbeddedManager() EmbeddedDriverManager {
 	base, err := embeddeddriver.ResolveBase()
 	if err != nil {
 		return brokenManager{cause: err}
@@ -90,7 +144,7 @@ func newEmbeddedManager() apple.EmbeddedDriverManager {
 	}
 }
 
-// brokenManager satisfies apple.EmbeddedDriverManager but returns the
+// brokenManager satisfies EmbeddedDriverManager but returns the
 // init-time cause from every operation. It is wired in when the cache
 // base cannot be resolved, so embedded-mode targets fail with the real
 // underlying error (e.g. "cannot resolve user cache dir: $HOME is
@@ -113,7 +167,7 @@ func (b brokenManager) InvalidateBuild(_ string) error {
 type execCommandRunner struct{}
 
 func (execCommandRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	out, err := apple.ExecRunner{}.Run(ctx, name, args...)
+	out, err := ExecRunner{}.Run(ctx, name, args...)
 	if err != nil {
 		return out, fmt.Errorf("run %s: %w", name, err)
 	}
@@ -122,18 +176,18 @@ func (execCommandRunner) Run(ctx context.Context, name string, args ...string) (
 }
 
 // simctlAdapter narrows the concrete simctl.Tool API into the smaller
-// apple.SimctlTool interface used by apple.Lifecycle.
+// SimctlTool interface used by Lifecycle.
 type simctlAdapter struct {
 	tool *simctl.Tool
 }
 
-func (s simctlAdapter) FindDeviceByName(ctx context.Context, name string) (apple.Device, error) {
+func (s simctlAdapter) FindDeviceByName(ctx context.Context, name string) (Device, error) {
 	device, err := s.tool.FindDeviceByName(ctx, name)
 	if err != nil {
-		return apple.Device{}, fmt.Errorf("simctl find device: %w", err)
+		return Device{}, fmt.Errorf("simctl find device: %w", err)
 	}
 
-	return apple.Device{UDID: device.UDID, Name: device.Name, Runtime: device.Runtime, Booted: device.Booted()}, nil
+	return Device{UDID: device.UDID, Name: device.Name, Runtime: device.Runtime, Booted: device.Booted()}, nil
 }
 
 func (s simctlAdapter) Boot(ctx context.Context, udid string) error {

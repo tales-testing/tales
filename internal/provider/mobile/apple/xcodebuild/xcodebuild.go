@@ -77,6 +77,17 @@ func (e *StartError) Unwrap() error {
 	return e.Err
 }
 
+// DriverLogPath implements the mobile provider's driverStartError
+// interface, letting it attach this log to the failed step's report
+// without importing this package.
+func (e *StartError) DriverLogPath() string {
+	if e == nil {
+		return ""
+	}
+
+	return e.LogPath
+}
+
 // Launcher builds and supervises the xcodebuild subprocess.
 type Launcher struct {
 	spawner Spawner

@@ -1,9 +1,16 @@
-package apple
+package mobile
 
 import (
 	"fmt"
 
 	"github.com/zclconf/go-cty/cty"
+)
+
+// Platform names accepted by `platform = "..."` on a mobile step and by
+// `config.mobile.targets.<name>.platform`.
+const (
+	PlatformIOS     = "ios"
+	PlatformAndroid = "android"
 )
 
 // DefaultDriverHost is used when the target driver block omits "host".
@@ -13,13 +20,27 @@ const DefaultDriverHost = "127.0.0.1"
 const DefaultDriverPort = 9080
 
 // Target holds the resolved configuration for one mobile target.
+//
+// The shape is shared by every platform: a backend receives a Target and
+// is responsible for interpreting the device-selection fields the way its
+// tooling expects. DeviceName is a simulator device type on iOS and an AVD
+// name on Android; Serial only carries meaning on Android.
 type Target struct {
-	Name       string
-	Platform   string
+	Name     string
+	Platform string
+	// DeviceName selects the device by name: an iOS Simulator device type
+	// ("iPhone 17") or an Android AVD ("tales-e2e").
 	DeviceName string
-	AppPath    string
-	BundleID   string
-	Driver     DriverConfig
+	// Serial pins an already-running Android device or emulator by its adb
+	// serial ("emulator-5554"). Empty on iOS.
+	Serial string
+	// AppPath points at the installable build: a simulator .app bundle on
+	// iOS, an .apk on Android.
+	AppPath string
+	// BundleID is the application identifier: a bundle id on iOS, a package
+	// name on Android.
+	BundleID string
+	Driver   DriverConfig
 }
 
 // DriverConfig captures how the mobile provider should talk to the driver.
@@ -79,8 +100,12 @@ func ResolveTarget(config map[string]cty.Value, name string) (Target, error) {
 		return Target{}, fmt.Errorf("config.mobile.targets.%s.platform: %w", name, err)
 	}
 
+	serial, _ := readOptionalString(targetVal, "serial")
+
 	device, err := readRequiredString(targetVal, "device_name")
-	if err != nil {
+	if err != nil && serial == "" {
+		// device_name is the only way to pick a device unless the target
+		// pins one by serial, which Android targets may do.
 		return Target{}, fmt.Errorf("config.mobile.targets.%s.device_name: %w", name, err)
 	}
 
@@ -103,6 +128,7 @@ func ResolveTarget(config map[string]cty.Value, name string) (Target, error) {
 		Name:       name,
 		Platform:   platform,
 		DeviceName: device,
+		Serial:     serial,
 		AppPath:    app,
 		BundleID:   bundleID,
 		Driver:     driver,

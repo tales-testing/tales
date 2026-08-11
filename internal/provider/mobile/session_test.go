@@ -6,8 +6,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/tales-testing/tales/internal/provider/mobile/apple"
 )
 
 type fakeDriverHandle struct {
@@ -28,8 +26,8 @@ func TestSessionCloseStopsInternalDriverHandle(t *testing.T) {
 	lc := &fakeLifecycle{udid: "UDID"}
 	session := &Session{
 		Target:       sampleProviderTarget(),
-		UDID:         "UDID",
-		Lifecycle:    lc.toAppleLifecycle(),
+		DeviceID:     "UDID",
+		Lifecycle:    lc,
 		DriverHandle: handle,
 	}
 
@@ -53,9 +51,9 @@ func TestSessionCloseWithExternalDriverDoesNotRequireHandle(t *testing.T) {
 	t.Parallel()
 
 	session := &Session{
-		Target:    apple.Target{Name: "iphone", BundleID: "com.example.MyApp"},
-		UDID:      "UDID",
-		Lifecycle: (&fakeLifecycle{udid: "UDID"}).toAppleLifecycle(),
+		Target:    Target{Name: "iphone", BundleID: "com.example.MyApp"},
+		DeviceID:  "UDID",
+		Lifecycle: (&fakeLifecycle{udid: "UDID"}),
 	}
 
 	if err := session.Close(context.Background()); err != nil {
@@ -68,8 +66,8 @@ func TestSessionCloseReturnsDriverStopError(t *testing.T) {
 
 	session := &Session{
 		Target:       sampleProviderTarget(),
-		UDID:         "UDID",
-		Lifecycle:    (&fakeLifecycle{udid: "UDID"}).toAppleLifecycle(),
+		DeviceID:     "UDID",
+		Lifecycle:    (&fakeLifecycle{udid: "UDID"}),
 		DriverHandle: &fakeDriverHandle{err: errors.New("boom")},
 	}
 

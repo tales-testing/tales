@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/tales-testing/tales/internal/model"
 	"github.com/tales-testing/tales/internal/provider"
-	"github.com/tales-testing/tales/internal/provider/mobile/apple/simrecord"
 	"github.com/tales-testing/tales/internal/workspace"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -19,17 +18,17 @@ import (
 const artifactTypeRecording = "recording"
 
 // pendingRecord holds the recording spec resolved at BeginScenario time.
-// The actual simrecord.Recorder is spawned later, lazily, the first time a
-// mobile session is acquired for the scenario (so simctl runs only after
-// the simulator is booted).
+// The Recorder is built later, lazily, the first time a mobile session is
+// acquired for the scenario, so the device is guaranteed to be up and its
+// id known.
 type pendingRecord struct {
 	targetName string
-	options    simrecord.Options
+	options    RecordOptions
 }
 
-// activeRecording owns the live simrecord.Recorder for a running scenario.
+// activeRecording owns the live Recorder for a running scenario.
 type activeRecording struct {
-	recorder *simrecord.Recorder
+	recorder Recorder
 	output   string
 }
 
@@ -37,24 +36,22 @@ type activeRecording struct {
 // only carries a pointer. It is created lazily so providers built without
 // any record block pay zero memory.
 type recordController struct {
-	mu       sync.Mutex
-	spawner  simrecord.Spawner
-	pending  map[string]*pendingRecord
-	active   map[string]*activeRecording
-	udidUsed map[string]string // udid -> scenarioName, blocks parallel recordings on the same simulator
+	mu          sync.Mutex
+	newRecorder RecorderFactory
+	pending     map[string]*pendingRecord
+	active      map[string]*activeRecording
+	// deviceUsed maps a device id to the scenario recording it, which
+	// blocks two scenarios from recording the same device at once.
+	deviceUsed map[string]string
 }
 
 func (p *Provider) recordCtrl() *recordController {
 	p.recordOnce.Do(func() {
 		p.recording = &recordController{
-			spawner:  p.recorderSpawner,
-			pending:  map[string]*pendingRecord{},
-			active:   map[string]*activeRecording{},
-			udidUsed: map[string]string{},
-		}
-
-		if p.recording.spawner == nil {
-			p.recording.spawner = simrecord.ExecSpawner{}
+			newRecorder: p.recorderFactory,
+			pending:     map[string]*pendingRecord{},
+			active:      map[string]*activeRecording{},
+			deviceUsed:  map[string]string{},
 		}
 	})
 
@@ -101,9 +98,9 @@ func (p *Provider) EndScenario(ctx context.Context, scenario *model.Scenario, _ 
 	delete(ctrl.pending, scenario.Name)
 	delete(ctrl.active, scenario.Name)
 
-	for udid, name := range ctrl.udidUsed {
+	for deviceID, name := range ctrl.deviceUsed {
 		if name == scenario.Name {
-			delete(ctrl.udidUsed, udid)
+			delete(ctrl.deviceUsed, deviceID)
 		}
 	}
 
@@ -128,16 +125,16 @@ func (p *Provider) EndScenario(ctx context.Context, scenario *model.Scenario, _ 
 }
 
 // maybeStartRecording is called from Execute right after a session is
-// acquired. It starts simrecord.Recorder when the scenario has a pending
-// record spec that matches this session's target. A non-matching target is
+// acquired. It starts a Recorder when the scenario has a pending record
+// spec that matches this session's target. A non-matching target is
 // silently ignored: the spec is still pending and will be picked up by a
-// later mobile step targeting the right simulator.
+// later mobile step targeting the right device.
 //
 // Errors are wrapped and returned so the caller can decide whether to fail
 // the step; the current call site logs them and proceeds rather than
 // breaking an otherwise valid mobile step over a recording problem.
 func (p *Provider) maybeStartRecording(ctx context.Context, scenarioName string, session *Session) error {
-	if scenarioName == "" || session == nil || session.UDID == "" {
+	if scenarioName == "" || session == nil || session.DeviceID == "" {
 		return nil
 	}
 
@@ -164,17 +161,22 @@ func (p *Provider) maybeStartRecording(ctx context.Context, scenarioName string,
 		return nil
 	}
 
-	if other, used := ctrl.udidUsed[session.UDID]; used && other != scenarioName {
+	if other, used := ctrl.deviceUsed[session.DeviceID]; used && other != scenarioName {
 		ctrl.mu.Unlock()
 
-		return fmt.Errorf("scenario %q cannot start a recording on UDID %s: scenario %q is already recording", scenarioName, session.UDID, other)
+		return fmt.Errorf("scenario %q cannot start a recording on device %s: scenario %q is already recording", scenarioName, session.DeviceID, other)
 	}
 
+	newRecorder := ctrl.newRecorder
 	opts := spec.options
-	opts.UDID = session.UDID
 
-	recorder := simrecord.New(ctrl.spawner)
 	ctrl.mu.Unlock()
+
+	if newRecorder == nil {
+		return fmt.Errorf("platform %q does not support scenario recording", session.Target.Platform)
+	}
+
+	recorder := newRecorder(session.DeviceID)
 
 	if err := recorder.Start(ctx, opts); err != nil {
 		return fmt.Errorf("start screen recording: %w", err)
@@ -182,7 +184,7 @@ func (p *Provider) maybeStartRecording(ctx context.Context, scenarioName string,
 
 	ctrl.mu.Lock()
 	ctrl.active[scenarioName] = &activeRecording{recorder: recorder, output: opts.Output}
-	ctrl.udidUsed[session.UDID] = scenarioName
+	ctrl.deviceUsed[session.DeviceID] = scenarioName
 	ctrl.mu.Unlock()
 
 	return nil
@@ -245,7 +247,7 @@ func resolveRecordSpec(spec *model.ScenarioRecord, hctx provider.ScenarioContext
 
 	return &pendingRecord{
 		targetName: target,
-		options: simrecord.Options{
+		options: RecordOptions{
 			Output:  absOutput,
 			Codec:   codec,
 			Mask:    mask,

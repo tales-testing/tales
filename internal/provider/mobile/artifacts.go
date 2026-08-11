@@ -84,7 +84,7 @@ func writeScreenshot(dir string, png []byte) (Artifact, error) {
 // screenshot endpoint is unavailable. Returns an Artifact pointing at the
 // written file. The session's Lifecycle must be set for this to succeed.
 func writeScreenshotFallback(ctx context.Context, dir string, session *Session) (Artifact, error) {
-	if session == nil || session.Lifecycle == nil || session.UDID == "" {
+	if session == nil || session.Lifecycle == nil || session.DeviceID == "" {
 		return Artifact{}, fmt.Errorf("screenshot fallback: session not ready")
 	}
 
@@ -94,7 +94,7 @@ func writeScreenshotFallback(ctx context.Context, dir string, session *Session) 
 
 	path := filepath.Join(dir, "screenshot.png")
 
-	if err := session.Lifecycle.ScreenshotFallback(ctx, session.UDID, path); err != nil {
+	if err := session.Lifecycle.ScreenshotFallback(ctx, session.DeviceID, path); err != nil {
 		return Artifact{}, fmt.Errorf("screenshot fallback: %w", err)
 	}
 
