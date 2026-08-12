@@ -109,7 +109,89 @@ jobs:
             build/reports/e2e-browser.*
             build/artifacts/browser/
           if-no-files-found: ignore
+
       # - name: Coveralls
       #  uses: shogo82148/actions-goveralls@v1
       #  with:
       #    path-to-profile: coverage.out
+
+  # The Android e2e suite runs on a real emulator. This is new ground for
+  # Tales: the iOS suites have never run in CI because GitHub's macOS
+  # runners cannot host a simulator cheaply, so mobile coverage was
+  # local-only. ubuntu-latest supports KVM, which makes an emulator both
+  # possible and fast enough to gate merges on.
+  android:
+    name: Android e2e
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # AGP 8.13 requires JDK 17 and does not run on newer majors, so the
+      # version is pinned rather than tracking the runner's default.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build the demo app
+        run: make build-android-demo
+
+      - name: Android e2e
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          avd-name: tales-e2e
+          # Snapshots are disabled: a snapshot restores whatever app and
+          # driver state the previous boot had, and these scenarios
+          # assume a clean device.
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: make e2e-android && make e2e-android-failure
+        timeout-minutes: 30
+
+      - name: Upload Android e2e artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-android-artifacts
+          path: |
+            build/reports/e2e-android*.*
+            build/artifacts/mobile/
+          if-no-files-found: ignore
+
+  # Guards the committed driver APKs against drifting from the Kotlin
+  # source they were built from. Verifying is a hash comparison, so this
+  # job needs the Android SDK only because Gradle computes the hash.
+  android-driver-freshness:
+    name: Android driver freshness
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Check the prebuilt driver matches its source
+        run: make check-android-driver-fresh
