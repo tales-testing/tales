@@ -163,7 +163,22 @@ jobs:
           # assume a clean device.
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: make e2e-android && make e2e-android-failure
+          # hide_error_dialogs suppresses the system "isn't responding"
+          # and "has stopped" modals. A run was lost to a Pixel Launcher
+          # ANR: the emulator's own launcher stopped responding under the
+          # runner's load, and the resulting dialog sat above the app
+          # under test. Every scenario then failed its first wait_visible
+          # while the captured hierarchy held nothing but system UI — a
+          # dialog belonging to a process Tales never touches, reported
+          # as a missing element in the app.
+          #
+          # It hides our own app's crash dialogs too, which is a real
+          # (small) diagnostic loss: an app that dies still shows up as
+          # missing elements plus a screenshot, just without the modal
+          # naming it.
+          script: |
+            adb shell settings put global hide_error_dialogs 1
+            make e2e-android && make e2e-android-failure
         timeout-minutes: 30
 
       - name: Upload Android e2e artifacts
