@@ -25,3 +25,7 @@ dist/
 # local build state.
 .gradle/
 local.properties
+
+# TALES_DRIVER_CACHE_DIR used by the iOS CI workflow (and by anyone
+# reproducing it locally): the extracted + built Apple driver.
+.cache/

@@ -115,11 +115,10 @@ jobs:
       #  with:
       #    path-to-profile: coverage.out
 
-  # The Android e2e suite runs on a real emulator. This is new ground for
-  # Tales: the iOS suites have never run in CI because GitHub's macOS
-  # runners cannot host a simulator cheaply, so mobile coverage was
-  # local-only. ubuntu-latest supports KVM, which makes an emulator both
-  # possible and fast enough to gate merges on.
+  # The Android e2e suite runs on a real emulator: ubuntu-latest supports
+  # KVM, which makes an emulator both possible and fast enough to gate
+  # merges on. The iOS suites need a macOS runner and live in their own
+  # workflow (.github/workflows/ios.yml).
   android:
     name: Android e2e
     runs-on: ubuntu-latest
