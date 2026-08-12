@@ -2666,3 +2666,84 @@ func TestExecuteToleratesADeviceLogDumpFailure(t *testing.T) {
 		t.Fatal("the screenshot must survive a failed device log dump")
 	}
 }
+
+// flakyHierarchyDriver refuses the first refusals calls, the way the
+// driver answers 503 while a previous snapshot is still in flight.
+type flakyHierarchyDriver struct {
+	driver.NoopDriver
+
+	refusals int
+	calls    int
+}
+
+func (d *flakyHierarchyDriver) Hierarchy(_ context.Context, _ string) (*tree.ViewNode, error) {
+	d.calls++
+
+	if d.calls <= d.refusals {
+		return nil, errors.New("driver /hierarchy returned 503: snapshot busy; retry")
+	}
+
+	return &tree.ViewNode{ID: "root", Visible: true}, nil
+}
+
+func TestFetchHierarchyForArtifactsRetriesABusyDriver(t *testing.T) {
+	t.Parallel()
+
+	drv := &flakyHierarchyDriver{refusals: 2}
+	session := &Session{Target: sampleProviderTarget(), Driver: drv}
+
+	node, err := fetchHierarchyForArtifacts(context.Background(), session)
+	if err != nil {
+		t.Fatalf("expected the third attempt to succeed: %v", err)
+	}
+
+	if node == nil || node.ID != "root" {
+		t.Fatalf("unexpected tree: %+v", node)
+	}
+
+	if drv.calls != 3 {
+		t.Fatalf("calls = %d, want 3", drv.calls)
+	}
+}
+
+// A driver that never answers must not be retried forever, and the
+// caller still falls back to the last recorded tree.
+func TestFetchHierarchyForArtifactsGivesUp(t *testing.T) {
+	t.Parallel()
+
+	drv := &flakyHierarchyDriver{refusals: 99}
+	session := &Session{Target: sampleProviderTarget(), Driver: drv}
+
+	_, err := fetchHierarchyForArtifacts(context.Background(), session)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+
+	if !strings.Contains(err.Error(), "snapshot busy") {
+		t.Fatalf("error should carry the driver's message, got: %v", err)
+	}
+
+	if drv.calls != artifactHierarchyAttempts {
+		t.Fatalf("calls = %d, want %d", drv.calls, artifactHierarchyAttempts)
+	}
+}
+
+// Artifact capture runs after a step already failed, often on a context
+// that is about to expire: the retry must not outlive it.
+func TestFetchHierarchyForArtifactsStopsOnACancelledContext(t *testing.T) {
+	t.Parallel()
+
+	drv := &flakyHierarchyDriver{refusals: 99}
+	session := &Session{Target: sampleProviderTarget(), Driver: drv}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := fetchHierarchyForArtifacts(ctx, session); err == nil {
+		t.Fatal("expected an error")
+	}
+
+	if drv.calls != 1 {
+		t.Fatalf("a cancelled context should stop after the first attempt, got %d", drv.calls)
+	}
+}

@@ -1367,6 +1367,48 @@ func findElement(ctx context.Context, session *Session, locator elementLocator) 
 	return node, ok, nil
 }
 
+// fetchHierarchyForArtifacts gets the tree to attach to a failing step,
+// retrying briefly.
+//
+// A single attempt loses the tree in exactly the case that matters. The
+// driver single-flights snapshots and answers a retryable 503 while one
+// is running, and a poll that just ran out of time usually leaves its
+// last attempt still in flight — so the artifact fetch arrives during
+// the one window the driver refuses. That is not hypothetical: a CI run
+// failed its artifact verification with no hierarchy.json while the
+// device log showed the driver answering 200 in 328ms, 240ms after
+// refusing the artifact fetch with a 503.
+//
+// Recording the tree during the poll would be better still, since it is
+// the one the assertion actually judged, but the poll helpers carry
+// neither the scenario nor the step name that key the record.
+func fetchHierarchyForArtifacts(ctx context.Context, session *Session) (*tree.ViewNode, error) {
+	var err error
+
+	for attempt := range artifactHierarchyAttempts {
+		var hierarchy *tree.ViewNode
+
+		if hierarchy, err = session.Driver.Hierarchy(ctx, session.Target.AppID); err == nil {
+			return hierarchy, nil
+		}
+
+		if attempt < artifactHierarchyAttempts-1 {
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("fetch hierarchy for artifacts: %w", ctx.Err())
+			case <-time.After(artifactHierarchyRetryDelay):
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("fetch hierarchy for artifacts: %w", err)
+}
+
+const (
+	artifactHierarchyAttempts   = 3
+	artifactHierarchyRetryDelay = 250 * time.Millisecond
+)
+
 func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Input, session *Session, output *provider.Output) {
 	// CaptureNone is strict: skip every screenshot/hierarchy capture, even
 	// on failure. The driver_log artifact is still surfaced from
@@ -1379,7 +1421,7 @@ func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Inp
 	dir := artifactDir(p.artifactsBase, inputFile(input), input.Scenario, stepName(input), inputPhase(input), inputAttempt(input))
 	artifacts := make([]Artifact, 0, 2)
 
-	if hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.AppID); err == nil {
+	if hierarchy, err := fetchHierarchyForArtifacts(ctx, session); err == nil {
 		p.recordHierarchy(input.Scenario, stepName(input), hierarchy)
 
 		if a, werr := writeHierarchy(dir, hierarchy); werr == nil {
