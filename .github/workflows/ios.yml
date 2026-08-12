@@ -47,6 +47,16 @@ jobs:
       # guessing the runner's home directory.
       TALES_DRIVER_CACHE_DIR: ${{ github.workspace }}/.cache/tales/apple-driver
 
+      # Read by the driver block of every e2e/ios suite. The 30s default
+      # is a developer-machine number: on this runner a single
+      # XCUIApplication.launch() has been measured at 4.8s, 9.2s, 32.7s
+      # and once 245s, while taps and hierarchy fetches stayed at their
+      # local speed. Abandoning a launch the driver goes on to finish
+      # desynchronizes the two sides, and every later scenario then fails
+      # against a driver that is still working on the previous one — so
+      # the ceiling is raised rather than the failure absorbed.
+      TALES_DRIVER_TIMEOUT: 300s
+
     steps:
       - uses: actions/checkout@v6
 
@@ -84,16 +94,21 @@ jobs:
               match = re.search(r"iOS-(\d+)-(\d+)", identifier)
               return (int(match.group(1)), int(match.group(2))) if match else (0, 0)
 
-          # name -> newest iOS runtime that device exists on
+          # name -> (newest iOS runtime, the UDID Tales would select on it)
           available = {}
           for identifier, devices in json.loads(raw).get("devices", {}).items():
               if "iOS" not in identifier:
                   continue
               version = runtime_version(identifier)
               for device in devices:
-                  if device.get("isAvailable"):
-                      name = device["name"]
-                      available[name] = max(available.get(name, (0, 0)), version)
+                  if not device.get("isAvailable"):
+                      continue
+                  name, udid = device["name"], device["udid"]
+                  current = available.get(name)
+                  # Newest runtime wins, lowest UDID breaks a tie: the
+                  # same order simctl.preferredOver applies in Go.
+                  if current is None or version > current[0] or (version == current[0] and udid < current[1]):
+                      available[name] = (version, udid)
 
           if not available:
               sys.exit("no available iOS simulator on this runner")
@@ -109,20 +124,36 @@ jobs:
 
               def rank(name):
                   match = plain.match(name)
-                  return (bool(match), int(match.group(1)) if match else 0, available[name])
+                  return (bool(match), int(match.group(1)) if match else 0, available[name][0])
 
               chosen = max(iphones, key=rank)
               print(f"::warning::simulator {preferred!r} unavailable, using {chosen!r}", file=sys.stderr)
 
           print(f"device={chosen}")
+          print(f"udid={available[chosen][1]}")
           PY
+
+      # Booting here rather than letting the first scenario do it keeps
+      # simulator startup out of the suite's own timings, and gives the
+      # first app launch a settled device. The UDID matches what Tales
+      # will select: same "newest iOS runtime, then lowest UDID" order,
+      # and Tales prefers an already-booted device on a tie.
+      - name: Boot the simulator
+        run: xcrun simctl bootstatus '${{ steps.simulator.outputs.udid }}' -b
 
       # The embedded Swift driver is built once per (source, Xcode, SDK,
       # runtime, macOS) tuple and reused from the cache afterwards. The
       # runtime key is finer-grained than this one; a restored cache that
       # no longer matches is simply ignored, never wrongly reused.
-      - name: Cache the embedded driver build
-        uses: actions/cache@v4
+      #
+      # restore + save rather than the combined action: the combined
+      # action's post step only saves when the job succeeded, so a run
+      # that failed *after* building the driver saved nothing and the
+      # next attempt paid the build again — exactly when iterating on a
+      # red build makes the cache most valuable.
+      - name: Restore the embedded driver build
+        id: driver-cache
+        uses: actions/cache/restore@v4
         with:
           path: .cache/tales/apple-driver
           key: apple-driver-${{ runner.os }}-${{ runner.arch }}-xcode${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('drivers/apple/**') }}
@@ -140,6 +171,16 @@ jobs:
         env:
           IOS_DEVICE_NAME: ${{ steps.simulator.outputs.device }}
         timeout-minutes: 20
+
+      # Guarded on the exact-key miss: saving a key that already exists
+      # is an error, and a restore-keys prefix hit still leaves the exact
+      # key unwritten, which is precisely the case worth saving.
+      - name: Save the embedded driver build
+        if: always() && steps.driver-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/tales/apple-driver
+          key: apple-driver-${{ runner.os }}-${{ runner.arch }}-xcode${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('drivers/apple/**') }}
 
       - name: Diagnostics
         if: failure()
