@@ -160,11 +160,42 @@ jobs:
           restore-keys: |
             apple-driver-${{ runner.os }}-${{ runner.arch }}-xcode${{ steps.toolchain.outputs.xcode }}-
 
+      # Retried once, deliberately, because the failure being absorbed is
+      # not ours to fix. On a loaded runner the app under test can take
+      # tens of seconds to become foreground-able, and whichever XCUITest
+      # call is waiting on it then — launch() or activate() — records a
+      # failure that XCTest treats as fatal and tears the driver's test
+      # case down. Every later scenario dies with `connection refused`.
+      # Nothing the driver does prevents that: it is XCTest ending its own
+      # test, and continueAfterFailure is already true.
+      #
+      # So one transient stall costs the whole suite, which makes a single
+      # attempt useless as a merge gate (it failed 3 of 5 runs). A second
+      # attempt starts a fresh xcodebuild, hence a fresh runner. A real
+      # regression still fails twice.
+      #
+      # The first attempt's reports and artifacts are moved aside rather
+      # than overwritten: without them a retried-then-green run hides the
+      # very evidence needed to explain the stall, and a retried-then-red
+      # one loses half of it.
       - name: iOS e2e
-        run: make e2e-ios
+        id: e2e
+        run: |
+          if make e2e-ios; then
+            exit 0
+          fi
+
+          echo "::warning::iOS e2e failed on the first attempt, retrying once (first-attempt evidence is under attempt-1/ in the artifacts)"
+          echo "retried=true" >> "$GITHUB_OUTPUT"
+
+          mkdir -p build/attempt-1
+          [ -d build/reports ] && mv build/reports build/attempt-1/reports
+          [ -d build/artifacts ] && mv build/artifacts build/attempt-1/artifacts
+
+          make e2e-ios
         env:
           IOS_DEVICE_NAME: ${{ steps.simulator.outputs.device }}
-        timeout-minutes: 40
+        timeout-minutes: 50
 
       - name: iOS e2e failure
         run: make e2e-ios-failure
@@ -188,13 +219,16 @@ jobs:
           make doctor-ios || true
           ./build/tales doctor --json || true
 
+      # Also uploaded when the job is green but retried: that run holds the
+      # evidence of a stall nobody would otherwise ever look at.
       - name: Upload iOS e2e artifacts
-        if: failure()
+        if: failure() || steps.e2e.outputs.retried == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: e2e-ios-artifacts
           path: |
             build/reports/e2e-ios*.*
             build/artifacts/mobile/
+            build/attempt-1/
             .cache/tales/apple-driver/*/logs/
           if-no-files-found: ignore

@@ -608,6 +608,14 @@ The cache key that Tales itself computes is finer-grained than the workflow's (i
 
 Upload `build/reports/e2e-ios*.*` and `build/artifacts/mobile/` on failure: the screenshots, UI hierarchies and driver log are what make a CI-only failure diagnosable. Tales' own workflow lives in [`.github/workflows/ios.yml`](https://github.com/tales-testing/tales/blob/master/.github/workflows/ios.yml).
 
+### Expect to retry the suite
+
+On a shared runner, plan for one retry of the whole suite. The reason is structural rather than a Tales defect: when the app under test is slow to become foreground-able, the XCUITest call waiting on it (`launch()` or `activate()`) records a failure that XCTest treats as fatal, and it tears the driver's test case down. Every scenario after that point fails with `connection refused`, so one transient stall costs the entire run. `continueAfterFailure` is already true, and nothing the driver does prevents XCTest from ending its own test.
+
+A second attempt starts a fresh `xcodebuild`, and therefore a fresh runner. Move the first attempt's `build/reports` and `build/artifacts` aside before retrying — otherwise a retried-then-green run silently discards the only evidence of the stall — and upload them even when the job ends green.
+
+A genuine regression still fails both attempts.
+
 ## Log paths
 
 | Stream                    | Path                                                                              |
