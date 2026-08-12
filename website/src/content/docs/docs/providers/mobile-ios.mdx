@@ -468,6 +468,28 @@ config {
 }
 ```
 
+### Launch verification
+
+`XCUIApplication.launch()` does not throw when the simulator declines to open the app. It records XCTest failures, waits about a minute for accessibility on a process that never existed, captures a spindump, and returns normally:
+
+```text
+Failed to launch com.example.app: The request to open "com.example.app" failed.
+Application 'com.example.app' does not have a process ID
+Failed to activate application 'com.example.app' (current state: Not Running)
+Application 'com.example.app' has not loaded accessibility
+```
+
+The driver therefore checks `app.state` instead of trusting the call, and answers a `500` naming the state when the app never reached the foreground. A launch that failed quickly is retried once, since a simulator refusing to open an app is usually transient; a slow first attempt is not retried, because a second one would outlast the [driver timeout](#driver-timeout) and turn a reportable failure into an abandoned request.
+
+Without this, a step that follows the launch polls a non-existent app until its own timeout and reports a missing element, which sends you looking at your locators instead of at the simulator.
+
+<Aside type="caution" title="A failed launch can still end the run">
+	XCTest treats the unexpected termination of the app under test as a test interruption and tears the
+	driver's test case down. Nothing the driver does prevents that, so scenarios after the failed launch
+	report `connection refused`. The launch check makes the *first* failure accurate; it does not keep
+	the runner alive.
+</Aside>
+
 ### Driver timeout
 
 `driver.timeout` bounds every HTTP request Tales sends the driver. It defaults to `30s` and takes a duration **string**:

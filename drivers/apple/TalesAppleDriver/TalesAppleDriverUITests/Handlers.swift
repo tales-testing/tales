@@ -1135,6 +1135,25 @@ final class TalesRouter {
         return HTTPResponse.png(screenshot.pngRepresentation)
     }
 
+    /// Launches the app and refuses to report success for a launch that
+    /// did not happen.
+    ///
+    /// `XCUIApplication.launch()` does not throw when the simulator
+    /// declines to open the app: it records XCTest failures ("The request
+    /// to open ... failed", "does not have a process ID", "has not loaded
+    /// accessibility"), spends a minute waiting for accessibility on a
+    /// process that never existed, captures a spindump, and returns
+    /// normally. The driver used to answer 200 to that, so Tales polled a
+    /// non-existent app until its action timeout and reported a missing
+    /// element — a message pointing nowhere near the cause. Observed on a
+    /// shared CI runner, where it cost a whole suite.
+    ///
+    /// `app.state` is the ground truth, so it is checked, and a launch
+    /// that failed fast is retried once: the simulator refusing to open an
+    /// app is typically transient. The retry is skipped when the first
+    /// attempt was slow, because a second one would outlast the client's
+    /// timeout and turn a reportable failure into an abandoned request,
+    /// which is the desynchronization this whole path exists to avoid.
     private func handleLaunch(request: HTTPRequest) -> HTTPResponse {
         guard let payload = jsonObject(request.body),
               let bundleID = payload["bundleId"] as? String else {
@@ -1142,9 +1161,70 @@ final class TalesRouter {
         }
 
         let app = XCUIApplication(bundleIdentifier: bundleID)
-        app.launch()
-        return HTTPResponse.json(["ok": true])
+        let started = Date()
+        var attempt = 0
+
+        while true {
+            app.launch()
+            attempt += 1
+
+            if waitForForeground(app: app) {
+                return HTTPResponse.json(["ok": true])
+            }
+
+            let elapsed = Date().timeIntervalSince(started)
+            let exhausted = attempt >= launchAttempts
+            let tooSlowToRetry = elapsed >= launchRetryBudget
+
+            NSLog("[tales-driver] launch attempt \(attempt) left \(bundleID) in state \(stateName(app.state)) after \(Int(elapsed))s")
+
+            if exhausted || tooSlowToRetry {
+                let reason = tooSlowToRetry && !exhausted ? "not retried, first attempt took \(Int(elapsed))s" : "\(attempt) attempt(s)"
+
+                return HTTPResponse.error(
+                    "app \(bundleID) did not reach the foreground (state: \(app.state.rawValue), \(reason)); "
+                        + "the simulator declined to open it",
+                    status: 500
+                )
+            }
+        }
     }
+
+    /// Polls `app.state` briefly after a launch returns.
+    ///
+    /// A successful launch is normally already in the foreground here; the
+    /// grace period only covers a device slow enough to still be settling,
+    /// so a working-but-slow launch is not reported as a failed one.
+    private func waitForForeground(app: XCUIApplication) -> Bool {
+        let deadline = Date().addingTimeInterval(launchForegroundGrace)
+
+        repeat {
+            if app.state == .runningForeground {
+                return true
+            }
+
+            Thread.sleep(forTimeInterval: 0.25)
+        } while Date() < deadline
+
+        return app.state == .runningForeground
+    }
+
+    /// XCUIApplication.State is an ObjC enum; its rawValue alone in an
+    /// error message would make the reader look up what 1 means.
+    private func stateName(_ state: XCUIApplication.State) -> String {
+        switch state {
+        case .unknown: return "unknown"
+        case .notRunning: return "notRunning"
+        case .runningBackgroundSuspended: return "runningBackgroundSuspended"
+        case .runningBackground: return "runningBackground"
+        case .runningForeground: return "runningForeground"
+        @unknown default: return "state(\(state.rawValue))"
+        }
+    }
+
+    private let launchAttempts = 2
+    private let launchForegroundGrace: TimeInterval = 5
+    private let launchRetryBudget: TimeInterval = 60
 
     private func handleTerminate(request: HTTPRequest) -> HTTPResponse {
         guard let payload = jsonObject(request.body),
