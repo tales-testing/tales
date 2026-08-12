@@ -125,7 +125,7 @@ config {
         platform    = "ios"
         device_name = env("IOS_DEVICE_NAME", "iPhone 17")
         app         = env("IOS_APP_PATH")
-        bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
+        app_id      = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
         driver = {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080 // optional in embedded mode; omit to auto-allocate a free port
@@ -224,6 +224,24 @@ actions {
 ```
 
 The strict default is intentionally kept on every `expect { visible | not_visible | text | value | enabled | disabled }` block: assertions still error when an `id` resolves to two distinct subtrees. Use `first = true` only at the action level, where the goal is to *act* on the picker, not to *assert* its shape.
+
+### Element locators: `id`, `label`, `text`
+
+Every element-targeted action and every expectation block takes exactly one
+locator. They are mutually exclusive at the parse layer: setting two is rejected
+with `Conflicting element locator`, setting none with `Missing element locator`.
+
+| Locator | iOS source |
+|---|---|
+| `id` | `accessibilityIdentifier` |
+| `label` | `accessibilityLabel` |
+| `text` | the element's visible text |
+
+`text` is the locator of last resort — visible copy changes far more often than
+an identifier — but it is the only handle on UI that ships no identifiers at
+all, and it is the one locator that reaches the same control on both platforms:
+Android reports a button's caption as text while iOS reports it as the
+accessibility label, so `text` falls back to the label here.
 
 ### Matching by `accessibilityLabel` (`label = "..."`)
 
@@ -443,8 +461,8 @@ bookkeeping:
 config {
   mobile = {
     targets = {
-      iphone = { platform = "ios", device_name = "iPhone 17", app = env("IOS_APP_PATH"), bundle_id = "com.example.app" }
-      ipad   = { platform = "ios", device_name = "iPad Pro 13-inch (M4)", app = env("IOS_APP_PATH"), bundle_id = "com.example.app" }
+      iphone = { platform = "ios", device_name = "iPhone 17", app = env("IOS_APP_PATH"), app_id = "com.example.app" }
+      ipad   = { platform = "ios", device_name = "iPad Pro 13-inch (M4)", app = env("IOS_APP_PATH"), app_id = "com.example.app" }
     }
   }
 }

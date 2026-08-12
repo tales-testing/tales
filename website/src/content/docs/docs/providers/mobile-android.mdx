@@ -1,0 +1,274 @@
+---
+title: Mobile Android
+description: The Tales Android provider, embedded UiAutomator driver, actions, expectations, device lifecycle, and troubleshooting.
+---
+
+import { Aside, Card, CardGrid, Steps } from '@astrojs/starlight/components';
+
+Tales drives Android through Google's own tooling and a repository-owned
+Kotlin/UiAutomator HTTP driver. There is **no** Appium server, **no** Maestro
+runtime, and **no** third-party dependency inside the on-device driver.
+
+The DSL is the same one the [iOS provider](/docs/providers/mobile-ios/) uses.
+A scenario moves between platforms by changing `platform` and the target's
+device fields; the actions, expectations and locators are identical.
+
+## What you need
+
+Running Android scenarios needs **only `adb` and a device**. The driver APKs are
+built ahead of time, committed, and embedded in the `tales` binary, so nothing
+compiles at test time.
+
+<CardGrid>
+  <Card title="To run scenarios">
+    `adb` (Android SDK platform-tools) and either a running emulator or an
+    attached device. No JDK, no Gradle, no Android SDK build tools.
+  </Card>
+  <Card title="To change the driver or the demo app">
+    JDK 17 and the Android SDK, plus the committed Gradle wrapper. Only
+    contributors touching `drivers/android/` need this.
+  </Card>
+</CardGrid>
+
+```bash
+brew install --cask android-platform-tools android-commandlinetools
+
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+sdkmanager --sdk_root="$ANDROID_HOME" \
+  "platform-tools" "emulator" \
+  "system-images;android-34;google_apis;arm64-v8a"
+
+avdmanager create avd -n tales-e2e \
+  -k "system-images;android-34;google_apis;arm64-v8a" --device pixel_6
+
+export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
+```
+
+## Architecture
+
+```text
+.tales step
+   → mobile provider (shared with iOS)
+     → android backend      adb, am instrument, screenrecord
+       → adb forward        host port ⇄ device port 9080
+         → UiAutomator driver (Kotlin, on device)
+```
+
+The driver is an `androidx.test.uiautomator` instrumentation serving the same
+HTTP/JSON contract as the XCUITest driver: same routes, same payload keys, same
+status codes. That shared contract is what lets one Go client and one set of
+assertions serve both platforms.
+
+Tales owns the device lifecycle: it selects the device, installs the driver when
+its build changed, allocates a free host port, forwards it, starts the
+instrumentation, and waits for `/health` before the first step runs.
+
+## Configuration
+
+```hcl
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = "tales-e2e"          # AVD name
+        serial      = env("ANDROID_SERIAL", "")  # optional, pins a device
+        app         = "./app/build/outputs/apk/debug/app-debug.apk"
+        app_id      = "com.example.app"    # package name
+      }
+    }
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `platform` | `"android"` |
+| `device_name` | AVD name. Optional when `serial` is set. |
+| `serial` | adb serial (`emulator-5554`). Pins one device. |
+| `app` | Path to the `.apk` to install. |
+| `app_id` | Application id (package name). |
+| `driver.external` | Connect to a driver you started yourself. |
+| `driver.port` | Host port. Auto-allocated when omitted. |
+| `driver.adb_path` | Override adb discovery. |
+
+<Aside type="note" title="app_id, not bundle_id">
+`bundle_id` is still accepted and warns once per target. It is Apple's word: on
+Android the same field carries a package name, so a config reading
+`bundle_id = "com.example.app"` next to an `.apk` was quietly misleading.
+</Aside>
+
+### Device selection
+
+Selection is deliberately deterministic, because a run that silently picks a
+different device between invocations is worse than one that refuses to guess:
+
+<Steps>
+1. An explicit `serial` must exist and be ready.
+2. Otherwise, if exactly one device is ready, it is used.
+3. Otherwise Tales lists the candidates and asks you to set `serial`.
+</Steps>
+
+Tales waits for `sys.boot_completed`, not just `adb wait-for-device`: the latter
+only waits for adbd, which answers well before the framework is up, and
+installing or launching in that window fails confusingly.
+
+## Locators
+
+| Locator | Android source |
+|---|---|
+| `id` | `android:id` resource id, or a Compose `testTag` |
+| `label` | `contentDescription` |
+| `text` | the element's visible text |
+
+`id` matches the **short** form (`login_button`), so a locator does not depend on
+the application id. The fully qualified `com.example.app:id/login_button` is
+accepted too.
+
+<Aside type="caution" title="Compose needs one opt-in">
+Compose test tags live in the semantics tree, which the accessibility layer does
+not expose unless the app asks it to. Without this modifier on your root,
+**every `id` locator will miss**:
+
+```kotlin
+Box(
+    modifier = Modifier
+        .fillMaxSize()
+        .semantics { testTagsAsResourceId = true },
+) { /* … */ }
+```
+
+Compose also renders almost everything as a bare `android.view.View`, so element
+`type` is far less discriminating than on iOS. Prefer `id`, then `text`.
+</Aside>
+
+## Actions and expectations
+
+Identical to iOS — see the [action reference](/docs/providers/mobile-ios/#actions).
+The platform differences are:
+
+| | Android |
+|---|---|
+| `press_button` | `home`, `back`, `recent_apps`, `power`, `volume_up`, `volume_down`. `lock` is accepted as an alias for `power`. |
+| `set_orientation` | `portrait`, `landscape_left`, `landscape_right`. `upside_down` is rejected: Android exposes the rotation but almost no app declares support, so it would appear to succeed while nothing rotated. |
+| `record` | `bit_rate` and `size`; the simctl options (`codec`, `mask`, `display`) are rejected. |
+
+The DSL accepts the union of both platforms' values and the backend rejects what
+it cannot honour, naming the platform and listing what it does take. That keeps a
+shared scenario writable while making the failure obvious:
+
+```text
+button "back" is not supported on ios (supported: home, lock)
+```
+
+### Text entry
+
+Text is written with the accessibility `ACTION_SET_TEXT` rather than synthesised
+keystrokes. It is atomic, handles any Unicode, and does not depend on a soft
+keyboard being up. Keystrokes remain a fallback for widgets that refuse the
+action, and there non-ASCII input fails loudly rather than silently mangling.
+
+Every write is read back. A field truncated by a `maxLength` or an input filter
+fails on the step that wrote it, rather than surfacing two steps later as a
+confusing assertion failure. A field that reports no text at all — a Compose
+password field, for instance — is treated as unverifiable and trusted.
+
+## Permissions
+
+```hcl
+permissions {
+  camera   = "allow"
+  location = "deny"
+}
+```
+
+Services are named semantically, exactly as on iOS, and expanded per platform:
+
+| Service | Android permissions |
+|---|---|
+| `camera` | `CAMERA` |
+| `microphone` | `RECORD_AUDIO` |
+| `location` | `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION` |
+| `contacts` | `READ_CONTACTS` + `WRITE_CONTACTS` |
+| `calendar` | `READ_CALENDAR` + `WRITE_CALENDAR` |
+| `photos` | `READ_MEDIA_IMAGES` + `READ_MEDIA_VIDEO` (API ≥ 33), else the storage pair |
+| `notifications` | `POST_NOTIFICATIONS` (API ≥ 33; a no-op below, where it is granted at install) |
+
+A service that means several permissions is granted as a set: a scenario asking
+for `location` means the capability, not one half of it. An install-time
+permission that cannot be toggled is treated as already satisfied rather than an
+error.
+
+## `launch { clear_state = true }`
+
+Runs `pm clear`, which wipes data, cache, accounts and granted runtime
+permissions in one call — the whole of what iOS needs an uninstall plus a
+keychain reset plus a reinstall to achieve, and much faster since the app stays
+installed.
+
+## Recording
+
+```hcl
+scenario "preview" {
+  record {
+    output   = "preview.mp4"
+    bit_rate = "8M"
+  }
+}
+```
+
+Backed by `adb shell screenrecord`. Stopping signals `SIGINT` and never `SIGKILL`:
+screenrecord writes the MP4 trailer on interrupt, and a killed process leaves a
+file no player opens. The file is then pulled off the device.
+
+`--time-limit 0` (unlimited) is only used from API 34; older devices cap at three
+minutes. Some emulator images do not support screenrecord at all.
+
+## Make targets
+
+| Target | Needs |
+|---|---|
+| `make e2e-android` | adb + a device |
+| `make e2e-android-failure` | adb + a device |
+| `make doctor-android` | nothing |
+| `make build-android-demo` | JDK 17 + SDK |
+| `make build-android-driver` | JDK 17 + SDK |
+| `make check-android-driver-fresh` | JDK 17 |
+
+<Aside type="caution" title="Rebuild the binary after rebuilding the driver">
+`make build-android-driver` writes new APKs into `drivers/android/prebuilt/`, but
+the `tales` binary **embeds** them. Until you rebuild it, Tales keeps installing
+the previous driver and your changes appear to have no effect.
+</Aside>
+
+## Troubleshooting
+
+**`adb executable not found`** — install platform-tools and set `ANDROID_HOME`, or
+point `driver.adb_path` / the `ADB_PATH` variable at the binary.
+
+**`no ready Android device`** — start the emulator:
+`$ANDROID_HOME/emulator/emulator -avd tales-e2e`.
+
+**`N devices are attached`** — set `serial` on the target. Tales will not guess.
+
+**`the Android driver APKs are not embedded in this build`** — a working tree that
+has never built the driver. Run `make build-android-driver`, or set
+`driver.external = true` to connect to a driver you started yourself.
+
+**A step fails with a bare `EOF`** — the driver died mid-request. The step report
+carries the driver log path; `[tales-driver] request:` lines without a matching
+`response:` identify the request that killed it. A common cause is a second
+instrumentation starting: a device hosts one per package, and the new one kills
+the old. Tales stops any previous driver before starting its own, so this should
+only appear if something outside Tales started one.
+
+**Elements are invisible to `id` on a Compose screen** — the app has not opted into
+`testTagsAsResourceId`. See the locator note above.
+
+## Known limitations
+
+- No OCR, image matching, or XPath. Locators are id, label and text.
+- No cloud device farms.
+- `upside_down` orientation is not supported.
+- The driver speaks HTTP/JSON over an `adb forward`; there is no USB-less
+  transport.

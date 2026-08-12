@@ -23,6 +23,7 @@ Use this skill when asked to:
 - `README.md`
 - `internal/parser/schema.go`
 - `internal/parser/mobile.go` (mobile DSL surface)
+- `internal/provider/mobile/android/` (Android backend: adb, instrumentation)
 - `internal/parser/sql.go` (sql DSL surface)
 - `internal/parser/browser.go` (browser DSL surface)
 - `internal/model/mobile.go` (mobile model types)
@@ -38,6 +39,7 @@ Use this skill when asked to:
 - `internal/provider/mail/` (mail provider package: target config, MIME builder, SMTP/LMTP senders)
 - `internal/provider/browser/` (browser provider package: chromedp driver, Chrome locator, session lifecycle)
 - `internal/provider/webhook/` (webhook provider package: receiver lifecycle, HMAC signature helpers, URL building)
+- `website/src/content/docs/docs/providers/mobile-android.mdx` (Android provider)
 - `website/src/content/docs/docs/providers/mobile-ios.mdx` (mobile architecture and config)
 - `website/src/content/docs/docs/providers/sql.mdx` (sql provider reference)
 - `website/src/content/docs/docs/providers/mail.mdx` (mail provider reference)
@@ -50,7 +52,7 @@ Use this skill when asked to:
 - `internal/provider/rpc/` (rpc provider: descriptor loaders, dynamic codec, transports, status mapper)
 - `e2e/pass/*.tales` (HTTP and SQL examples; `e2e/pass/sql.tales` is the canonical SQL scenario)
 - `e2e/exec/file_exec.tales` (download -> file -> exec example)
-- `e2e/ios/pass/*.tales` (mobile examples)
+- `e2e/ios/pass/*.tales`, `e2e/android/pass/*.tales` (mobile examples)
 - `e2e/browser/*.tales` (browser examples)
 
 2. Build tests with only supported structures:
@@ -160,6 +162,23 @@ the DSL shape user-authored `.tales` files need.
 
 ### Targets configuration
 
+### Element locators
+
+Every element-targeted action and expectation takes **exactly one** of:
+
+| Locator | iOS | Android |
+|---|---|---|
+| `id` | `accessibilityIdentifier` | resource id / Compose `testTag` |
+| `label` | `accessibilityLabel` | `contentDescription` |
+| `text` | visible text (falls back to label) | visible text |
+
+Prefer `id`. Reach for `text` only when the screen ships no identifiers —
+system dialogs, permission prompts, third-party UI. Setting two locators is a
+parse error.
+
+On Android, `id` matches the short form (`login_button`); Compose apps must set
+`testTagsAsResourceId = true` or no tag is visible at all.
+
 Mobile targets must be declared inside `config.mobile.targets` and referenced
 by name from each mobile step:
 
@@ -168,10 +187,10 @@ config {
   mobile = {
     targets = {
       iphone = {
-        platform    = "ios"
+        platform    = "ios"    # or "android"
         device_name = env("IOS_DEVICE_NAME", "iPhone 17")
         app         = env("IOS_APP_PATH")
-        bundle_id   = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
+        app_id      = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
         driver = {
           host = env("IOS_DRIVER_HOST", "127.0.0.1")
           # port is optional in embedded mode; omit to auto-allocate a free port
@@ -182,7 +201,9 @@ config {
 }
 ```
 
-- `platform` only accepts `"ios"` in V1.
+- `platform` accepts `"android"` and `"ios"`. The DSL is identical on both;
+  only the target's device fields differ (`device_name` is an AVD name on
+  Android, and `serial` pins a device).
 - `app` must be an iOS Simulator `.app` bundle, not a device build.
 - `driver.host` / `driver.port` are the only driver fields user-authored
   suites need. `driver.port` is **optional** in embedded mode: omit it and

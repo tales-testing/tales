@@ -112,6 +112,7 @@ export default defineConfig({
 						{ label: 'HTTP', slug: 'docs/providers/http' },
 						{ label: 'SQL (Postgres / MySQL)', slug: 'docs/providers/sql' },
 						{ label: 'Mobile iOS', slug: 'docs/providers/mobile-ios' },
+						{ label: 'Mobile Android', slug: 'docs/providers/mobile-android' },
 						{ label: 'Browser (Chrome / Chromium)', slug: 'docs/providers/browser' },
 						{ label: 'Mail (SMTP / LMTP)', slug: 'docs/providers/mail' },
 						{ label: 'Webhook (receiver)', slug: 'docs/providers/webhook' },
