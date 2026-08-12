@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/zclconf/go-cty/cty"
 )
@@ -61,6 +62,11 @@ type DriverConfig struct {
 	External   bool
 	Mode       string
 	SourcePath string
+	// Timeout bounds every driver HTTP request. Zero means the driver
+	// client's own default. Raise it on hosts where the UI automation
+	// layer is slow — a shared CI runner can spend 30s+ inside a single
+	// app launch that takes 5s on a developer machine.
+	Timeout time.Duration
 	// ADBPath overrides adb discovery (Android only). Empty falls back
 	// to ANDROID_HOME, then PATH, then the well-known SDK locations.
 	ADBPath string
@@ -225,7 +231,43 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 		driver.ADBPath = adbPath
 	}
 
+	timeout, err := resolveDriverTimeout(driverVal)
+	if err != nil {
+		return driver, err
+	}
+
+	driver.Timeout = timeout
+
 	return driver, nil
+}
+
+// resolveDriverTimeout reads the optional `timeout` attribute as a Go
+// duration string ("90s", "2m").
+//
+// A bare number is rejected rather than guessed at: seconds and
+// milliseconds are both plausible readings, and picking one silently
+// would make `timeout = 30` mean half a minute on one reading and a
+// thirtieth of a second on the other.
+func resolveDriverTimeout(driverVal cty.Value) (time.Duration, error) {
+	attr, ok := readOptionalAttr(driverVal, "timeout")
+	if !ok || attr.IsNull() {
+		return 0, nil
+	}
+
+	if attr.Type() != cty.String {
+		return 0, fmt.Errorf(`timeout: must be a duration string such as "90s"`)
+	}
+
+	timeout, err := time.ParseDuration(attr.AsString())
+	if err != nil {
+		return 0, fmt.Errorf("timeout: %q is not a valid duration", attr.AsString())
+	}
+
+	if timeout <= 0 {
+		return 0, fmt.Errorf("timeout: must be positive, got %q", attr.AsString())
+	}
+
+	return timeout, nil
 }
 
 func readAttr(value cty.Value, name string) (cty.Value, error) {

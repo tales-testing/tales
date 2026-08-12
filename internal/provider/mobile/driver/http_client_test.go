@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestClient(t *testing.T, handler http.Handler) *Client {
@@ -766,5 +767,56 @@ func TestInputTextKeepsContentAndLocatorApart(t *testing.T) {
 
 	if payload["text"] != "Email" {
 		t.Fatalf("the text locator should stay under \"text\", got %v", payload)
+	}
+}
+
+func TestClientUsesTheDefaultTimeout(t *testing.T) {
+	t.Parallel()
+
+	client := New("http://127.0.0.1:9080")
+
+	if client.httpClient.Timeout != DefaultRequestTimeout {
+		t.Fatalf("timeout = %v, want %v", client.httpClient.Timeout, DefaultRequestTimeout)
+	}
+}
+
+func TestClientWithTimeoutOverridesTheDefault(t *testing.T) {
+	t.Parallel()
+
+	client := New("http://127.0.0.1:9080", WithTimeout(3*time.Minute))
+
+	if client.httpClient.Timeout != 3*time.Minute {
+		t.Fatalf("timeout = %v, want 3m", client.httpClient.Timeout)
+	}
+}
+
+// A target that leaves driver.timeout unset resolves to a zero
+// duration, which must not disable the timeout: an unbounded client
+// turns a wedged driver into a hung suite.
+func TestClientWithTimeoutIgnoresNonPositive(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]time.Duration{"zero": 0, "negative": -time.Second} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			client := New("http://127.0.0.1:9080", WithTimeout(value))
+
+			if client.httpClient.Timeout != DefaultRequestTimeout {
+				t.Fatalf("timeout = %v, want the default %v", client.httpClient.Timeout, DefaultRequestTimeout)
+			}
+		})
+	}
+}
+
+// WithHTTPClient replaces the whole client, so a later WithTimeout must
+// configure the replacement rather than a discarded default.
+func TestClientWithTimeoutAppliesToAnInjectedHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	client := New("http://127.0.0.1:9080", WithHTTPClient(&http.Client{}), WithTimeout(45*time.Second))
+
+	if client.httpClient.Timeout != 45*time.Second {
+		t.Fatalf("timeout = %v, want 45s", client.httpClient.Timeout)
 	}
 }

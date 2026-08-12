@@ -1,8 +1,10 @@
 package mobile
 
 import (
+	"maps"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zclconf/go-cty/cty"
 )
@@ -314,5 +316,93 @@ func TestResolveTargetReportsTheCanonicalNameWhenBothAreMissing(t *testing.T) {
 	// author reads while writing a new target.
 	if !strings.Contains(err.Error(), "app_id") {
 		t.Fatalf("error should name app_id, got: %v", err)
+	}
+}
+
+// driverConfigWith builds a config whose driver block carries the given
+// extra attributes, so the timeout cases stay readable.
+func driverConfigWith(extra map[string]cty.Value) map[string]cty.Value {
+	driver := map[string]cty.Value{
+		"host": cty.StringVal("127.0.0.1"),
+		"port": cty.NumberIntVal(9080),
+	}
+
+	maps.Copy(driver, extra)
+
+	return map[string]cty.Value{
+		"mobile": cty.ObjectVal(map[string]cty.Value{
+			"targets": cty.ObjectVal(map[string]cty.Value{
+				"iphone": cty.ObjectVal(map[string]cty.Value{
+					"platform":    cty.StringVal("ios"),
+					"device_name": cty.StringVal("iPhone 17"),
+					"app":         cty.StringVal("./build/MyApp.app"),
+					"app_id":      cty.StringVal("com.example.MyApp"),
+					"driver":      cty.ObjectVal(driver),
+				}),
+			}),
+		}),
+	}
+}
+
+func TestResolveTargetReadsDriverTimeout(t *testing.T) {
+	t.Parallel()
+
+	config := driverConfigWith(map[string]cty.Value{"timeout": cty.StringVal("2m30s")})
+
+	target, err := ResolveTarget(config, "iphone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.Driver.Timeout != 150*time.Second {
+		t.Fatalf("timeout = %v, want 2m30s", target.Driver.Timeout)
+	}
+}
+
+// An absent timeout must stay zero rather than becoming a default here:
+// the driver client owns the default, and baking it in twice would make
+// the two drift.
+func TestResolveTargetLeavesDriverTimeoutUnsetWhenAbsent(t *testing.T) {
+	t.Parallel()
+
+	target, err := ResolveTarget(sampleConfig(), "iphone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.Driver.Timeout != 0 {
+		t.Fatalf("timeout = %v, want zero", target.Driver.Timeout)
+	}
+}
+
+func TestResolveTargetRejectsBadDriverTimeout(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		value cty.Value
+		want  string
+	}{
+		// A bare number is ambiguous (seconds? milliseconds?), so it is
+		// rejected instead of guessed at.
+		"number":       {value: cty.NumberIntVal(30), want: "duration string"},
+		"unparseable":  {value: cty.StringVal("soon"), want: "not a valid duration"},
+		"zero":         {value: cty.StringVal("0s"), want: "must be positive"},
+		"negative":     {value: cty.StringVal("-5s"), want: "must be positive"},
+		"bare integer": {value: cty.StringVal("30"), want: "not a valid duration"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ResolveTarget(driverConfigWith(map[string]cty.Value{"timeout": tc.value}), "iphone")
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q should contain %q", err, tc.want)
+			}
+		})
 	}
 }

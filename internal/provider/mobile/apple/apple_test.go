@@ -139,7 +139,7 @@ func newLifecycleWithDriver(d driver.Driver) (*Lifecycle, *fakeSimctl, *fakeXcod
 	return &Lifecycle{
 		Simctl:     sim,
 		Xcodebuild: xc,
-		NewDriver:  func(_ string) driver.Driver { return d },
+		NewDriver:  func(_ mobile.DriverConfig) driver.Driver { return d },
 	}, sim, xc
 }
 

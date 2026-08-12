@@ -12,6 +12,7 @@ config {
           host     = env("IOS_DRIVER_HOST", "127.0.0.1")
           port     = 9080
           external = false
+          timeout  = env("TALES_DRIVER_TIMEOUT", "30s")
         }
       }
     }
