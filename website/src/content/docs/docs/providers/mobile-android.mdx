@@ -256,6 +256,16 @@ point `driver.adb_path` / the `ADB_PATH` variable at the binary.
 **`no ready Android device`** — start the emulator:
 `$ANDROID_HOME/emulator/emulator -avd tales-e2e`.
 
+**`device not ready after 180s`** — the emulator answers adb but is not usable
+yet. `make e2e-android` waits for that through `scripts/android-wait-ready.sh`
+(boot completed, boot animation stopped, package manager answering) before
+touching the device. A freshly booted emulator keeps scanning packages and
+running dexopt well past `sys.boot_completed`, and driving UI inside that window
+makes every hierarchy fetch outlast the scenarios' action timeouts — the suite
+then fails naming the elements it was looking for, pointing nowhere near the
+device that was not ready. Raise the budget with `ANDROID_READY_TIMEOUT`
+(seconds) on a slow host.
+
 **`N devices are attached`** — set `serial` on the target. Tales will not guess.
 
 **`the Android driver APKs are not embedded in this build`** — a working tree that

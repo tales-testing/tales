@@ -326,6 +326,7 @@ check-android-host:
 	  echo "Start one with: $${ANDROID_HOME:-$$HOME/Library/Android/sdk}/emulator/emulator -avd $(ANDROID_AVD_NAME)"; \
 	  exit 1; \
 	}
+	@scripts/android-wait-ready.sh
 
 .PHONY: build-android-driver
 build-android-driver:
