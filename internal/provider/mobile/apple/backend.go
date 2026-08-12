@@ -33,8 +33,8 @@ func SessionBuilder() mobile.SessionBuilder {
 	runner := ExecRunner{}
 	tool := simctlAdapter{tool: simctl.New(runner)}
 	launcher := xcodebuild.New(xcodebuild.ExecSpawner{})
-	factory := func(baseURL string) driver.Driver {
-		return driver.New(baseURL)
+	factory := func(cfg mobile.DriverConfig) driver.Driver {
+		return driver.New(cfg.BaseURL(), driver.WithTimeout(cfg.Timeout))
 	}
 
 	lifecycle := &Lifecycle{

@@ -87,8 +87,12 @@ type Prepared struct {
 	SourceHash string
 }
 
-// DriverFactory builds a driver client for the given base URL.
-type DriverFactory func(baseURL string) driver.Driver
+// DriverFactory builds a driver client for the given driver config.
+//
+// It takes the whole config rather than just the base URL because the
+// client is also configured by it (the per-request timeout), and a
+// factory that received only the URL silently dropped the rest.
+type DriverFactory func(cfg mobile.DriverConfig) driver.Driver
 
 // Lifecycle aggregates adb, the instrumentation launcher and the driver
 // artifacts into the operations the mobile provider needs.
@@ -253,7 +257,7 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, device adb.Device, target 
 		return nil, nil, mobile.Diagnostics{}, fmt.Errorf("driver factory is not configured")
 	}
 
-	client := l.NewDriver(target.Driver.BaseURL())
+	client := l.NewDriver(target.Driver)
 
 	if target.Driver.External {
 		if err := client.Health(ctx); err != nil {

@@ -39,7 +39,9 @@ func SessionBuilder() mobile.SessionBuilder {
 			ADB:        tool,
 			Instrument: instrument.New(instrument.ExecSpawner{}),
 			Artifacts:  newArtifacts(),
-			NewDriver:  func(baseURL string) driver.Driver { return driver.New(baseURL) },
+			NewDriver: func(cfg mobile.DriverConfig) driver.Driver {
+				return driver.New(cfg.BaseURL(), driver.WithTimeout(cfg.Timeout))
+			},
 		}
 
 		device, err := lifecycle.SelectDevice(ctx, target)

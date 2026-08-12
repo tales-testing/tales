@@ -15,12 +15,19 @@ import (
 )
 
 const (
-	// defaultRequestTimeout covers every driver endpoint. The /inputText
+	// DefaultRequestTimeout covers every driver endpoint. The /inputText
 	// path can take a few seconds when the driver falls back to
 	// char-by-char typing to dodge the iOS strong-password autofill
 	// banner on SecureField(.newPassword). 30s leaves headroom without
 	// hiding genuine driver hangs.
-	defaultRequestTimeout = 30 * time.Second
+	//
+	// It is a default rather than a constant because a shared CI runner
+	// is a different machine: XCUIApplication.launch() has been measured
+	// at 30s+ there against 5s on a developer Mac, and abandoning a
+	// launch the driver goes on to complete desynchronizes the two sides
+	// for the rest of the run. Raise it with driver.timeout on the
+	// target rather than accepting that cascade.
+	DefaultRequestTimeout = 30 * time.Second
 	bodySnippetLimit      = 256
 
 	payloadBundleIDKey = "bundleId"
@@ -51,12 +58,28 @@ func WithHTTPClient(hc *http.Client) Option {
 	}
 }
 
+// WithTimeout overrides the per-request timeout.
+//
+// A non-positive duration is ignored so callers can pass an unset
+// configuration value through without branching; "no timeout at all" is
+// deliberately not expressible, since it would turn a wedged driver into
+// a hung suite.
+func WithTimeout(timeout time.Duration) Option {
+	return func(c *Client) {
+		if timeout <= 0 {
+			return
+		}
+
+		c.httpClient.Timeout = timeout
+	}
+}
+
 // New returns a Client pointing at the driver's base URL.
 func New(baseURL string, opts ...Option) *Client {
 	c := &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
-			Timeout: defaultRequestTimeout,
+			Timeout: DefaultRequestTimeout,
 			Transport: &http.Transport{
 				// Both drivers answer one request per connection and
 				// close it (`Connection: close`), so pooling buys
