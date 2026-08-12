@@ -54,8 +54,21 @@ func WithHTTPClient(hc *http.Client) Option {
 // New returns a Client pointing at the driver's base URL.
 func New(baseURL string, opts ...Option) *Client {
 	c := &Client{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{Timeout: defaultRequestTimeout},
+		baseURL: strings.TrimRight(baseURL, "/"),
+		httpClient: &http.Client{
+			Timeout: defaultRequestTimeout,
+			Transport: &http.Transport{
+				// Both drivers answer one request per connection and
+				// close it (`Connection: close`), so pooling buys
+				// nothing — and it costs a real failure: the transport
+				// can hand a POST a connection the driver has already
+				// closed, and Go does not retry a non-idempotent
+				// request. The symptom is a single unexplained EOF on
+				// the first POST after a GET, with nothing in the
+				// driver log because the request never arrived.
+				DisableKeepAlives: true,
+			},
+		},
 	}
 
 	for _, opt := range opts {

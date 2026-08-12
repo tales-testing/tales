@@ -139,7 +139,7 @@ fun GesturesScreen(onBack: () -> Unit) {
         // A long list so `scroll` has somewhere to go and a far row is
         // genuinely absent from the tree until scrolling realizes it.
         LazyColumn(modifier = Modifier.testTag("gestures.scroll")) {
-            items((0 until 40).toList()) { index ->
+            items((0 until 24).toList()) { index ->
                 Text("Row $index", modifier = Modifier.testTag("gestures.row.$index"))
             }
         }

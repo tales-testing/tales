@@ -1,0 +1,83 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android back button navigates" {
+  tags = ["android", "mobile", "demo", "navigation"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  # The back button has no iOS counterpart, so this scenario is Android
+  # only by nature rather than by omission. It is the reason the DSL
+  # accepts the union of both platforms' buttons.
+  step "mobile" "android_open_backnav" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.backnav"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.backnav"
+      }
+      wait_visible {
+        id      = "backnav.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  step "mobile" "android_press_back" {
+    depends_on = ["android_open_backnav"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      press_button {
+        button = "back"
+      }
+      wait_visible {
+        id      = "welcome.screen"
+        timeout = "10s"
+      }
+    }
+
+    expect {
+      not_visible {
+        id = "backnav.screen"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}
