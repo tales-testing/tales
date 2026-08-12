@@ -686,16 +686,25 @@ func (p *Provider) handleLaunch(ctx context.Context, session *Session, launch *p
 		return err
 	}
 
-	// Launch through the driver (XCUIApplication.launch()) rather than an
-	// out-of-band simctl launch. app.launch() terminates any existing
-	// instance, launches a fresh one, and re-establishes XCTest's automation
-	// session with the new process — without it, a scenario reusing a cached
-	// session would snapshot a stale process and time out on /hierarchy.
-	// Launch through the driver (XCUIApplication.launch()) rather than an
-	// out-of-band simctl launch. app.launch() terminates any existing
-	// instance, launches a fresh one, and re-establishes XCTest's automation
-	// session with the new process — without it, a scenario reusing a cached
-	// session would snapshot a stale process and time out on /hierarchy.
+	// Cold-start from the host when the platform can (see HostAppLauncher),
+	// then have the driver activate the app. Activate is what re-establishes
+	// XCTest's automation session with the freshly launched process; without
+	// it, a scenario reusing a cached session would snapshot a stale process
+	// and time out on /hierarchy (issue #41). Driving the launch itself from
+	// inside the driver solved that too, but made every launch failure a
+	// runner-killing XCTest failure.
+	if host, ok := session.Lifecycle.(HostAppLauncher); ok {
+		if err := host.LaunchApp(ctx, session.DeviceID, session.Target); err != nil {
+			return fmt.Errorf("launch app: %w", err)
+		}
+
+		if err := session.Driver.Activate(ctx, session.Target.AppID); err != nil {
+			return fmt.Errorf("activate app: %w", err)
+		}
+
+		return nil
+	}
+
 	if err := session.Driver.Launch(ctx, session.Target.AppID); err != nil {
 		return fmt.Errorf("launch app: %w", err)
 	}

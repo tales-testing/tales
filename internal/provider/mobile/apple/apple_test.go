@@ -25,6 +25,10 @@ type fakeSimctl struct {
 	launches       []string
 	terminates     []string
 	keychainResets []string
+	// launchFailures makes the first N Launch calls fail, standing in for
+	// the transient "unknown to FrontBoard" a loaded machine produces
+	// right after a reinstall.
+	launchFailures int
 }
 
 func (f *fakeSimctl) FindDeviceByName(_ context.Context, name string) (Device, error) {
@@ -66,6 +70,10 @@ func (f *fakeSimctl) Uninstall(_ context.Context, _, bundleID string) error {
 
 func (f *fakeSimctl) Launch(_ context.Context, _, bundleID string) error {
 	f.launches = append(f.launches, bundleID)
+
+	if len(f.launches) <= f.launchFailures {
+		return errors.New(`Application "` + bundleID + `" is unknown to FrontBoard`)
+	}
 
 	return nil
 }
@@ -388,5 +396,84 @@ func TestEnsureDriverEmbeddedModeRetriesOnHealthFailure(t *testing.T) {
 
 	if got := em.prepareCalls.Load(); got != 2 {
 		t.Fatalf("expected 2 Prepare calls (initial + rebuild), got %d", got)
+	}
+}
+
+func TestLaunchAppTerminatesFirst(t *testing.T) {
+	t.Parallel()
+
+	sim := &fakeSimctl{}
+	lifecycle := &Lifecycle{Simctl: sim}
+
+	if err := lifecycle.LaunchApp(context.Background(), "UDID", sampleTarget(false)); err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+
+	// A launch step means a fresh app, and simctl launch alone leaves a
+	// running instance in place.
+	if len(sim.terminates) != 1 {
+		t.Fatalf("expected one terminate before the launch, got %v", sim.terminates)
+	}
+
+	if len(sim.launches) != 1 {
+		t.Fatalf("expected a single launch, got %v", sim.launches)
+	}
+}
+
+// The failure this retries is transient: right after a clear_state
+// reinstall a loaded machine reports the app as unknown to FrontBoard for
+// a moment, which cost two CI runs their whole suite.
+func TestLaunchAppRetriesATransientRefusal(t *testing.T) {
+	t.Parallel()
+
+	sim := &fakeSimctl{launchFailures: 2}
+	lifecycle := &Lifecycle{Simctl: sim}
+
+	if err := lifecycle.LaunchApp(context.Background(), "UDID", sampleTarget(false)); err != nil {
+		t.Fatalf("launch should have succeeded on the third attempt: %v", err)
+	}
+
+	if len(sim.launches) != 3 {
+		t.Fatalf("expected 3 launch attempts, got %d", len(sim.launches))
+	}
+}
+
+func TestLaunchAppGivesUpAndReportsTheLastError(t *testing.T) {
+	t.Parallel()
+
+	sim := &fakeSimctl{launchFailures: launchAttempts}
+	lifecycle := &Lifecycle{Simctl: sim}
+
+	err := lifecycle.LaunchApp(context.Background(), "UDID", sampleTarget(false))
+	if err == nil {
+		t.Fatal("expected an error once every attempt failed")
+	}
+
+	// The simulator's own words survive the retry loop: an app that is
+	// genuinely missing must not be reported as a Tales-specific failure.
+	if !strings.Contains(err.Error(), "unknown to FrontBoard") {
+		t.Fatalf("error should carry the simulator's message, got: %v", err)
+	}
+
+	if len(sim.launches) != launchAttempts {
+		t.Fatalf("expected %d attempts, got %d", launchAttempts, len(sim.launches))
+	}
+}
+
+func TestLaunchAppStopsRetryingOnACancelledContext(t *testing.T) {
+	t.Parallel()
+
+	sim := &fakeSimctl{launchFailures: launchAttempts}
+	lifecycle := &Lifecycle{Simctl: sim}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := lifecycle.LaunchApp(ctx, "UDID", sampleTarget(false)); err == nil {
+		t.Fatal("expected an error")
+	}
+
+	if len(sim.launches) != 1 {
+		t.Fatalf("a cancelled context should stop after the first attempt, got %d", len(sim.launches))
 	}
 }

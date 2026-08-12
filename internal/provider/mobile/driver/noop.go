@@ -64,5 +64,8 @@ func (NoopDriver) Screenshot(_ context.Context) ([]byte, error) { return []byte{
 // Launch does nothing.
 func (NoopDriver) Launch(_ context.Context, _ string) error { return nil }
 
+// Activate does nothing.
+func (NoopDriver) Activate(_ context.Context, _ string) error { return nil }
+
 // Terminate does nothing.
 func (NoopDriver) Terminate(_ context.Context, _ string) error { return nil }

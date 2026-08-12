@@ -71,6 +71,8 @@ final class TalesRouter {
             response = runOnMain { self.handleScreenshot(request: request) }
         case ("POST", "/launch"):
             response = runOnMain { self.handleLaunch(request: request) }
+        case ("POST", "/activate"):
+            response = runOnMain { self.handleActivate(request: request) }
         case ("POST", "/terminate"):
             response = runOnMain { self.handleTerminate(request: request) }
         default:
@@ -1188,6 +1190,33 @@ final class TalesRouter {
                 )
             }
         }
+    }
+
+    /// Binds the automation session to an app the host already launched.
+    ///
+    /// `activate()` foregrounds a running app and attaches XCTest to it,
+    /// which is all the driver needs once simctl owns the cold start. It
+    /// does not carry `launch()`'s failure bookkeeping, so a simulator
+    /// that refuses to open an app never turns into a recorded XCTest
+    /// failure here — that refusal is the host's to report, where it
+    /// costs one step instead of the whole runner.
+    private func handleActivate(request: HTTPRequest) -> HTTPResponse {
+        guard let payload = jsonObject(request.body),
+              let bundleID = payload["bundleId"] as? String else {
+            return HTTPResponse.error("expected {bundleId}", status: 400)
+        }
+
+        let app = XCUIApplication(bundleIdentifier: bundleID)
+        app.activate()
+
+        guard waitForForeground(app: app) else {
+            return HTTPResponse.error(
+                "app \(bundleID) is not in the foreground after activate (state: \(stateName(app.state)))",
+                status: 500
+            )
+        }
+
+        return HTTPResponse.json(["ok": true])
     }
 
     /// Polls `app.state` briefly after a launch returns.
