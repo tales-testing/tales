@@ -91,6 +91,13 @@ config {
 | `driver.external` | Connect to a driver you started yourself. |
 | `driver.port` | Host port. Auto-allocated when omitted. |
 | `driver.adb_path` | Override adb discovery. |
+| `driver.timeout` | Duration string bounding every driver request. Default `30s`. |
+
+`driver.timeout` is shared with the iOS provider and matters for the same
+reason: on a slow or shared host a single app launch can outlast the default,
+and a launch the client abandons but the driver completes leaves the two sides
+disagreeing for the rest of the run. See
+[the iOS notes](/docs/providers/mobile-ios/#driver-timeout).
 
 <Aside type="note" title="app_id, not bundle_id">
 `bundle_id` is still accepted and warns once per target. It is Apple's word: on

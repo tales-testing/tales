@@ -194,6 +194,7 @@ config {
         driver = {
           host = env("IOS_DRIVER_HOST", "127.0.0.1")
           # port is optional in embedded mode; omit to auto-allocate a free port
+          timeout = env("TALES_DRIVER_TIMEOUT", "30s") # raise on slow CI hosts
         }
       }
     }
@@ -211,6 +212,14 @@ config {
   in parallel without colliding); set it explicitly only for a fixed port or in
   external mode. Tales extracts and builds the embedded XCUITest driver on first
   run.
+- `driver.timeout` bounds every driver HTTP request (default `30s`). It takes a
+  duration **string** (`"90s"`, `"5m"`); a bare number is rejected. Raise it on
+  slow hosts, shared CI runners above all: a single app launch that takes 5s on
+  a developer machine has been measured at 30s+ there, and once Tales abandons
+  a launch the driver goes on to finish, every later scenario fails against a
+  driver still working on the previous one. Prefer
+  `timeout = env("TALES_DRIVER_TIMEOUT", "30s")` so the same suite stays fast
+  locally and patient in CI.
 
 ### Step shape
 
