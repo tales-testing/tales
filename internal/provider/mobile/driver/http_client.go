@@ -276,6 +276,16 @@ func (c *Client) Launch(ctx context.Context, bundleID string) error {
 	return c.postJSON(ctx, "/launch", map[string]any{payloadBundleIDKey: bundleID})
 }
 
+// Activate posts to /activate so the driver binds its automation session
+// to an app the host already launched.
+func (c *Client) Activate(ctx context.Context, bundleID string) error {
+	if bundleID == "" {
+		return fmt.Errorf("activate: bundleID is required")
+	}
+
+	return c.postJSON(ctx, "/activate", map[string]any{payloadBundleIDKey: bundleID})
+}
+
 // Terminate posts to /terminate so the driver terminates the app through
 // XCUIApplication.terminate(), keeping XCTest's process model in sync.
 func (c *Client) Terminate(ctx context.Context, bundleID string) error {

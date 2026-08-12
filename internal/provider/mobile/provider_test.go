@@ -68,6 +68,7 @@ type fakeDriverAll struct {
 	dismissals      []string
 	scrollTos       []fakeScrollTo
 	launches        []string
+	activates       []string
 	terminatesDrv   []string
 	screenshotPNG   []byte
 	screenshotErr   error
@@ -91,6 +92,18 @@ func (f *fakeDriverAll) Health(_ context.Context) error { return f.healthErr }
 func (f *fakeDriverAll) Launch(_ context.Context, bundleID string) error {
 	f.mu.Lock()
 	f.launches = append(f.launches, bundleID)
+	f.mu.Unlock()
+
+	f.boundLive.Store(true)
+
+	return nil
+}
+
+// Activate binds the session exactly like Launch does: that is what makes
+// it a valid substitute once the host owns the cold start.
+func (f *fakeDriverAll) Activate(_ context.Context, bundleID string) error {
+	f.mu.Lock()
+	f.activates = append(f.activates, bundleID)
 	f.mu.Unlock()
 
 	f.boundLive.Store(true)
@@ -2383,5 +2396,138 @@ func TestExecuteMissingTextSurfacesTheLocatorInTheError(t *testing.T) {
 
 	if !strings.Contains(err.Error(), `text="Absent"`) {
 		t.Fatalf("error should cite the text locator, got %v", err)
+	}
+}
+
+// hostLaunchLifecycle adds the optional HostAppLauncher capability to the
+// plain fake, so these tests exercise the path the iOS backend takes:
+// cold start from the host, then Activate to re-bind the driver.
+type hostLaunchLifecycle struct {
+	fakeLifecycle
+
+	launches  []string
+	launchErr error
+}
+
+func (h *hostLaunchLifecycle) LaunchApp(_ context.Context, _ string, target Target) error {
+	h.launches = append(h.launches, target.AppID)
+
+	return h.launchErr
+}
+
+func newProviderWithHostLauncher(drv *fakeDriverAll, lifecycle Lifecycle, target Target) *Provider {
+	builder := SessionBuilderFunc(func(_ context.Context, _ Target) (*Session, error) {
+		return &Session{
+			Target:    target,
+			DeviceID:  "UDID",
+			Driver:    drv,
+			Lifecycle: lifecycle,
+		}, nil
+	})
+
+	return New(WithSessionBuilder(builder), WithArtifactsBase(""))
+}
+
+func launchInput(scenario string) provider.Input {
+	return provider.Input{
+		Scenario: scenario,
+		Step:     newStep("launch"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Launch:     &provider.MobileLaunchExec{ClearState: true},
+		},
+	}
+}
+
+func TestExecuteLaunchesFromTheHostWhenTheBackendCan(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &hostLaunchLifecycle{}
+	p := newProviderWithHostLauncher(drv, lc, sampleProviderTarget())
+
+	if _, err := p.Execute(context.Background(), launchInput("demo")); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(lc.launches) != 1 || lc.launches[0] != "com.example.MyApp" {
+		t.Fatalf("expected one host launch, got %v", lc.launches)
+	}
+
+	if len(drv.activates) != 1 || drv.activates[0] != "com.example.MyApp" {
+		t.Fatalf("expected one driver activate, got %v", drv.activates)
+	}
+
+	// The whole point of the split: the driver never runs the launch, so a
+	// simulator refusing to open the app cannot become an XCTest failure
+	// that tears the runner down.
+	if len(drv.launches) != 0 {
+		t.Fatalf("driver launch must not be used when the host can launch, got %v", drv.launches)
+	}
+}
+
+// The #41 regression, on the host-launch path: a second scenario reusing
+// the session must still get a working hierarchy, which is what Activate
+// re-binds.
+func TestExecuteHostLaunchRebindsTheDriverAcrossScenarios(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{
+		hierarchies:             []*tree.ViewNode{newButtonNode()},
+		requireBindForHierarchy: true,
+	}
+	lc := &hostLaunchLifecycle{}
+	p := newProviderWithHostLauncher(drv, lc, sampleProviderTarget())
+
+	run := func(scenario string) error {
+		_, err := p.Execute(context.Background(), provider.Input{
+			Scenario: scenario,
+			Step:     newStep("run"),
+			Config:   sampleConfigCty(),
+			Mobile: &provider.MobileExecution{
+				Platform:   "ios",
+				TargetName: "iphone",
+				Launch:     &provider.MobileLaunchExec{ClearState: true},
+				Actions: []provider.MobileActionExec{
+					{Kind: model.MobileActionWaitVisible, ID: "welcome.register", Timeout: time.Second},
+				},
+				Terminate: &provider.MobileTerminateExec{},
+			},
+		})
+
+		return err
+	}
+
+	if err := run("scenario A"); err != nil {
+		t.Fatalf("scenario A: %v", err)
+	}
+
+	if err := run("scenario B"); err != nil {
+		t.Fatalf("scenario B (the #41 regression on the host-launch path): %v", err)
+	}
+}
+
+func TestExecuteFailsTheStepWhenTheHostLaunchFails(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	lc := &hostLaunchLifecycle{launchErr: errors.New(`Application "com.example.MyApp" is unknown to FrontBoard`)}
+	p := newProviderWithHostLauncher(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), launchInput("demo"))
+	if err == nil {
+		t.Fatal("expected the step to fail")
+	}
+
+	// The simulator's own words must reach the report: this is the message
+	// that says the app was not installed, not a locator problem.
+	if !strings.Contains(err.Error(), "unknown to FrontBoard") {
+		t.Fatalf("error should carry the simulator message, got: %v", err)
+	}
+
+	if len(drv.activates) != 0 {
+		t.Fatalf("a failed launch must not be followed by an activate, got %v", drv.activates)
 	}
 }

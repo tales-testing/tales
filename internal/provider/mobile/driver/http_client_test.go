@@ -820,3 +820,61 @@ func TestClientWithTimeoutAppliesToAnInjectedHTTPClient(t *testing.T) {
 		t.Fatalf("timeout = %v, want 45s", client.httpClient.Timeout)
 	}
 }
+
+func TestClientActivateSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	var captured map[string]any
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/activate" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	if err := client.Activate(context.Background(), "com.example.MyApp"); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	if captured["bundleId"] != "com.example.MyApp" {
+		t.Fatalf("unexpected activate payload: %v", captured)
+	}
+}
+
+func TestClientActivateRequiresBundleID(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("no request should be sent without a bundle id")
+	}))
+
+	if err := client.Activate(context.Background(), ""); err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+// The driver reports a failed activate as a non-2xx, and the provider
+// must surface it rather than treat the step as launched.
+func TestClientActivateSurfacesADriverError(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"app com.example.MyApp is not in the foreground after activate (state: notRunning)"}`))
+	}))
+
+	err := client.Activate(context.Background(), "com.example.MyApp")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+
+	if !strings.Contains(err.Error(), "not in the foreground") {
+		t.Fatalf("error should carry the driver message, got: %v", err)
+	}
+}

@@ -163,13 +163,53 @@ func (l *Lifecycle) SetPermission(ctx context.Context, udid string, target mobil
 	return nil
 }
 
-// LaunchApp launches the configured app on the given simulator.
+// LaunchApp launches the configured app on the given simulator, replacing
+// any running instance. It implements mobile.HostAppLauncher.
+//
+// The launch is retried briefly because the failure it guards against is
+// transient: right after a clear_state reinstall, a loaded machine can
+// leave the app not yet known to FrontBoard, and simctl reports
+// "Application ... is unknown to FrontBoard" for a bundle that installd
+// has already written. Observed twice on a GitHub macOS runner, never on
+// a developer machine. A genuinely missing app still fails, one second
+// later, with the same message.
 func (l *Lifecycle) LaunchApp(ctx context.Context, udid string, target mobile.Target) error {
-	if err := l.Simctl.Launch(ctx, udid, target.AppID); err != nil {
-		return fmt.Errorf("launch app: %w", err)
+	// A launch step means a fresh app; simctl launch alone would leave a
+	// running instance in place.
+	_ = l.Simctl.Terminate(ctx, udid, target.AppID)
+
+	var err error
+
+	for attempt := range launchAttempts {
+		if err = l.Simctl.Launch(ctx, udid, target.AppID); err == nil {
+			return nil
+		}
+
+		if attempt < launchAttempts-1 {
+			if sleepErr := sleepWithContext(ctx, launchRetryDelay); sleepErr != nil {
+				break
+			}
+		}
 	}
 
-	return nil
+	return fmt.Errorf("launch app: %w", err)
+}
+
+const (
+	launchAttempts   = 3
+	launchRetryDelay = 500 * time.Millisecond
+)
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("wait before retrying: %w", ctx.Err())
+	case <-timer.C:
+		return nil
+	}
 }
 
 // TerminateApp terminates the configured app on the given simulator. If the

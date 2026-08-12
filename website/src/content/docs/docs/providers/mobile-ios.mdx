@@ -468,26 +468,32 @@ config {
 }
 ```
 
-### Launch verification
+### How a launch works
 
-`XCUIApplication.launch()` does not throw when the simulator declines to open the app. It records XCTest failures, waits about a minute for accessibility on a process that never existed, captures a spindump, and returns normally:
+A `launch` step is two operations, deliberately split:
+
+1. **`simctl launch` on the host** performs the cold start (after a `simctl terminate`, so the step really does give you a fresh app).
+2. **`POST /activate` on the driver** calls `XCUIApplication.activate()`, which binds XCTest's automation session to the running process.
+
+Step 2 is what keeps scenarios that share a target working: without it the next `/hierarchy` snapshot queries a stale, terminated process and times out.
+
+The split exists because of what happens when a launch fails. `XCUIApplication.launch()` runs **inside** the XCTest runner, and it does not throw when the simulator declines to open the app. It records XCTest failures, waits about a minute for accessibility on a process that never existed, captures a diagnostic spindump, and returns normally:
 
 ```text
 Failed to launch com.example.app: The request to open "com.example.app" failed.
+  The request was denied by service delegate (SBMainWorkspace) for reason: NotFound
+  ("Application "com.example.app" is unknown to FrontBoard")
 Application 'com.example.app' does not have a process ID
-Failed to activate application 'com.example.app' (current state: Not Running)
 Application 'com.example.app' has not loaded accessibility
 ```
 
-The driver therefore checks `app.state` instead of trusting the call, and answers a `500` naming the state when the app never reached the foreground. A launch that failed quickly is retried once, since a simulator refusing to open an app is usually transient; a slow first attempt is not retried, because a second one would outlast the [driver timeout](#driver-timeout) and turn a reportable failure into an abandoned request.
+XCTest then treats that as a test interruption and tears the driver's test case down, so every later scenario fails with `connection refused`. One transient refusal cost an entire CI suite, reported as a missing element four minutes after the fact.
 
-Without this, a step that follows the launch polls a non-existent app until its own timeout and reports a missing element, which sends you looking at your locators instead of at the simulator.
+The same refusal from `simctl` is an immediate error naming the real cause, costing one step. Tales retries it three times, 500 ms apart, because the condition is transient: right after a `clear_state` reinstall a loaded machine can briefly leave the app unknown to FrontBoard. An app that is genuinely missing still fails, a second later, with the simulator's own message.
 
-<Aside type="caution" title="A failed launch can still end the run">
-	XCTest treats the unexpected termination of the app under test as a test interruption and tears the
-	driver's test case down. Nothing the driver does prevents that, so scenarios after the failed launch
-	report `connection refused`. The launch check makes the *first* failure accurate; it does not keep
-	the runner alive.
+<Aside type="note" title="Same conclusion as Maestro">
+	Maestro's iOS driver splits it the same way: `simctl launch` host-side, and a driver handler whose
+	whole body is `XCUIApplication(bundleIdentifier:).activate()`.
 </Aside>
 
 ### Driver timeout

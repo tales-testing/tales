@@ -44,6 +44,27 @@ type Lifecycle interface {
 	ScreenshotFallback(ctx context.Context, deviceID, path string) error
 }
 
+// HostAppLauncher is implemented by a Lifecycle whose platform tooling can
+// start the app from the host, out of band from the UI driver.
+//
+// When a backend provides it, the provider performs the cold launch here
+// and then asks the driver only to re-bind its automation session
+// (Driver.Activate) instead of driving the launch itself. That split
+// matters on iOS: XCUIApplication.launch() runs inside the XCTest runner,
+// so a simulator that declines to open the app ("unknown to FrontBoard",
+// seen on loaded CI runners right after a clear_state reinstall) becomes a
+// recorded XCTest failure, which tears the runner down and takes every
+// later scenario with it — after spending a minute waiting for
+// accessibility on a process that never existed. The same refusal from
+// simctl is an immediate, retryable error that costs one step.
+//
+// Backends without host-side launching keep driving it through the driver,
+// which is what a platform whose driver owns the app lifecycle wants.
+type HostAppLauncher interface {
+	// LaunchApp starts the app under test, replacing any running instance.
+	LaunchApp(ctx context.Context, deviceID string, target Target) error
+}
+
 // DriverHandle stops the driver process Tales started. Backends return a
 // nil handle when the driver is external, since Tales does not own it.
 type DriverHandle interface {

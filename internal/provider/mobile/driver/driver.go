@@ -111,11 +111,19 @@ type Driver interface {
 	Screenshot(ctx context.Context) ([]byte, error)
 
 	// Launch (re)launches the app under test through the driver so XCTest
-	// owns the process. Routing the launch through XCUIApplication.launch()
-	// (rather than an out-of-band simctl launch) re-establishes XCTest's
-	// automation session with the freshly launched process; otherwise a
-	// later snapshot would query a stale, terminated process and hang.
+	// owns the process. Used by platforms whose driver owns the app
+	// lifecycle; backends that can start the app from the host prefer
+	// Activate (see mobile.HostAppLauncher).
 	Launch(ctx context.Context, bundleID string) error
+
+	// Activate brings an already-running app to the foreground and binds the
+	// driver's automation session to it, without owning the launch.
+	//
+	// It is the counterpart to a host-side cold start: the session must be
+	// re-bound after the app restarts, or a later snapshot queries a stale
+	// process and hangs, but doing that through a full driver-side launch
+	// makes the driver a casualty of every failed launch.
+	Activate(ctx context.Context, bundleID string) error
 
 	// Terminate terminates the app under test through the driver
 	// (XCUIApplication.terminate()), keeping XCTest's process model in sync
