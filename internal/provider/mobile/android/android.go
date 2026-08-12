@@ -219,8 +219,16 @@ func (l *Lifecycle) TerminateDriverRunner(ctx context.Context, deviceID string) 
 		return nil
 	}
 
-	if _, err := l.ADB.Shell(ctx, deviceID, "am force-stop "+DriverTestPackage); err != nil {
-		return fmt.Errorf("terminate driver runner: %w", err)
+	// Both packages, and the app one matters most: `am instrument` runs
+	// the test code inside the *target* application's process, so
+	// stopping only the .test package leaves the driver very much
+	// alive — still bound to the device port, still answering health
+	// checks, and about to be killed by the next instrumentation
+	// mid-request.
+	for _, pkg := range []string{DriverPackage, DriverTestPackage} {
+		if _, err := l.ADB.Shell(ctx, deviceID, "am force-stop "+pkg); err != nil {
+			return fmt.Errorf("terminate driver runner %q: %w", pkg, err)
+		}
 	}
 
 	return nil
@@ -264,6 +272,21 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, device adb.Device, target 
 	prepared, err := l.Artifacts.Prepare(ctx)
 	if err != nil {
 		return nil, nil, mobile.Diagnostics{}, fmt.Errorf("prepare driver: %w", err)
+	}
+
+	// Stop any driver left behind by an earlier run before starting
+	// ours.
+	//
+	// A device can only host one instrumentation per package, so
+	// starting a second one kills the first. If a previous run was
+	// interrupted, its driver is still bound to the device port: our
+	// health check succeeds against it, the first request goes to it,
+	// and then our own instrumentation starts and kills it mid-request.
+	// The step fails with a bare EOF and the log shows two drivers, one
+	// of which never answered. Clearing the ground first makes the run
+	// depend on this run's driver only.
+	if err := l.TerminateDriverRunner(ctx, device.Serial); err != nil {
+		return nil, nil, mobile.Diagnostics{}, fmt.Errorf("stop a previous driver: %w", err)
 	}
 
 	if err := l.installDriver(ctx, device.Serial, prepared); err != nil {

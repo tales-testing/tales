@@ -1,0 +1,79 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android sign-in rejects a locked account" {
+  tags = ["android", "mobile", "demo", "login"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  # The sad path matters as much as the happy one: it proves a failing
+  # app surfaces as a readable assertion rather than a timeout.
+  step "mobile" "android_reject_locked_account" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.signin"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.signin"
+      }
+      input_text {
+        id    = "login.email"
+        value = "bad@example.com"
+      }
+      input_text {
+        id     = "login.password"
+        value  = "Secret123!"
+        secure = true
+      }
+      tap {
+        id = "login.submit"
+      }
+    }
+
+    expect {
+      text {
+        id    = "login.error"
+        value = contains("Account locked")
+      }
+      # The feed must stay away: an error that still let the user in
+      # would be worse than no error at all.
+      not_visible {
+        id = "feed.screen"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}

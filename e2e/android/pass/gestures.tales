@@ -1,0 +1,148 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android gesture actions" {
+  tags = ["android", "mobile", "demo", "gestures"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  step "mobile" "android_open_gestures" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.gestures"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.gestures"
+      }
+      wait_visible {
+        id      = "gestures.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  step "mobile" "android_long_press" {
+    depends_on = ["android_open_gestures"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      long_press {
+        id = "gestures.longpress.target"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.longpress"
+        value = "longpress=1"
+      }
+    }
+  }
+
+  step "mobile" "android_double_tap" {
+    depends_on = ["android_long_press"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      double_tap {
+        id = "gestures.doubletap.target"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.doubletap"
+        value = "doubletap=1"
+      }
+    }
+  }
+
+  step "mobile" "android_swipe" {
+    depends_on = ["android_double_tap"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      swipe {
+        id        = "gestures.swipe.target"
+        direction = "left"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.swipe"
+        value = "swipe=left"
+      }
+    }
+  }
+
+  # scroll runs last: it leaves the list scrolled, so it must not
+  # precede actions that need targets at the top of the screen. A far
+  # row is genuinely absent from the tree until scrolling realizes it,
+  # so wait_visible only passes once the content actually moved.
+  step "mobile" "android_scroll" {
+    depends_on = ["android_swipe"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      scroll {
+        id        = "gestures.scroll"
+        direction = "down"
+      }
+      scroll {
+        id        = "gestures.scroll"
+        direction = "down"
+      }
+      scroll {
+        id        = "gestures.scroll"
+        direction = "down"
+      }
+      wait_visible {
+        id      = "gestures.row.12"
+        timeout = "10s"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}

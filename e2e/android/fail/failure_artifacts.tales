@@ -1,0 +1,67 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android failure produces artifacts" {
+  tags = ["android", "mobile", "failure"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  step "mobile" "android_launch" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    expect {
+      visible {
+        id      = "welcome.signin"
+        timeout = "30s"
+      }
+    }
+  }
+
+  # Deliberately missing. The suite exists to prove a UI assertion
+  # failure exits 1 and leaves a screenshot and a hierarchy behind —
+  # not to prove the element is absent.
+  step "mobile" "android_missing_element" {
+    depends_on = ["android_launch"]
+
+    platform = "android"
+    target   = "phone"
+
+    expect {
+      visible {
+        id      = "element.that.does.not.exist"
+        timeout = "5s"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}

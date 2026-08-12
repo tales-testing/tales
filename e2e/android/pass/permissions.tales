@@ -1,0 +1,106 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android permissions are granted and revoked" {
+  tags = ["android", "mobile", "demo", "permissions"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  # The block names services semantically, exactly as on iOS; the
+  # backend expands "location" into the fine and coarse pair, since a
+  # scenario asking for location means the capability, not one half.
+  step "mobile" "android_grant" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    permissions {
+      camera   = "allow"
+      location = "allow"
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.permissions"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.permissions"
+      }
+    }
+
+    expect {
+      text {
+        id    = "permissions.status.camera"
+        value = "camera=granted"
+      }
+      text {
+        id    = "permissions.status.location"
+        value = "location=granted"
+      }
+    }
+  }
+
+  # Revoking restarts the app process, so the screen has to be reopened
+  # rather than merely re-read.
+  step "mobile" "android_revoke" {
+    depends_on = ["android_grant"]
+
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = false
+    }
+
+    permissions {
+      camera = "deny"
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.permissions"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.permissions"
+      }
+    }
+
+    expect {
+      text {
+        id    = "permissions.status.camera"
+        value = "camera=denied"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}

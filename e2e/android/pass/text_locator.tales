@@ -1,0 +1,70 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android text locator drives unidentified UI" {
+  tags = ["android", "mobile", "demo", "locator"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  # Every element here also has an id; the point is to prove the text
+  # locator reaches them without one, which is the only handle
+  # available on UI that ships no identifiers at all.
+  step "mobile" "android_navigate_by_text" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        text    = "Gestures"
+        timeout = "30s"
+      }
+      tap {
+        text = "Gestures"
+      }
+      wait_visible {
+        id      = "gestures.screen"
+        timeout = "10s"
+      }
+      long_press {
+        text = "Long press me"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.longpress"
+        value = "longpress=1"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}

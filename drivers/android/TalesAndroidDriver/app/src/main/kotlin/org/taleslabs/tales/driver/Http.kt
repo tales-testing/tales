@@ -122,6 +122,7 @@ class HttpServer(
             // thread. Concurrency is safe here — snapshots are
             // single-flighted in SnapshotService, and every other route
             // is a short UiAutomator call.
+            Log.i("accepted connection from ${connection.remoteSocketAddress}")
             workers.execute { handleConnection(connection) }
         }
     }

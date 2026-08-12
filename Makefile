@@ -37,6 +37,14 @@ IOS_PASS_SUITE := ./e2e/ios/pass
 IOS_FAIL_SUITE := ./e2e/ios/fail
 IOS_RECORD_SUITE := ./e2e/ios-record
 
+ANDROID_AVD_NAME ?= tales-e2e
+ANDROID_APP_ID ?= org.taleslabs.tales.demo
+ANDROID_DRIVER_PROJECT := drivers/android/TalesAndroidDriver
+ANDROID_DEMO_PROJECT := e2e/android/demoapp
+ANDROID_DEMO_APK := $(ANDROID_DEMO_PROJECT)/app/build/outputs/apk/debug/app-debug.apk
+ANDROID_PASS_SUITE := ./e2e/android/pass
+ANDROID_FAIL_SUITE := ./e2e/android/fail
+
 .PHONY: build tales-bin mock-bin install install-skill
 build: tales-bin mock-bin
 
@@ -296,6 +304,112 @@ e2e-ios-record: tales-bin build-ios-demo
 		--report-jsonl $(BUILD_DIR)/reports/e2e-ios-record.jsonl \
 		--report-html $(BUILD_DIR)/reports/e2e-ios-record.html \
 		$(IOS_RECORD_SUITE)
+
+# ---------------------------------------------------------------------
+# Android
+#
+# Running Android scenarios needs only adb and a device: the driver APKs
+# are committed and embedded in the binary. Building the driver or the
+# demo app additionally needs JDK 17 and the Android SDK, which is why
+# those are separate targets rather than prerequisites of e2e-android.
+# ---------------------------------------------------------------------
+
+.PHONY: check-android-host
+check-android-host:
+	@command -v adb >/dev/null 2>&1 || { \
+	  echo "adb is required for Android targets."; \
+	  echo "Install the platform-tools and set ANDROID_HOME, or set ADB_PATH."; \
+	  exit 1; \
+	}
+	@adb devices | grep -qE '\sdevice$$' || { \
+	  echo "No ready Android device."; \
+	  echo "Start one with: $${ANDROID_HOME:-$$HOME/Library/Android/sdk}/emulator/emulator -avd $(ANDROID_AVD_NAME)"; \
+	  exit 1; \
+	}
+
+.PHONY: build-android-driver
+build-android-driver:
+	@echo "Building the Android driver APKs..."
+	@cd $(ANDROID_DRIVER_PROJECT) && ./gradlew --quiet :app:test :app:assembleDebug :app:assembleDebugAndroidTest
+	@echo "Wrote drivers/android/prebuilt/. Commit the APKs and source.sha256 with your change."
+	@echo "NOTE: rebuild the tales binary too — it embeds these APKs, and an"
+	@echo "      old binary will keep installing the previous driver."
+
+.PHONY: check-android-driver-fresh
+check-android-driver-fresh:
+	@cd $(ANDROID_DRIVER_PROJECT) && ./gradlew --quiet :app:checkPrebuiltFresh
+
+.PHONY: build-android-demo
+build-android-demo:
+	@echo "Building the Android demo app..."
+	@cd $(ANDROID_DEMO_PROJECT) && ./gradlew --quiet :app:assembleDebug
+	@test -f $(ANDROID_DEMO_APK) || { echo "demo APK was not produced at $(ANDROID_DEMO_APK)"; exit 1; }
+	@echo "Built $(ANDROID_DEMO_APK)"
+
+.PHONY: e2e-android
+e2e-android: tales-bin check-android-host build-android-demo
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/artifacts
+	@set -euo pipefail; \
+	echo "Android e2e configuration:"; \
+	echo "  avd:          $(ANDROID_AVD_NAME)"; \
+	echo "  app:          $(ANDROID_DEMO_APK)"; \
+	echo "  app id:       $(ANDROID_APP_ID)"; \
+	echo "  JSONL report: $(BUILD_DIR)/reports/e2e-android.jsonl"; \
+	echo "  JUnit report: $(BUILD_DIR)/reports/e2e-android.junit.xml"; \
+	echo "  HTML report:  $(BUILD_DIR)/reports/e2e-android.html"; \
+	ANDROID_APP_PATH="$$PWD/$(ANDROID_DEMO_APK)" \
+	ANDROID_APP_ID="$(ANDROID_APP_ID)" \
+	ANDROID_AVD_NAME="$(ANDROID_AVD_NAME)" \
+	$(TALES_BIN) test --seed 1234 --parallel 1 --timeout 15m \
+	  --report-junit $(BUILD_DIR)/reports/e2e-android.junit.xml \
+	  --report-jsonl $(BUILD_DIR)/reports/e2e-android.jsonl \
+	  --report-html $(BUILD_DIR)/reports/e2e-android.html \
+	  --capture-screenshots actions \
+	  $(ANDROID_PASS_SUITE) || { status=$$?; echo "Android e2e failed. Run \`make doctor-android\` for diagnostics."; exit $$status; }
+
+.PHONY: e2e-android-failure
+e2e-android-failure: tales-bin check-android-host build-android-demo
+	@mkdir -p $(BUILD_DIR)/reports $(BUILD_DIR)/artifacts
+	@rm -rf $(BUILD_DIR)/artifacts/mobile
+	@set -euo pipefail; \
+	set +e; \
+	ANDROID_APP_PATH="$$PWD/$(ANDROID_DEMO_APK)" \
+	ANDROID_APP_ID="$(ANDROID_APP_ID)" \
+	ANDROID_AVD_NAME="$(ANDROID_AVD_NAME)" \
+	$(TALES_BIN) test --seed 1234 --parallel 1 --timeout 10m \
+	  --report-jsonl $(BUILD_DIR)/reports/e2e-android-failure.jsonl \
+	  $(ANDROID_FAIL_SUITE); \
+	status=$$?; \
+	set -e; \
+	if [ $$status -ne 1 ]; then \
+	  echo "expected exit code 1 from the Android failure suite, got $$status"; \
+	  exit 1; \
+	fi; \
+	scripts/verify-android-failure.sh "$(BUILD_DIR)/reports/e2e-android-failure.jsonl" "$(BUILD_DIR)/artifacts/mobile"
+
+.PHONY: doctor-android
+doctor-android:
+	@set +e; \
+	echo "== adb =="; \
+	command -v adb >/dev/null 2>&1 && adb version 2>&1 || echo "adb not on PATH"; \
+	echo; \
+	echo "== Environment =="; \
+	echo "ANDROID_HOME=$${ANDROID_HOME:-unset}"; \
+	echo "ANDROID_SDK_ROOT=$${ANDROID_SDK_ROOT:-unset}"; \
+	echo "ANDROID_AVD_NAME=$${ANDROID_AVD_NAME:-$(ANDROID_AVD_NAME)}"; \
+	echo "ANDROID_SERIAL=$${ANDROID_SERIAL:-unset}"; \
+	echo; \
+	echo "== Devices =="; \
+	adb devices -l 2>&1; \
+	echo; \
+	echo "== AVDs =="; \
+	"$${ANDROID_HOME:-$$HOME/Library/Android/sdk}/emulator/emulator" -list-avds 2>&1 || echo "emulator not found"; \
+	echo; \
+	echo "If no device is listed, start one with:"; \
+	echo "  $${ANDROID_HOME:-$$HOME/Library/Android/sdk}/emulator/emulator -avd $(ANDROID_AVD_NAME)"; \
+	echo; \
+	echo "For embedded-driver state, run: ./build/tales doctor --json"
+
 
 .PHONY: e2e-load
 e2e-load: build
