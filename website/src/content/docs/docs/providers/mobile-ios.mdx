@@ -513,6 +513,43 @@ Wipe the cache after a major Xcode upgrade, when you suspect a corrupted build, 
 
 Use [`tales doctor`](/docs/operations/doctor/) for a one-screen view of everything that influences the embedded driver pipeline.
 
+## Continuous integration
+
+iOS suites need a macOS runner: a simulator cannot be hosted on Linux. GitHub-hosted macOS runners are free for public repositories, and `macos-26` ships Xcode 26.6 plus pre-created iPhone 17 simulators, so nothing has to be installed.
+
+Two things make the difference between a 5-minute job and a 20-minute one:
+
+- **Cache the embedded driver build.** Point `TALES_DRIVER_CACHE_DIR` inside the workspace so the cache action can address it by a relative path. The first run builds the Swift driver with `xcodebuild build-for-testing`; every later run reuses it.
+- **Resolve the simulator name up front.** Targets match a simulator by exact name, so a runner image that renames or drops a device fails deep inside the run rather than at startup.
+
+```yaml
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      TALES_DRIVER_CACHE_DIR: ${{ github.workspace }}/.cache/tales/apple-driver
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Cache the embedded driver build
+        uses: actions/cache@v4
+        with:
+          path: .cache/tales/apple-driver
+          key: apple-driver-${{ runner.arch }}-${{ hashFiles('drivers/apple/**') }}
+
+      - run: make e2e-ios
+        env:
+          IOS_DEVICE_NAME: iPhone 17
+```
+
+The cache key that Tales itself computes is finer-grained than the workflow's (it mixes the source hash, Xcode version, SDK, `DEVELOPER_DIR`, simulator runtime and macOS major). A restored cache that no longer matches is ignored and rebuilt, never wrongly reused, so a coarse workflow key is safe.
+
+Upload `build/reports/e2e-ios*.*` and `build/artifacts/mobile/` on failure: the screenshots, UI hierarchies and driver log are what make a CI-only failure diagnosable. Tales' own workflow lives in [`.github/workflows/ios.yml`](https://github.com/tales-testing/tales/blob/master/.github/workflows/ios.yml).
+
 ## Log paths
 
 | Stream                    | Path                                                                              |
