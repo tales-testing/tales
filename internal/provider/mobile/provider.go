@@ -43,8 +43,11 @@ const (
 	// ArtifactTypeDriverBuildLog is the log of the driver's own build,
 	// relevant when the driver died because the build was broken.
 	ArtifactTypeDriverBuildLog = "driver_build_log"
-	// ArtifactTypeLogcat is a device log dump captured after a driver
-	// death (Android).
+	// ArtifactTypeLogcat is a device log dump, captured next to the
+	// failure screenshot and hierarchy on platforms that can produce one
+	// (Android). It answers what the system was doing, which the other
+	// two cannot: an ANR, a crash and a slow start all look alike on a
+	// screenshot.
 	ArtifactTypeLogcat = "logcat"
 )
 
@@ -1393,6 +1396,14 @@ func (p *Provider) writeFailureArtifacts(ctx context.Context, input provider.Inp
 			artifacts = append(artifacts, a)
 		}
 	} else if a, werr := writeScreenshotFallback(ctx, dir, session); werr == nil {
+		artifacts = append(artifacts, a)
+	}
+
+	// Last, and never fatal: the screenshot and hierarchy say what was on
+	// screen, the device log says what the system thought it was doing.
+	// An ANR, a crash and an app that is merely slow to draw are
+	// indistinguishable from the first two.
+	if a, ok := writeDeviceLog(ctx, dir, session); ok {
 		artifacts = append(artifacts, a)
 	}
 

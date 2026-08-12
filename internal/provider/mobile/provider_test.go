@@ -3,6 +3,7 @@ package mobile
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2529,5 +2530,139 @@ func TestExecuteFailsTheStepWhenTheHostLaunchFails(t *testing.T) {
 
 	if len(drv.activates) != 0 {
 		t.Fatalf("a failed launch must not be followed by an activate, got %v", drv.activates)
+	}
+}
+
+// logDumpingLifecycle adds the optional DeviceLogDumper capability, which
+// only Android provides in production.
+type logDumpingLifecycle struct {
+	fakeLifecycle
+
+	devices []string
+	err     error
+}
+
+func (l *logDumpingLifecycle) CaptureDeviceLog(_ context.Context, deviceID, path string) error {
+	l.devices = append(l.devices, deviceID)
+
+	if l.err != nil {
+		return l.err
+	}
+
+	return os.WriteFile(path, []byte("ANR in com.google.android.apps.nexuslauncher\n"), 0o600)
+}
+
+func runFailingStep(t *testing.T, lifecycle Lifecycle, base string) *provider.Output {
+	t.Helper()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{
+		{ID: "root", Visible: true},
+		{ID: "root", Visible: true},
+	}}
+
+	builder := SessionBuilderFunc(func(_ context.Context, _ Target) (*Session, error) {
+		return &Session{
+			Target:    sampleProviderTarget(),
+			DeviceID:  "UDID",
+			Driver:    drv,
+			Lifecycle: lifecycle,
+		}, nil
+	})
+
+	out, err := New(WithSessionBuilder(builder), WithArtifactsBase(base)).
+		Execute(context.Background(), provider.Input{
+			Scenario: "demo",
+			Step:     newStep("fail"),
+			Config:   sampleConfigCty(),
+			Mobile: &provider.MobileExecution{
+				Platform:   "ios",
+				TargetName: "iphone",
+				Actions: []provider.MobileActionExec{
+					{Kind: model.MobileActionTap, ID: "does.not.exist", Timeout: 30 * time.Millisecond},
+				},
+			},
+		})
+	if err == nil {
+		t.Fatal("expected the step to fail")
+	}
+
+	return out
+}
+
+func artifactPathOfType(t *testing.T, out *provider.Output, want string) (string, bool) {
+	t.Helper()
+
+	artifacts, ok := out.Response["artifacts"]
+	if !ok {
+		return "", false
+	}
+
+	for _, a := range artifacts.AsValueSlice() {
+		if a.GetAttr(artifactTypeKey).AsString() == want {
+			return a.GetAttr(artifactPathKey).AsString(), true
+		}
+	}
+
+	return "", false
+}
+
+func TestExecuteAttachesTheDeviceLogOnFailure(t *testing.T) {
+	t.Parallel()
+
+	lc := &logDumpingLifecycle{}
+	base := t.TempDir()
+
+	out := runFailingStep(t, lc, base)
+
+	path, ok := artifactPathOfType(t, out, ArtifactTypeLogcat)
+	if !ok {
+		t.Fatalf("expected a %s artifact, got %+v", ArtifactTypeLogcat, out.Response["artifacts"])
+	}
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read device log: %v", err)
+	}
+
+	if !strings.Contains(string(body), "ANR in") {
+		t.Fatalf("device log was not written through: %q", body)
+	}
+
+	if len(lc.devices) != 1 || lc.devices[0] != "UDID" {
+		t.Fatalf("expected one dump for the session device, got %v", lc.devices)
+	}
+}
+
+// A backend without the capability must still produce the other
+// artifacts: the device log is a bonus, not a requirement.
+func TestExecuteSkipsTheDeviceLogWhenTheBackendCannotDumpIt(t *testing.T) {
+	t.Parallel()
+
+	out := runFailingStep(t, &fakeLifecycle{udid: "UDID"}, t.TempDir())
+
+	if _, ok := artifactPathOfType(t, out, ArtifactTypeLogcat); ok {
+		t.Fatal("a backend without DeviceLogDumper must not report a device log")
+	}
+
+	if _, ok := artifactPathOfType(t, out, artifactKindScreenshot); !ok {
+		t.Fatal("the other failure artifacts must still be attached")
+	}
+}
+
+// A failing dump must not cost the step its screenshot and hierarchy:
+// it is the least important of the three and runs last for that reason.
+func TestExecuteToleratesADeviceLogDumpFailure(t *testing.T) {
+	t.Parallel()
+
+	lc := &logDumpingLifecycle{err: errors.New("adb: device offline")}
+
+	out := runFailingStep(t, lc, t.TempDir())
+
+	if _, ok := artifactPathOfType(t, out, ArtifactTypeLogcat); ok {
+		t.Fatal("a failed dump must not be reported as an artifact")
+	}
+
+	if _, ok := artifactPathOfType(t, out, artifactKindScreenshot); !ok {
+		t.Fatal("the screenshot must survive a failed device log dump")
 	}
 }

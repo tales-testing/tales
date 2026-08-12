@@ -101,6 +101,35 @@ func writeScreenshotFallback(ctx context.Context, dir string, session *Session) 
 	return Artifact{Type: artifactKindScreenshot, Path: path}, nil
 }
 
+// writeDeviceLog asks the platform for a device log dump and writes it to
+// <dir>/device.log.
+//
+// Backends that cannot dump one return (Artifact{}, false) and the caller
+// simply records nothing: the log is a bonus diagnostic, never a reason to
+// fail a step that has already failed.
+func writeDeviceLog(ctx context.Context, dir string, session *Session) (Artifact, bool) {
+	if session == nil || session.DeviceID == "" {
+		return Artifact{}, false
+	}
+
+	dumper, ok := session.Lifecycle.(DeviceLogDumper)
+	if !ok {
+		return Artifact{}, false
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return Artifact{}, false
+	}
+
+	path := filepath.Join(dir, "device.log")
+
+	if err := dumper.CaptureDeviceLog(ctx, session.DeviceID, path); err != nil {
+		return Artifact{}, false
+	}
+
+	return Artifact{Type: ArtifactTypeLogcat, Path: path}, true
+}
+
 // writeHierarchy serializes the given tree to <dir>/hierarchy.json.
 func writeHierarchy(dir string, node *tree.ViewNode) (Artifact, error) {
 	if node == nil {

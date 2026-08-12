@@ -248,6 +248,21 @@ the `tales` binary **embeds** them. Until you rebuild it, Tales keeps installing
 the previous driver and your changes appear to have no effect.
 </Aside>
 
+## Failure artifacts
+
+A failing step writes, next to each other:
+
+```text
+build/artifacts/mobile/<scenario>-<hash>/<step>/<phase>/attempt-N/
+  screenshot.png     what was on screen
+  hierarchy.json     what the accessibility tree held
+  device.log         what the system thought it was doing
+```
+
+`device.log` is an unfiltered `logcat -d` dump, and it is the one that settles questions the other two cannot. A launcher ANR, an app that crashed on start and an app that is merely slow to draw all look identical from a screenshot: a blank screen and a hierarchy holding nothing but the status bar. Two CI runs were lost to exactly those before the dump existed, with no way to tell them apart.
+
+It is captured last and never fails a step: a device that has gone offline simply yields no `device.log`, leaving the other artifacts intact.
+
 ## Troubleshooting
 
 **`adb executable not found`** — install platform-tools and set `ANDROID_HOME`, or

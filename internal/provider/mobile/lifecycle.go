@@ -65,6 +65,20 @@ type HostAppLauncher interface {
 	LaunchApp(ctx context.Context, deviceID string, target Target) error
 }
 
+// DeviceLogDumper is implemented by a Lifecycle whose platform can dump
+// the device's own system log.
+//
+// It is captured next to the failure screenshot and hierarchy, because
+// those two answer "what was on screen" and not "what did the system
+// think it was doing". An Android run lost scenarios to a launcher ANR,
+// and a later one to an app that simply never got a window; both were
+// indistinguishable from the outside, and neither could be settled
+// without the device log.
+type DeviceLogDumper interface {
+	// CaptureDeviceLog writes a bounded dump of the device log to path.
+	CaptureDeviceLog(ctx context.Context, deviceID, path string) error
+}
+
 // DriverHandle stops the driver process Tales started. Backends return a
 // nil handle when the driver is external, since Tales does not own it.
 type DriverHandle interface {

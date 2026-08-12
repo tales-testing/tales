@@ -40,9 +40,9 @@ const DriverDevicePort = 9080
 
 const driverLogsBase = "build/artifacts/mobile/driver"
 
-// logcatLines bounds the log dump captured after a driver death. Enough
-// to hold the crash and what led to it, without attaching megabytes to
-// a step report.
+// logcatLines bounds the log dump attached to a failing step. Enough to
+// hold the crash, ANR or slow start and what led to it, without
+// attaching megabytes to a step report.
 const logcatLines = 2000
 
 var unsafeLogSegment = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
@@ -363,10 +363,17 @@ func (l *Lifecycle) installDriver(ctx context.Context, serial string, prepared P
 	return nil
 }
 
-// CaptureLogcat returns a bounded device log dump, used as a
-// post-mortem artifact when the driver dies mid-scenario.
-func (l *Lifecycle) CaptureLogcat(ctx context.Context, serial, path string) error {
-	out, err := l.ADB.Logcat(ctx, serial, "tales-driver", logcatLines)
+// CaptureDeviceLog writes a bounded logcat dump, attached to a failing
+// step alongside the screenshot and hierarchy. It implements
+// mobile.DeviceLogDumper.
+//
+// The dump is deliberately unfiltered. It used to select the
+// "tales-driver" tag, which is the one thing that cannot explain the
+// failures worth explaining: a launcher ANR, an app crash and a slow
+// cold start are all reported by other processes, and two Android CI
+// runs were lost to exactly those without a line of evidence.
+func (l *Lifecycle) CaptureDeviceLog(ctx context.Context, serial, path string) error {
+	out, err := l.ADB.Logcat(ctx, serial, "", logcatLines)
 	if err != nil {
 		return fmt.Errorf("capture logcat: %w", err)
 	}
