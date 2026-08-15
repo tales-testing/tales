@@ -278,52 +278,102 @@ class Router(
     private fun isKeyboardShown(): Boolean =
         automation.windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD }
 
+    /**
+     * Brings an element into view, best-effort.
+     *
+     * Best-effort is the contract, shared verbatim with the iOS driver:
+     * the only failure is a locator that names nothing. A screen with
+     * nothing to scroll, or a container that runs out of travel before
+     * the element appears, is a 200 — the follow-up tap or input_text is
+     * what needs the element, and it reports a far more precise error
+     * than this handler could. Returning 404 for those made a scenario's
+     * outcome depend on the AVD's screen size, since a Compose container
+     * only publishes itself as scrollable once its content overflows.
+     */
     private fun scrollTo(payload: Map<String, Any?>): HttpResponse {
         val locator = locatorOf(payload)
         if (locator.isEmpty) return HttpResponse.error(400, "scroll_to requires an element id, label or text")
 
-        // Already on screen: nothing to do. The contract is idempotent,
-        // so scenarios can call it before every interaction.
-        locators.resolve(locator)?.let { node ->
-            if (isOnScreen(node)) return HttpResponse.ok()
-        }
+        val screen = screenBounds()
 
-        repeat(SCROLL_TO_ATTEMPTS) {
+        // Only used while the locator resolves to nothing, and sticky on
+        // purpose: once a container reports it cannot travel any further
+        // one way, the other way is the only one left, and re-deriving
+        // the guess every round would undo the previous scroll and
+        // oscillate in place.
+        var blind = ScrollDirection.FORWARD
+
+        var attemptsLeft = SCROLL_TO_ATTEMPTS
+
+        while (attemptsLeft-- > 0) {
             val node = locators.resolve(locator)
 
-            if (node != null && isOnScreen(node)) return HttpResponse.ok()
+            // Idempotent by contract: scenarios call it before every
+            // interaction without first querying UI state.
+            if (node != null && isOnScreen(node, screen)) return HttpResponse.ok()
 
-            val scrollable = node?.let { locators.scrollableAncestor(it) } ?: firstScrollable()
-                ?: return HttpResponse.error(404, "element $locator not found and no scrollable container to search")
+            // An unresolved locator is not yet a failure: a lazy list
+            // does not compose its off-screen rows, so the element
+            // genuinely does not exist until something scrolls.
+            val scrollable = node?.let { locators.scrollableAncestor(it) } ?: firstScrollable() ?: break
 
-            if (!scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
-                return@repeat
+            if (node != null) {
+                // The tree says where the element is relative to the
+                // container that has to move, so the direction is a
+                // fact. A container that will not travel that way cannot
+                // help — the element is outside its range, and flipping
+                // would only scroll away from it.
+                if (!scrollable.performAction(scrollActionOf(directionFor(node, boundsOf(scrollable))))) break
+            } else {
+                if (!scrollable.performAction(scrollActionOf(blind))) {
+                    // At its end this way. Flip and keep going: an
+                    // element above the viewport is only reachable
+                    // backwards, and an unresolved one has no position
+                    // to read the direction off.
+                    blind = opposite(blind)
+
+                    if (!scrollable.performAction(scrollActionOf(blind))) break
+                }
             }
 
             device.waitForIdle(SCROLL_SETTLE_MS)
+
+            // The scroll just happened on this thread, so every cached
+            // node still describes the screen from before it. Without
+            // this the next resolve re-reads the pre-scroll tree and the
+            // loop scrolls a lazy list to its end while insisting the
+            // rows it realized are not there.
+            automation.invalidateNodeCache()
         }
 
-        val node = locators.resolve(locator)
-            ?: return HttpResponse.error(404, "element $locator not found")
+        locators.resolve(locator) ?: return HttpResponse.error(404, "element $locator not found")
 
-        return if (isOnScreen(node)) {
-            HttpResponse.ok()
-        } else {
-            HttpResponse.error(404, "element $locator could not be scrolled into view")
-        }
+        return HttpResponse.ok()
     }
 
-    private fun isOnScreen(node: AccessibilityNodeInfo): Boolean {
-        val rect = Rect()
-        node.getBoundsInScreen(rect)
+    private fun screenBounds(): Bounds = Bounds(0, 0, device.displayWidth, device.displayHeight)
 
-        if (rect.isEmpty) return false
+    /** Defers to the encoder so scroll_to and the hierarchy dump never disagree. */
+    private fun isOnScreen(node: AccessibilityNodeInfo, screen: Bounds): Boolean =
+        HierarchyEncoder.isOnScreen(AccessibilityNode(node), screen)
 
-        return rect.top >= 0 && rect.bottom <= device.displayHeight
+    private fun boundsOf(node: AccessibilityNodeInfo): Bounds = AccessibilityNode(node).boundsInScreen
+
+    private fun directionFor(node: AccessibilityNodeInfo, viewport: Bounds): ScrollDirection =
+        HierarchyEncoder.scrollDirectionFor(boundsOf(node), viewport)
+
+    private fun scrollActionOf(direction: ScrollDirection): Int = when (direction) {
+        ScrollDirection.FORWARD -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        ScrollDirection.BACKWARD -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+    }
+
+    private fun opposite(direction: ScrollDirection): ScrollDirection = when (direction) {
+        ScrollDirection.FORWARD -> ScrollDirection.BACKWARD
+        ScrollDirection.BACKWARD -> ScrollDirection.FORWARD
     }
 
     private fun firstScrollable(): AccessibilityNodeInfo? {
-        for (root in automation.windowRoots()) {
+        for (root in automation.appWindowRoots()) {
             findScrollable(root)?.let { return it }
         }
 
