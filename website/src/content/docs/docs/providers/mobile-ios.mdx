@@ -184,6 +184,7 @@ Element-targeted actions:
 - `clear_text { id = "..." }`
 - `swipe { id = "..." direction = "up" distance = 0.6 duration = "300ms" }`, drags one finger across the element. `direction` is the finger travel (`up` / `down` / `left` / `right`); `distance` (optional, a fraction in `(0, 1]`, default `0.6`) is the travel as a share of the element's relevant dimension; `duration` optional (default `300ms`).
 - `scroll { id = "..." direction = "down" }`, scrolls the element's content. `direction` is the content direction to reveal (the finger travels the opposite way). Accepts the same optional `distance` / `duration` as `swipe`.
+- `scroll_to { id = "..." }` (or `label = "..."` / `text = "..."`), scrolls the element into the viewport so a follow-up tap / input_text can hit it. Best-effort: a no-op when the element is already in the safe area, and equally when there is nothing to scroll or the container runs out of travel; the only failure is a locator that matches no element. It takes no `timeout` / `interval` — the driver bounds its own attempts. **Useful before `input_text` on offscreen fields on iOS 26.x**: a focus tap that misses the actual input affordance leaves no first responder, the synth path then trips `Failed to synthesize event: Neither element nor any descendant has keyboard focus`, and that XCTest API violation tears the runner down mid-scenario. Tales' `input_text` driver handler (both paste mode for SecureField and the regular TextField path) auto-attempts one scroll + retap before bailing with a 500, so most cases work without an explicit `scroll_to`; reach for it when the auto-scroll is not enough (deeply nested scroll containers, custom keyboard accessories) or to make the test intent explicit.
 
 Device-level actions take no `id`:
 
@@ -191,9 +192,8 @@ Device-level actions take no `id`:
 - `press_button { button = "home" }`, presses a device button (`home` or `lock`).
 - `set_orientation { orientation = "landscape_left" }`, rotates the device. `orientation` is one of `portrait`, `landscape_left`, `landscape_right`, `upside_down`.
 - `dismiss_keyboard {}`, dismisses the soft keyboard if one is up. Idempotent (a no-op when no keyboard is present). Useful before a snapshot-heavy step on a tall SwiftUI form: see [Snapshot scope](#snapshot-scope) for why dismissing the keyboard first matters on iOS 26.x.
-- `scroll_to { id = "..." }` (or `label = "..."`), scrolls the element into the viewport so a follow-up tap / input_text can hit it. Idempotent (no-op when the element is already in the safe area). **Useful before `input_text` on offscreen fields on iOS 26.x**: a focus tap that misses the actual input affordance leaves no first responder, the synth path then trips `Failed to synthesize event: Neither element nor any descendant has keyboard focus`, and that XCTest API violation tears the runner down mid-scenario. Tales' `input_text` driver handler (both paste mode for SecureField and the regular TextField path) auto-attempts one scroll + retap before bailing with a 500, so most cases work without an explicit `scroll_to`; reach for it when the auto-scroll is not enough (deeply nested scroll containers, custom keyboard accessories) or to make the test intent explicit.
 
-Actions have an implicit wait of `10s` with `250ms` polling. Each action may set a per-call `timeout`.
+Actions have an implicit wait of `10s` with `250ms` polling. Each action may set a per-call `timeout`, except `scroll_to`, which bounds its own attempts and rejects `timeout` / `interval`.
 
 ### Snapshot scope
 

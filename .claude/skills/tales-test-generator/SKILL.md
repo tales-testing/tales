@@ -288,14 +288,19 @@ strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
   the driver's 8s bounded timeout. Window-scoped snapshots skip the
   keyboard daemon already, but a form whose own content + keyboard
   together exceed budget benefits from dismissing the keyboard first.
-- `scroll_to { id = "..." }` (or `label = "..."`) — scrolls the element
-  into the viewport so a follow-up tap / input_text can hit it.
-  Idempotent (no-op when the element is already on screen). Pair with
-  `input_text` when typing into a field that may be offscreen on a
-  tall SwiftUI form. The Tales driver also auto-scrolls inside the
-  paste path of `input_text`, but explicit `scroll_to` is the safe
-  default when generating scenarios that walk through a form longer
-  than the viewport.
+- `scroll_to { id = "..." }` (or `label = "..."` / `text = "..."`) —
+  scrolls the element into the viewport so a follow-up tap / input_text
+  can hit it, in either direction. Best-effort on both platforms: a
+  no-op when the element is already on screen, and equally when there
+  is nothing to scroll or the container runs out of travel; the only
+  failure is a locator that matches no element. Takes no `timeout` /
+  `interval`. Pair it with `input_text` when typing into a field that
+  may be offscreen on a tall SwiftUI form. The Tales driver also
+  auto-scrolls inside the paste path of `input_text`, but explicit
+  `scroll_to` is the safe default when generating scenarios that walk
+  through a form longer than the viewport. Because it is best-effort,
+  assert with a following `expect { visible }` when the scroll itself
+  is what the step is proving.
 - `wait_visible { id = "..." }` — explicit wait until the element is visible.
 - `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
 
