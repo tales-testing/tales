@@ -1,0 +1,190 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+scenario "Android scroll_to reaches elements in both directions" {
+  tags = ["android", "mobile", "demo", "scroll"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  step "mobile" "android_open_gestures" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.gestures"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.gestures"
+      }
+      wait_visible {
+        id      = "gestures.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  # Forward: the last row of a lazy list is genuinely absent from the
+  # tree until scrolling composes it, so this only passes if scroll_to
+  # actually moved the container rather than reporting a stale hit.
+  step "mobile" "android_scroll_to_last_row" {
+    depends_on = ["android_open_gestures"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      scroll_to {
+        id = "gestures.row.23"
+      }
+    }
+
+    expect {
+      visible {
+        id = "gestures.row.23"
+      }
+    }
+  }
+
+  # Backward, and the regression this suite exists for. The list is now
+  # parked at its end, so the first row is both off-screen and disposed.
+  # A forward-only scroll_to could never reach it: every attempt moved
+  # further away, the container refused to travel, and the handler
+  # answered 404 "element not found" for an element that was simply
+  # above the viewport.
+  step "mobile" "android_scroll_back_to_first_row" {
+    depends_on = ["android_scroll_to_last_row"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      scroll_to {
+        id = "gestures.row.0"
+      }
+    }
+
+    expect {
+      visible {
+        id = "gestures.row.0"
+      }
+    }
+  }
+
+  # Idempotent: calling it on something already on screen is a no-op,
+  # which is what lets a scenario scroll defensively before every
+  # interaction without first querying UI state.
+  step "mobile" "android_scroll_to_visible_is_a_noop" {
+    depends_on = ["android_scroll_back_to_first_row"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      scroll_to {
+        id = "gestures.status.longpress"
+      }
+      scroll_to {
+        id = "gestures.status.longpress"
+      }
+    }
+
+    expect {
+      text {
+        id    = "gestures.status.longpress"
+        value = "longpress=0"
+      }
+    }
+  }
+
+  # Best-effort on a screen with nothing to scroll. This is the shape the
+  # Android port tripped on: a Compose container only publishes itself as
+  # scrollable once its content overflows, so on a screen that fits there
+  # is no container at all. scroll_to must treat that as "already where
+  # it needs to be", not as a missing element, or the same scenario
+  # passes or fails depending on the AVD's screen size.
+  step "mobile" "android_scroll_to_without_a_scrollable" {
+    depends_on = ["android_scroll_to_visible_is_a_noop"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      press_button {
+        button = "back"
+      }
+      wait_visible {
+        id      = "welcome.backnav"
+        timeout = "10s"
+      }
+      tap {
+        id = "welcome.backnav"
+      }
+      wait_visible {
+        id      = "backnav.screen"
+        timeout = "10s"
+      }
+      scroll_to {
+        id = "backnav.leave"
+      }
+    }
+
+    expect {
+      visible {
+        id = "backnav.leave"
+      }
+    }
+  }
+
+  # The label locator resolves the same way, so scroll_to reaches an
+  # element that exposes only an accessibility label.
+  step "mobile" "android_scroll_to_by_text" {
+    depends_on = ["android_scroll_to_without_a_scrollable"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      scroll_to {
+        text = "Press the back button to leave"
+      }
+    }
+
+    expect {
+      visible {
+        id = "backnav.title"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}
