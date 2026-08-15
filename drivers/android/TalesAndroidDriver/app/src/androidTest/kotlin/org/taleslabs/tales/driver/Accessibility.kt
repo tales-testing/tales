@@ -3,6 +3,7 @@ package org.taleslabs.tales.driver
 import android.app.UiAutomation
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 
 /**
  * Adapts a live [AccessibilityNodeInfo] to the encoder's view of a node.
@@ -52,6 +53,43 @@ class AccessibilityNode(private val node: AccessibilityNodeInfo) : NodeAttribute
  */
 fun UiAutomation.windowRoots(): List<AccessibilityNodeInfo> {
     val roots = windows.mapNotNull { it.root }
+
+    if (roots.isNotEmpty()) return roots
+
+    return listOfNotNull(rootInActiveWindow)
+}
+
+/**
+ * Drops the platform's cached copies of every node.
+ *
+ * AccessibilityInteractionClient hands out snapshots of nodes and keeps
+ * them cached, so a tree walk that follows an action the driver itself
+ * performed reports the state from before it. Reassigning serviceInfo is
+ * the documented lever for clearing that cache.
+ *
+ * Anything that changes the screen and then re-reads it without a
+ * snapshot in between has to call this, or it reads its own stale view:
+ * scroll_to scrolled a lazy list correctly for ten attempts and never
+ * saw the rows it had just realized, then reported the element missing.
+ */
+fun UiAutomation.invalidateNodeCache() {
+    serviceInfo = serviceInfo
+}
+
+/**
+ * Like [windowRoots], minus the windows the app under test does not own.
+ *
+ * Scrolling has to stay inside the app: the IME's suggestion strip and
+ * the notification shade are both scrollable, come first in the window
+ * list often enough to matter, and scrolling either of them looks to a
+ * scenario like a scroll that silently did nothing. Snapshots and
+ * locator resolution deliberately keep the full list — a dialog or a
+ * toast is content a scenario asserts on.
+ */
+fun UiAutomation.appWindowRoots(): List<AccessibilityNodeInfo> {
+    val roots = windows
+        .filter { it.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD && it.type != AccessibilityWindowInfo.TYPE_SYSTEM }
+        .mapNotNull { it.root }
 
     if (roots.isNotEmpty()) return roots
 

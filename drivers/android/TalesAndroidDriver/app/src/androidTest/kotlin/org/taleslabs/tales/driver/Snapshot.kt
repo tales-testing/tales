@@ -80,20 +80,17 @@ class SnapshotService(
     }
 
     /**
-     * Drops the platform's cached node copies before walking the tree.
+     * Lets an in-flight frame settle, then drops the platform's cached
+     * node copies before walking the tree.
      *
-     * AccessibilityInteractionClient hands out snapshots of nodes and
-     * keeps them cached; without invalidating, a walk right after a tap
-     * can report the pre-tap state and make Tales assert against a
-     * screen that no longer exists. Resetting serviceInfo is the
-     * documented lever for that. The bounded waitForIdle in front of it
-     * lets an in-flight frame settle without ever blocking indefinitely
-     * — the implicit UiAutomator waits are disabled precisely because
-     * unbounded idle waits hang on apps that animate continuously.
+     * The wait is bounded so it never blocks indefinitely — the implicit
+     * UiAutomator waits are disabled precisely because unbounded idle
+     * waits hang on apps that animate continuously. See
+     * [invalidateNodeCache] for why the cache has to go.
      */
     private fun refreshAccessibilityCache() {
         device.waitForIdle(IDLE_WAIT_MS)
-        automation.serviceInfo = automation.serviceInfo
+        automation.invalidateNodeCache()
     }
 
     private companion object {
