@@ -13,6 +13,16 @@ data class Bounds(val x: Int, val y: Int, val width: Int, val height: Int) {
 }
 
 /**
+ * The way a scrollable container has to move to reveal an element.
+ *
+ * Platform-neutral on purpose: this file stays free of android imports
+ * so the encoding and geometry rules — the parts most likely to regress
+ * — are covered by plain JVM tests. [Router] maps these onto the
+ * matching AccessibilityNodeInfo scroll actions.
+ */
+enum class ScrollDirection { FORWARD, BACKWARD }
+
+/**
  * One element of the normalised UI tree.
  *
  * The field set and the JSON keys are dictated by the Go side's
@@ -114,7 +124,7 @@ object HierarchyEncoder {
             value = valueOf(node),
             type = typeOf(className, node),
             enabled = node.isEnabled,
-            visible = visibilityOf(node, screen),
+            visible = isOnScreen(node, screen),
             bounds = clip(node.boundsInScreen, screen),
             children = children,
         )
@@ -146,9 +156,35 @@ object HierarchyEncoder {
      * A zero-area node passes isVisibleToUser often enough (collapsed
      * containers, off-screen recycler items being measured) that taking
      * the flag alone would have Tales tap at a degenerate point.
+     *
+     * This is the driver's *only* definition of on-screen: the encoder
+     * stamps it onto every node as `visible`, and `scroll_to` decides
+     * whether it still has work to do with it. They used to disagree —
+     * scroll_to demanded full vertical containment — so an element the
+     * hierarchy dump reported as visible was "off screen" to scroll_to,
+     * which then hunted for a container to scroll and 404ed when the
+     * screen had none.
      */
-    private fun visibilityOf(node: NodeAttributes, screen: Bounds): Boolean =
+    fun isOnScreen(node: NodeAttributes, screen: Bounds): Boolean =
         node.isVisibleToUser && !clip(node.boundsInScreen, screen).isEmpty
+
+    /**
+     * Which way a scrollable has to move to bring [bounds] into view.
+     *
+     * [viewport] is the scrolling container's own bounds, not the
+     * screen. A row sitting just above a list that starts halfway down
+     * the display is still at a positive screen y, so comparing against
+     * the screen would call it "below" and scroll away from it.
+     *
+     * Only an element that starts above the viewport needs backward
+     * scrolling; everything else is either below it or already visible,
+     * and the caller returns before scrolling in the latter case.
+     * Scrolling forward unconditionally — which the driver used to do —
+     * makes an element above the fold unreachable, because every attempt
+     * moves it further away.
+     */
+    fun scrollDirectionFor(bounds: Bounds, viewport: Bounds): ScrollDirection =
+        if (bounds.y < viewport.y) ScrollDirection.BACKWARD else ScrollDirection.FORWARD
 
     /** Intersects with the screen, so off-screen nodes report empty bounds. */
     fun clip(bounds: Bounds, screen: Bounds): Bounds {
