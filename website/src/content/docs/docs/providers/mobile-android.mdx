@@ -159,6 +159,7 @@ The platform differences are:
 | `press_button` | `home`, `back`, `recent_apps`, `power`, `volume_up`, `volume_down`. `lock` is accepted as an alias for `power`. |
 | `set_orientation` | `portrait`, `landscape_left`, `landscape_right`. `upside_down` is rejected: Android exposes the rotation but almost no app declares support, so it would appear to succeed while nothing rotated. |
 | `record` | `bit_rate` and `size`; the simctl options (`codec`, `mask`, `display`) are rejected. |
+| `scroll_to` | Scrolls the nearest scrollable ancestor with the accessibility scroll action, rather than dragging the window. Reaches elements above the viewport as well as below. |
 
 The DSL accepts the union of both platforms' values and the backend rejects what
 it cannot honour, naming the platform and listing what it does take. That keeps a
@@ -167,6 +168,25 @@ shared scenario writable while making the failure obvious:
 ```text
 button "back" is not supported on ios (supported: home, lock)
 ```
+
+### Scrolling to an element
+
+`scroll_to { id | label | text }` is best-effort, exactly as on iOS: it is a
+no-op when the element is already on screen, and also when the screen has
+nothing to scroll or the container runs out of travel. The only failure is a
+locator that matches no element at all.
+
+That matters more on Android than on iOS, because a Compose container publishes
+itself as scrollable only once its content overflows the viewport. On a screen
+whose content fits there is no scrollable container in the accessibility tree at
+all — so treating "nothing to scroll" as an error would make the same scenario
+pass or fail depending on the device's screen size. Write `scroll_to` before an
+interaction and let the following `tap` or `input_text` report the real problem
+if the element never appears.
+
+Elements above the current position are reachable too: the driver scrolls
+backward when the element sits above the viewport, and flips direction when a
+container reports it cannot travel any further the way it first tried.
 
 ### Text entry
 

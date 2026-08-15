@@ -486,11 +486,11 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 	}
 }
 
-// decodeScrollToBlock parses a `scroll_to { id | label }` action. The
-// locator is XOR-validated like every other element-targeted action;
+// decodeScrollToBlock parses a `scroll_to { id | label | text }` action.
+// The locator is XOR-validated like every other element-targeted action;
 // no other attributes are accepted (no timeout / interval — the driver
-// resolves the element synchronously and scrolls in one drag, there is
-// no polling loop to bound).
+// bounds its own scroll attempts, so there is no polling loop to size
+// from the scenario).
 func decodeScrollToBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0, len(block.Body.Attributes)+len(block.Body.Blocks))
 
@@ -505,7 +505,7 @@ func decodeScrollToBlock(path string, block *hclsyntax.Block) (*model.MobileActi
 		attrRange := attr.Range()
 		diags = append(diags, diagError(
 			"Unknown scroll_to attribute",
-			fmt.Sprintf("scroll_to attribute %q is not supported; allowed: id, label, text, text.", name),
+			fmt.Sprintf("scroll_to attribute %q is not supported; allowed: id, label, text.", name),
 			&attrRange,
 		))
 	}
