@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -365,5 +366,107 @@ func TestProviderCaptureFailureWritesArtifacts(t *testing.T) {
 
 	if out.ActionResults[0].Screenshot == "" {
 		t.Errorf("expected screenshot path to be set on failure")
+	}
+}
+
+// TestProviderExecuteWaitEnabledActions covers the wait_enabled /
+// wait_disabled actions. They reuse matchEnabled, the predicate behind
+// the `enabled` expectation, so a wait and an assertion on the same
+// element can never disagree about what "actionable" means.
+func TestProviderExecuteWaitEnabledActions(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		attributes map[string]string
+		kind       model.BrowserActionKind
+	}{
+		"wait_enabled on an armed control": {
+			attributes: nil,
+			kind:       model.BrowserActionWaitEnabled,
+		},
+		"wait_disabled on a locked control": {
+			attributes: map[string]string{"disabled": ""},
+			kind:       model.BrowserActionWaitDisabled,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			p, fake := buildFakeProvider(t, provider.CaptureNone, func(f *driver.FakeDriver) {
+				if tc.attributes != nil {
+					f.Attributes["#submit"] = tc.attributes
+				}
+			})
+			defer p.Close()
+
+			exec := &provider.BrowserExecution{
+				TargetName: "chrome",
+				Actions: []provider.BrowserActionExec{
+					{Kind: tc.kind, Selector: "#submit", Timeout: 200 * time.Millisecond},
+					{Kind: model.BrowserActionClick, Selector: "#submit"},
+				},
+			}
+
+			if _, err := p.Execute(context.Background(), provider.Input{
+				Scenario: "demo",
+				Step:     &model.Step{Name: "submit", File: "demo.tales"},
+				Phase:    "step",
+				Attempt:  1,
+				Config:   sampleConfig(),
+				Browser:  exec,
+			}); err != nil {
+				t.Fatalf("%s should pass: %v", tc.kind, err)
+			}
+
+			if !slices.Contains(fake.MethodsCalled(), "Click") {
+				t.Fatalf("expected the click to run after the wait, got %v", fake.MethodsCalled())
+			}
+		})
+	}
+}
+
+// TestProviderExecuteWaitEnabledTimesOut pins the failure mode the action
+// exists to expose: a control that never arms fails on the wait, naming
+// the element, instead of swallowing a click and failing later somewhere
+// unrelated.
+func TestProviderExecuteWaitEnabledTimesOut(t *testing.T) {
+	t.Parallel()
+
+	p, fake := buildFakeProvider(t, provider.CaptureNone, func(f *driver.FakeDriver) {
+		f.Attributes["#submit"] = map[string]string{"disabled": ""}
+	})
+	defer p.Close()
+
+	exec := &provider.BrowserExecution{
+		TargetName: "chrome",
+		Actions: []provider.BrowserActionExec{
+			{
+				Kind:     model.BrowserActionWaitEnabled,
+				Selector: "#submit",
+				Timeout:  100 * time.Millisecond,
+				Interval: 10 * time.Millisecond,
+			},
+			{Kind: model.BrowserActionClick, Selector: "#submit"},
+		},
+	}
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     &model.Step{Name: "submit", File: "demo.tales"},
+		Phase:    "step",
+		Attempt:  1,
+		Config:   sampleConfig(),
+		Browser:  exec,
+	})
+	if err == nil {
+		t.Fatal("expected wait_enabled to fail on a permanently disabled control")
+	}
+
+	if !strings.Contains(err.Error(), "wait_enabled") || !strings.Contains(err.Error(), "element is disabled") {
+		t.Fatalf("expected a wait_enabled / disabled failure, got: %v", err)
+	}
+
+	if slices.Contains(fake.MethodsCalled(), "Click") {
+		t.Fatalf("the click must not run after a failed wait, got %v", fake.MethodsCalled())
 	}
 }

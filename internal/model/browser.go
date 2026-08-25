@@ -23,6 +23,15 @@ const (
 	BrowserActionWaitVisible BrowserActionKind = "wait_visible"
 	// BrowserActionWaitNotVisible waits until a selector is missing or hidden.
 	BrowserActionWaitNotVisible BrowserActionKind = "wait_not_visible"
+	// BrowserActionWaitEnabled waits until a selector carries no `disabled`
+	// attribute. A form armed by an async validation renders its submit
+	// button long before it accepts a click, and a click on a disabled
+	// control is a no-op the DOM reports as a success.
+	BrowserActionWaitEnabled BrowserActionKind = "wait_enabled"
+	// BrowserActionWaitDisabled waits until a selector carries the
+	// `disabled` attribute, e.g. until a submit button locks itself for
+	// the duration of the request.
+	BrowserActionWaitDisabled BrowserActionKind = "wait_disabled"
 	// BrowserActionHover hovers the mouse over an element.
 	BrowserActionHover BrowserActionKind = "hover"
 	// BrowserActionSelect selects an option in a <select> element by value.

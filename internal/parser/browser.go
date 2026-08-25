@@ -27,8 +27,8 @@ const (
 // "unknown action" / "unknown actions attribute" diagnostics so both stay in
 // sync with decodeBrowserActionBlock.
 const browserActionList = "goto, click, fill, clear, press, submit, scroll, " +
-	"wait_visible, wait_not_visible, hover, select, check, uncheck, " +
-	"upload_file, reload, back, or forward"
+	"wait_visible, wait_not_visible, wait_enabled, wait_disabled, hover, " +
+	"select, check, uncheck, upload_file, reload, back, or forward"
 
 // decodeBrowserStepIfNeeded is the dispatcher called by decodeSteps. It
 // decodes a browser-shaped step when provider == "browser", and refuses
@@ -167,34 +167,39 @@ func decodeBrowserActions(path string, body hcl.Body) ([]model.BrowserAction, hc
 	return actions, diags
 }
 
+// browserSelectorOnlyActions are the actions whose entire surface is
+// selector + timeout + interval. They live in a lookup rather than one
+// switch case each so decodeBrowserActionBlock stays under the
+// complexity budget as the wait_* family grows.
+var browserSelectorOnlyActions = map[string]model.BrowserActionKind{
+	string(model.BrowserActionClick):          model.BrowserActionClick,
+	string(model.BrowserActionClear):          model.BrowserActionClear,
+	string(model.BrowserActionSubmit):         model.BrowserActionSubmit,
+	string(model.BrowserActionWaitVisible):    model.BrowserActionWaitVisible,
+	string(model.BrowserActionWaitNotVisible): model.BrowserActionWaitNotVisible,
+	string(model.BrowserActionWaitEnabled):    model.BrowserActionWaitEnabled,
+	string(model.BrowserActionWaitDisabled):   model.BrowserActionWaitDisabled,
+	string(model.BrowserActionHover):          model.BrowserActionHover,
+	string(model.BrowserActionCheck):          model.BrowserActionCheck,
+	string(model.BrowserActionUncheck):        model.BrowserActionUncheck,
+}
+
 func decodeBrowserActionBlock(path string, block *hclsyntax.Block) (*model.BrowserAction, hcl.Diagnostics) {
+	if kind, ok := browserSelectorOnlyActions[block.Type]; ok {
+		return decodeBrowserSelectorOnly(path, block, kind)
+	}
+
 	switch block.Type {
 	case string(model.BrowserActionGoto):
 		return decodeBrowserGoto(path, block)
-	case string(model.BrowserActionClick):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionClick)
 	case string(model.BrowserActionFill):
 		return decodeBrowserFill(path, block)
-	case string(model.BrowserActionClear):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionClear)
 	case string(model.BrowserActionPress):
 		return decodeBrowserPress(path, block)
-	case string(model.BrowserActionSubmit):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionSubmit)
 	case string(model.BrowserActionScroll):
 		return decodeBrowserScroll(path, block)
-	case string(model.BrowserActionWaitVisible):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionWaitVisible)
-	case string(model.BrowserActionWaitNotVisible):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionWaitNotVisible)
-	case string(model.BrowserActionHover):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionHover)
 	case string(model.BrowserActionSelect):
 		return decodeBrowserSelect(path, block)
-	case string(model.BrowserActionCheck):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionCheck)
-	case string(model.BrowserActionUncheck):
-		return decodeBrowserSelectorOnly(path, block, model.BrowserActionUncheck)
 	case string(model.BrowserActionUploadFile):
 		return decodeBrowserUploadFile(path, block)
 	case string(model.BrowserActionReload):

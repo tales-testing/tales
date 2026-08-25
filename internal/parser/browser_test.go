@@ -140,6 +140,13 @@ scenario "actions_smoke" {
       wait_not_visible {
         selector = ".spinner"
       }
+      wait_enabled {
+        selector = "#submit"
+        timeout  = "20s"
+      }
+      wait_disabled {
+        selector = "#submit"
+      }
       hover {
         selector = "#menu"
       }
@@ -175,8 +182,22 @@ scenario "actions_smoke" {
 		t.Fatal("expected step.Browser to be populated")
 	}
 
-	if got := len(step.Browser.Actions); got != 18 {
-		t.Fatalf("expected 18 actions, got %d", got)
+	if got := len(step.Browser.Actions); got != 20 {
+		t.Fatalf("expected 20 actions, got %d", got)
+	}
+
+	// wait_enabled / wait_disabled sit right after wait_not_visible and
+	// carry the same selector-only surface as the other wait actions.
+	if got := step.Browser.Actions[10].Kind; got != model.BrowserActionWaitEnabled {
+		t.Fatalf("expected wait_enabled at index 10, got %q", got)
+	}
+
+	if step.Browser.Actions[10].Timeout.Empty() {
+		t.Fatal("expected the wait_enabled timeout expression to be captured")
+	}
+
+	if got := step.Browser.Actions[11].Kind; got != model.BrowserActionWaitDisabled {
+		t.Fatalf("expected wait_disabled at index 11, got %q", got)
 	}
 }
 

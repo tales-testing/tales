@@ -112,6 +112,12 @@ func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action
 		return wrapDriver(drv.WaitVisible(ctx, action.Selector))
 	case model.BrowserActionWaitNotVisible:
 		return wrapDriver(drv.WaitNotVisible(ctx, action.Selector))
+	case model.BrowserActionWaitEnabled:
+		// Same predicate as the `enabled` expectation, so a wait and an
+		// assertion on the same element can never disagree.
+		return matchEnabled(ctx, drv, action.Selector, true, action.Timeout, action.Interval)
+	case model.BrowserActionWaitDisabled:
+		return matchEnabled(ctx, drv, action.Selector, false, action.Timeout, action.Interval)
 	case model.BrowserActionHover:
 		return wrapDriver(drv.Hover(ctx, action.Selector))
 	case model.BrowserActionSelect:
