@@ -654,6 +654,8 @@ var actionLabels = map[model.MobileActionKind]string{
 	model.MobileActionSetOrientation: "Set orientation",
 	model.MobileActionWaitVisible:    "Wait visible",
 	model.MobileActionWaitNotVisible: "Wait not visible",
+	model.MobileActionWaitEnabled:    "Wait enabled",
+	model.MobileActionWaitDisabled:   "Wait disabled",
 }
 
 func actionLabel(kind model.MobileActionKind, id, maskedValue string, secure bool) string {
@@ -746,13 +748,55 @@ func visibilityFromAction(action provider.MobileActionExec) provider.MobileVisib
 	}
 }
 
-func (p *Provider) handleAction(ctx context.Context, session *Session, action provider.MobileActionExec) error {
+// stateFromAction narrows a wait_enabled / wait_disabled action into the
+// state expectation the shared wait helper consumes. Like
+// visibilityFromAction, it is the single place the locator crosses over:
+// any locator field added later must be threaded here too.
+func stateFromAction(action provider.MobileActionExec) provider.MobileStateExpectationExec {
+	return provider.MobileStateExpectationExec{
+		ID:       action.ID,
+		Label:    action.Label,
+		Text:     action.Text,
+		Timeout:  action.Timeout,
+		Interval: action.Interval,
+	}
+}
+
+// handleWaitAction runs the wait_* actions. They resolve their own
+// element with their own predicate, so they run before the shared
+// wait-for-element step rather than through it. The first return value
+// reports whether the action kind was a wait action; when false the
+// caller continues with element-based handling.
+//
+// wait_enabled / wait_disabled exist because a control that is visible
+// is not necessarily actionable: a screen that arms asynchronously (a
+// capture button waiting on the camera, a submit button unlocked by a
+// background check) renders the element long before it accepts input,
+// and a tap on a disabled control is swallowed with no error at all.
+// The failure then surfaces on a later, unrelated assertion.
+func (p *Provider) handleWaitAction(ctx context.Context, session *Session, action provider.MobileActionExec) (bool, error) {
 	if action.Kind == model.MobileActionWaitVisible {
-		return p.waitForVisibility(ctx, session, visibilityFromAction(action), true, action.First)
+		return true, p.waitForVisibility(ctx, session, visibilityFromAction(action), true, action.First)
 	}
 
 	if action.Kind == model.MobileActionWaitNotVisible {
-		return p.waitForVisibility(ctx, session, visibilityFromAction(action), false, action.First)
+		return true, p.waitForVisibility(ctx, session, visibilityFromAction(action), false, action.First)
+	}
+
+	if action.Kind == model.MobileActionWaitEnabled {
+		return true, p.waitForEnabled(ctx, session, stateFromAction(action), true, action.First)
+	}
+
+	if action.Kind == model.MobileActionWaitDisabled {
+		return true, p.waitForEnabled(ctx, session, stateFromAction(action), false, action.First)
+	}
+
+	return false, nil
+}
+
+func (p *Provider) handleAction(ctx context.Context, session *Session, action provider.MobileActionExec) error {
+	if handled, err := p.handleWaitAction(ctx, session, action); handled {
+		return err
 	}
 
 	// Device-level actions target no element, so they skip the
@@ -782,6 +826,7 @@ func (p *Provider) handleAction(ctx context.Context, session *Session, action pr
 	case model.MobileActionScroll:
 		return executeSwipe(ctx, session, action, node, true)
 	case model.MobileActionWaitVisible, model.MobileActionWaitNotVisible,
+		model.MobileActionWaitEnabled, model.MobileActionWaitDisabled,
 		model.MobileActionPressKey, model.MobileActionPressButton, model.MobileActionSetOrientation,
 		model.MobileActionDismissKeyboard, model.MobileActionScrollTo:
 		// Handled before element resolution (wait_* and the device-level
@@ -1053,13 +1098,13 @@ func (p *Provider) handleExpect(ctx context.Context, session *Session, expect pr
 	}
 
 	for _, v := range expect.Enabled {
-		if err := p.waitForEnabled(ctx, session, v, true); err != nil {
+		if err := p.waitForEnabled(ctx, session, v, true, false); err != nil {
 			return err
 		}
 	}
 
 	for _, v := range expect.Disabled {
-		if err := p.waitForEnabled(ctx, session, v, false); err != nil {
+		if err := p.waitForEnabled(ctx, session, v, false, false); err != nil {
 			return err
 		}
 	}
@@ -1162,7 +1207,7 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 	return fmt.Errorf("%s mismatch for %s after %s: want=%q got=%q: %w", kind, locator, opts.Timeout, want, got, err)
 }
 
-func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provider.MobileStateExpectationExec, want bool) error {
+func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provider.MobileStateExpectationExec, want, first bool) error {
 	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
 
 	var (
@@ -1172,7 +1217,7 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 
 	// Same locator-threading rule as waitForNodeValue: dropping Text
 	// here made `expect { enabled { text = "Sign in" } }` unusable.
-	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text}
+	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text, First: first}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElement(pollCtx, session, locator)

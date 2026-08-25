@@ -14,6 +14,15 @@ const (
 	MobileActionWaitVisible MobileActionKind = "wait_visible"
 	// MobileActionWaitNotVisible waits until an element is missing or not visible.
 	MobileActionWaitNotVisible MobileActionKind = "wait_not_visible"
+	// MobileActionWaitEnabled waits until an element exists and is enabled.
+	// Screens that arm asynchronously (a capture button waiting on the
+	// camera, a submit button unlocked by a background validation) leave
+	// the control visible but inert in between, and a tap on an inert
+	// control is swallowed with no error.
+	MobileActionWaitEnabled MobileActionKind = "wait_enabled"
+	// MobileActionWaitDisabled waits until an element exists and is disabled,
+	// e.g. until a submit button locks itself while the request is in flight.
+	MobileActionWaitDisabled MobileActionKind = "wait_disabled"
 	// MobileActionSwipe drags one finger across an element in a direction.
 	MobileActionSwipe MobileActionKind = "swipe"
 	// MobileActionScroll scrolls an element's content in a direction.

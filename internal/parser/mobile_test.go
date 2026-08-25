@@ -1275,3 +1275,125 @@ scenario "conflict" {
 		t.Fatalf("unexpected diagnostic: %s", diags.Error())
 	}
 }
+
+func TestLoadPathMobileWaitEnabledActions(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "arm" {
+  step "mobile" "submit" {
+    platform = "android"
+    target = "pixel"
+    actions {
+      wait_enabled {
+        id       = "form.submit"
+        timeout  = "20s"
+        interval = "500ms"
+      }
+      tap {
+        id = "form.submit"
+      }
+      wait_disabled {
+        label = "Sign in"
+      }
+      wait_enabled {
+        text = "Continue"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Mobile.Actions
+
+	want := []model.MobileActionKind{
+		model.MobileActionWaitEnabled,
+		model.MobileActionTap,
+		model.MobileActionWaitDisabled,
+		model.MobileActionWaitEnabled,
+	}
+
+	if len(actions) != len(want) {
+		t.Fatalf("expected %d actions, got %d", len(want), len(actions))
+	}
+
+	for i, kind := range want {
+		if actions[i].Kind != kind {
+			t.Fatalf("action %d: want %q got %q", i, kind, actions[i].Kind)
+		}
+	}
+
+	if actions[0].Timeout.Empty() || actions[0].Interval.Empty() {
+		t.Fatal("expected wait_enabled timeout and interval expressions to be captured")
+	}
+
+	if actions[2].Label.Empty() {
+		t.Fatal("expected wait_disabled label locator to be captured")
+	}
+
+	if actions[3].Text.Empty() {
+		t.Fatal("expected wait_enabled text locator to be captured")
+	}
+}
+
+func TestLoadPathMobileWaitEnabledRejectsBadBlocks(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		body string
+		want string
+	}{
+		"conflicting locator": {
+			body: `wait_enabled {
+        id    = "form.submit"
+        label = "Sign in"
+      }`,
+			want: "Conflicting element locator",
+		},
+		"missing locator": {
+			body: `wait_disabled {
+        timeout = "5s"
+      }`,
+			want: "Missing element locator",
+		},
+		"unknown attribute": {
+			body: `wait_enabled {
+        id    = "form.submit"
+        value = "nope"
+      }`,
+			want: "Unknown wait_enabled attribute",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			content := `version = 1
+
+scenario "arm" {
+  step "mobile" "submit" {
+    platform = "android"
+    target = "pixel"
+    actions {
+      ` + tc.body + `
+    }
+  }
+}
+`
+
+			_, diags := LoadPath(writeTales(t, content))
+			if !diags.HasErrors() {
+				t.Fatal("expected diagnostics")
+			}
+
+			if !strings.Contains(diags.Error(), tc.want) {
+				t.Fatalf("expected %q, got %s", tc.want, diags.Error())
+			}
+		})
+	}
+}

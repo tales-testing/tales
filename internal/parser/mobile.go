@@ -396,7 +396,7 @@ func decodeMobileActions(path string, body hcl.Body) ([]model.MobileAction, hcl.
 
 	for name, attr := range syntaxBody.Attributes {
 		attrRange := attr.Range()
-		diags = append(diags, diagError("Unknown actions attribute", fmt.Sprintf("attribute %q is not allowed inside actions; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, wait_visible, or wait_not_visible blocks.", name), &attrRange))
+		diags = append(diags, diagError("Unknown actions attribute", fmt.Sprintf("attribute %q is not allowed inside actions; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, wait_visible, wait_not_visible, wait_enabled, or wait_disabled blocks.", name), &attrRange))
 	}
 
 	actions := make([]model.MobileAction, 0, len(syntaxBody.Blocks))
@@ -474,13 +474,17 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 		return decodeWaitBlock(path, block, model.MobileActionWaitVisible)
 	case string(model.MobileActionWaitNotVisible):
 		return decodeWaitBlock(path, block, model.MobileActionWaitNotVisible)
+	case string(model.MobileActionWaitEnabled):
+		return decodeWaitBlock(path, block, model.MobileActionWaitEnabled)
+	case string(model.MobileActionWaitDisabled):
+		return decodeWaitBlock(path, block, model.MobileActionWaitDisabled)
 	case string(model.MobileActionDismissKeyboard):
 		return decodeDismissKeyboardBlock(path, block)
 	case string(model.MobileActionScrollTo):
 		return decodeScrollToBlock(path, block)
 	default:
 		blockRange := block.DefRange()
-		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, dismiss_keyboard, scroll_to, wait_visible, or wait_not_visible.", block.Type), &blockRange))
+		diags = append(diags, diagError("Unknown action", fmt.Sprintf("action %q is not supported; use tap, double_tap, long_press, input_text, clear_text, swipe, scroll, press_key, press_button, set_orientation, dismiss_keyboard, scroll_to, wait_visible, wait_not_visible, wait_enabled, or wait_disabled.", block.Type), &blockRange))
 
 		return nil, diags
 	}

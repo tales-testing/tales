@@ -2834,3 +2834,163 @@ func TestExecuteExpectationsAcceptTextLocator(t *testing.T) {
 		})
 	}
 }
+
+// TestExecuteWaitEnabledUnlocksBeforeTap covers the case the action
+// exists for: the element renders while still inert, and the tap must
+// not fire until it accepts input. A tap on a disabled control is
+// swallowed by both platforms with no error, so without the wait the
+// scenario fails later, somewhere unrelated.
+func TestExecuteWaitEnabledUnlocksBeforeTap(t *testing.T) {
+	t.Parallel()
+
+	inert := newButtonNode()
+	inert.Children[0].Enabled = false
+
+	armed := newButtonNode()
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{inert, inert, armed}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("submit"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{
+					Kind:     model.MobileActionWaitEnabled,
+					ID:       "welcome.register",
+					Timeout:  2 * time.Second,
+					Interval: 10 * time.Millisecond,
+				},
+				{Kind: model.MobileActionTap, ID: "welcome.register", Timeout: time.Second},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("wait_enabled then tap should pass: %v", err)
+	}
+
+	drv.mu.Lock()
+	taps := append([]fakeTap(nil), drv.taps...)
+	drv.mu.Unlock()
+
+	if len(taps) != 1 {
+		t.Fatalf("expected exactly one tap, got %d", len(taps))
+	}
+
+	if taps[0].id != "welcome.register" {
+		t.Fatalf("unexpected tap target %q", taps[0].id)
+	}
+}
+
+func TestExecuteWaitDisabledPasses(t *testing.T) {
+	t.Parallel()
+
+	inert := newButtonNode()
+	inert.Children[0].Enabled = false
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode(), inert}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("lock"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{
+					Kind:     model.MobileActionWaitDisabled,
+					ID:       "welcome.register",
+					Timeout:  2 * time.Second,
+					Interval: 10 * time.Millisecond,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("wait_disabled should pass: %v", err)
+	}
+}
+
+// TestExecuteWaitEnabledAcceptsTextLocator pins stateFromAction carrying
+// the text locator across, the same threading rule visibilityFromAction
+// documents.
+func TestExecuteWaitEnabledAcceptsTextLocator(t *testing.T) {
+	t.Parallel()
+
+	inert := newTextButtonNode()
+	inert.Children[0].Enabled = false
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{inert, newTextButtonNode()}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("submit"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{
+					Kind:     model.MobileActionWaitEnabled,
+					Text:     "Sign in",
+					Timeout:  2 * time.Second,
+					Interval: 10 * time.Millisecond,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("wait_enabled with a text locator should pass: %v", err)
+	}
+}
+
+func TestExecuteWaitEnabledTimesOutWithLastSeenState(t *testing.T) {
+	t.Parallel()
+
+	inert := newButtonNode()
+	inert.Children[0].Enabled = false
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{inert}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("submit"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{
+					Kind:     model.MobileActionWaitEnabled,
+					ID:       "welcome.register",
+					Timeout:  100 * time.Millisecond,
+					Interval: 10 * time.Millisecond,
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected a timeout error")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, `element id="welcome.register" was not enabled after`) {
+		t.Fatalf("expected the not-enabled summary, got %v", msg)
+	}
+
+	if !strings.Contains(msg, "last seen enabled=false") {
+		t.Fatalf("expected the last-seen state in the message, got %v", msg)
+	}
+}
