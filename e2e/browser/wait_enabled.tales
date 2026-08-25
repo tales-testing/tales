@@ -1,0 +1,55 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+# The submit button ships disabled and arms ~800ms later. A click on a
+# disabled button is a no-op the DOM reports as a success, so without
+# wait_enabled the status stays "idle" and the failure surfaces on an
+# assertion that says nothing about the real cause.
+scenario "Browser wait_enabled arms the submit button" {
+  tags = ["browser", "web", "wait_enabled"]
+
+  step "browser" "wait_then_submit" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/arming"
+      }
+      wait_visible {
+        selector = "[data-testid='arming.submit']"
+      }
+      wait_enabled {
+        selector = "[data-testid='arming.submit']"
+        timeout  = "10s"
+      }
+      click {
+        selector = "[data-testid='arming.submit']"
+      }
+      wait_disabled {
+        selector = "[data-testid='arming.submit']"
+        timeout  = "10s"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='arming.status']"
+        value    = "submitted"
+      }
+      disabled {
+        selector = "[data-testid='arming.submit']"
+      }
+    }
+  }
+}

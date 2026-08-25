@@ -95,6 +95,36 @@ func (s *serverState) webUpload(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(uploadPage))
 }
 
+// armingPage backs the browser `wait_enabled` action e2e. The submit
+// button ships disabled and arms itself ~800ms later, the shape of any
+// form gated on an async check. A click on a disabled button is a no-op
+// the DOM reports as a success, so a scenario without the wait reaches
+// the status assertion with the button never having fired.
+const armingPage = `<!doctype html>
+<html>
+  <head>
+    <title>Arming</title>
+  </head>
+  <body>
+    <h1 data-testid="arming.title">Arming</h1>
+    <button data-testid="arming.submit" type="button" disabled>Submit</button>
+    <p data-testid="arming.status">idle</p>
+    <script>
+      var button = document.querySelector("[data-testid='arming.submit']");
+
+      button.addEventListener("click", function () {
+        document.querySelector("[data-testid='arming.status']").textContent = "submitted";
+        button.disabled = true;
+      });
+
+      setTimeout(function () {
+        button.removeAttribute("disabled");
+      }, 800);
+    </script>
+  </body>
+</html>
+`
+
 func (s *serverState) webLoginGet(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -150,4 +180,10 @@ func (s *serverState) webForm(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(formPage))
+}
+
+func (s *serverState) webArming(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(armingPage))
 }

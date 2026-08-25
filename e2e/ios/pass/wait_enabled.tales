@@ -1,0 +1,120 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      iphone = {
+        platform    = "ios"
+        device_name = env("IOS_DEVICE_NAME", "iPhone 17")
+        app         = env("IOS_APP_PATH")
+        app_id      = env("IOS_BUNDLE_ID", "org.taleslabs.tales.demo")
+        driver = {
+          host     = env("IOS_DRIVER_HOST", "127.0.0.1")
+          port     = 9080
+          external = false
+          timeout  = env("TALES_DRIVER_TIMEOUT", "30s")
+        }
+      }
+    }
+  }
+}
+
+generator "email" "ios_wait_enabled_email" {
+  prefix = "ios-wait-"
+  domain = "example.com"
+}
+
+generator "password" "ios_wait_enabled_password" {
+  length      = 16
+  min_upper   = 1
+  min_lower   = 1
+  min_digit   = 1
+  min_special = 1
+}
+
+# login.tales asserts the same arming with the two-step workaround: the
+# fill step ends on `expect { enabled }` and the tap lives in the next
+# step. Here the wait sits inside the action sequence instead, so the
+# step boundaries follow the scenario rather than the tool.
+scenario "iOS wait_enabled arms the submit button" {
+  tags = ["ios", "mobile", "demo", "wait_enabled"]
+
+  skip_unless {
+    os      = ["darwin"]
+    env_set = ["IOS_APP_PATH"]
+    reason  = "iOS tests require macOS and IOS_APP_PATH pointing at a simulator-built app"
+  }
+
+  step "mobile" "launch" {
+    platform = "ios"
+    target   = "iphone"
+    launch {
+      clear_state = true
+    }
+    actions {
+      wait_visible {
+        id      = "welcome.signin"
+        timeout = "20s"
+      }
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id      = "login.screen"
+        timeout = "10s"
+      }
+    }
+
+    # Visible but inert: exactly the state a tap would silently lose.
+    expect {
+      disabled {
+        id = "login.submit"
+      }
+    }
+  }
+
+  step "mobile" "wait_then_submit" {
+    depends_on = ["launch"]
+
+    platform = "ios"
+    target   = "iphone"
+    actions {
+      input_text {
+        id    = "login.email"
+        value = generate("ios_wait_enabled_email")
+      }
+      input_text {
+        id     = "login.password"
+        value  = generate("ios_wait_enabled_password")
+        secure = true
+      }
+      wait_enabled {
+        id      = "login.submit"
+        timeout = "10s"
+      }
+      tap {
+        id = "login.submit"
+      }
+      wait_visible {
+        id      = "feed.screen"
+        timeout = "15s"
+      }
+    }
+    expect {
+      visible {
+        id      = "feed.list"
+        timeout = "5s"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "terminate" {
+      when = true
+
+      platform = "ios"
+      target   = "iphone"
+      terminate {}
+    }
+  }
+}

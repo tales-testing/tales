@@ -140,6 +140,7 @@ func main() {
 	r.HandleFunc("/web/dashboard", state.webDashboard).Methods(http.MethodGet)
 	r.HandleFunc("/web/form", state.webForm).Methods(http.MethodGet)
 	r.HandleFunc("/web/upload", state.webUpload).Methods(http.MethodGet)
+	r.HandleFunc("/web/arming", state.webArming).Methods(http.MethodGet)
 
 	addr := ":" + port
 	server := &http.Server{

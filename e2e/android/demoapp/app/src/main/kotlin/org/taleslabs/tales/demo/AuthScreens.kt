@@ -100,6 +100,11 @@ fun LoginScreen(auth: AuthStore, onBack: () -> Unit, onSignedIn: () -> Unit) {
 
         Button(
             onClick = { auth.signIn(email, password, onSignedIn) },
+            // Same gate as the iOS demo's Sign In button: the two apps
+            // are driven by the same scenarios, so a control that is
+            // actionable on one platform and inert on the other shows up
+            // as a driver bug it is not.
+            enabled = email.isNotEmpty() && password.isNotEmpty() && !auth.isLoggingIn,
             modifier = Modifier.testTag("login.submit"),
         ) {
             Text("Sign in")

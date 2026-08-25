@@ -1,0 +1,110 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+# The sign-in button is gated on both fields being filled, so it renders
+# inert and arms later. That is the shape wait_enabled exists for: the
+# control is visible the whole time, and a tap on it while disabled is
+# swallowed with no error, so without the wait the run fails further
+# down on an assertion that has nothing to do with the real cause.
+scenario "Android wait_enabled arms the submit button" {
+  tags = ["android", "mobile", "demo", "wait_enabled"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  step "mobile" "android_open_login" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.signin"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id      = "login.screen"
+        timeout = "10s"
+      }
+    }
+
+    # Visible but inert: exactly the state a tap would silently lose.
+    expect {
+      visible {
+        id = "login.submit"
+      }
+      disabled {
+        id = "login.submit"
+      }
+    }
+  }
+
+  # Everything below is one step, which is the point: the wait belongs in
+  # the action sequence, not in a step boundary drawn by the tool.
+  step "mobile" "android_wait_then_submit" {
+    depends_on = ["android_open_login"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      input_text {
+        id    = "login.email"
+        value = "user@example.com"
+      }
+      input_text {
+        id     = "login.password"
+        value  = "Secret123!"
+        secure = true
+      }
+      wait_enabled {
+        id      = "login.submit"
+        timeout = "10s"
+      }
+      tap {
+        id = "login.submit"
+      }
+      wait_visible {
+        id      = "feed.screen"
+        timeout = "10s"
+      }
+    }
+
+    expect {
+      enabled {
+        id = "feed.profile"
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}
