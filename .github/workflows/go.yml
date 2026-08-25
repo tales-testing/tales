@@ -13,6 +13,23 @@ on:
       - 'website/**'
       - 'README.md'
       - 'CLAUDE.md'
+  # Manual runs pick the Android e2e emulator image. The defaults below
+  # are what push and pull_request use; a dispatch is how you reproduce a
+  # report against another API level, or check the suite still passes on
+  # a Google APIs image before shipping something that depends on one.
+  workflow_dispatch:
+    inputs:
+      android_api_level:
+        description: 'Android API level for the e2e emulator'
+        type: string
+        default: '34'
+      android_target:
+        description: 'Emulator system image'
+        type: choice
+        options:
+          - default
+          - google_apis
+        default: default
 
 jobs:
   build:
@@ -123,6 +140,18 @@ jobs:
     name: Android e2e
     runs-on: ubuntu-latest
 
+    # The AOSP image is the default because nothing in the suite needs
+    # Google Play Services, and the google_apis image spends its first
+    # minutes updating them. A run was lost to exactly that: while the
+    # scenarios ran, the device log filled with Chimera module updates,
+    # Icing indexing and a WebView process reaper, an APK install took
+    # 17s, and the app under test was relaunched mid-scenario, which
+    # rewound it to its first screen. Tales then reported an element that
+    # had been on screen a moment earlier as missing.
+    env:
+      ANDROID_API_LEVEL: ${{ inputs.android_api_level || '34' }}
+      ANDROID_EMULATOR_TARGET: ${{ inputs.android_target || 'default' }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -153,8 +182,8 @@ jobs:
       - name: Android e2e
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_EMULATOR_TARGET }}
           arch: x86_64
           profile: pixel_6
           avd-name: tales-e2e
@@ -176,9 +205,32 @@ jobs:
           # (small) diagnostic loss: an app that dies still shows up as
           # missing elements plus a screenshot, just without the modal
           # naming it.
+          #
+          # Retried once, like the iOS job and for the same kind of
+          # reason: what is being absorbed is the emulator, not the
+          # suite. An APK install that takes 17s, a system-initiated app
+          # relaunch or a `/hierarchy` call outlasting its poll deadline
+          # all fail a scenario for reasons no scenario can prevent, and
+          # a single attempt is then useless as a merge gate. A real
+          # regression still fails twice.
+          #
+          # The first attempt's reports and artifacts move aside instead
+          # of being overwritten, so a retried-then-green run keeps the
+          # evidence that explains the stall.
           script: |
             adb shell settings put global hide_error_dialogs 1
-            make e2e-android && make e2e-android-failure
+
+            if ! make e2e-android; then
+              echo "::warning::Android e2e failed on the first attempt, retrying once (first-attempt evidence is under attempt-1/ in the artifacts)"
+
+              mkdir -p build/attempt-1
+              [ -d build/reports ] && mv build/reports build/attempt-1/reports
+              [ -d build/artifacts ] && mv build/artifacts build/attempt-1/artifacts
+
+              make e2e-android
+            fi
+
+            make e2e-android-failure
         timeout-minutes: 30
 
       - name: Upload Android e2e artifacts
@@ -189,6 +241,7 @@ jobs:
           path: |
             build/reports/e2e-android*.*
             build/artifacts/mobile/
+            build/attempt-1/
           if-no-files-found: ignore
 
   # Guards the committed driver APKs against drifting from the Kotlin
