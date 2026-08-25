@@ -11,7 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -45,9 +45,15 @@ class MainActivity : ComponentActivity() {
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun DemoApp() {
-    val auth = remember { AuthStore() }
-    var screen by remember { mutableStateOf(Screen.Welcome) }
-    var detailIndex by remember { mutableStateOf(0) }
+    // Saveable, not merely remembered: the activity can be relaunched
+    // under the running scenario (a process replaced after an install, a
+    // configuration change the manifest does not absorb), and a store
+    // that came back empty would rewind the app to Welcome with every
+    // field cleared. Tales would then report a missing element on a
+    // screen it had just asserted.
+    val auth = rememberSaveable(saver = AuthStore.Saver) { AuthStore() }
+    var screen by rememberSaveable { mutableStateOf(Screen.Welcome) }
+    var detailIndex by rememberSaveable { mutableStateOf(0) }
 
     // Without this, Compose test tags are invisible to UiAutomator: they
     // live in the semantics tree, which the accessibility layer does not

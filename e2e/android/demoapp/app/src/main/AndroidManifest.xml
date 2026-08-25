@@ -16,8 +16,16 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TalesDemo">
 
+        <!-- Handling these in-process keeps a configuration change from
+             recreating the activity mid-scenario. A CI emulator changes
+             them on its own (the soft keyboard resizing the window, a
+             density or uiMode refresh after a package update), and a
+             recreation there rewinds the app under test to its first
+             screen, which surfaces as a Tales failure naming an element
+             that was on screen a moment earlier. -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|locale|layoutDirection|fontScale"
             android:exported="true"
             android:label="Tales Demo"
             android:theme="@style/Theme.TalesDemo">
