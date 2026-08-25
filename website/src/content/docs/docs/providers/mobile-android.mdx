@@ -36,13 +36,21 @@ brew install --cask android-platform-tools android-commandlinetools
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 sdkmanager --sdk_root="$ANDROID_HOME" \
   "platform-tools" "emulator" \
-  "system-images;android-34;google_apis;arm64-v8a"
+  "system-images;android-34;default;arm64-v8a"
 
 avdmanager create avd -n tales-e2e \
-  -k "system-images;android-34;google_apis;arm64-v8a" --device pixel_6
+  -k "system-images;android-34;default;arm64-v8a" --device pixel_6
 
 export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
 ```
+
+Prefer the `default` (AOSP) image over `google_apis` unless the app under test
+needs Play Services. The Google APIs image spends its first minutes updating
+them, and that work competes with your scenarios: it slows APK installs to tens
+of seconds, and it can relaunch the app under test, which rewinds it to its
+first screen mid-scenario. Tales then reports an element that was on screen a
+moment earlier as missing. Tales' own Android suite moved to the AOSP image for
+exactly that reason and runs about twice as fast on it.
 
 ## Architecture
 
