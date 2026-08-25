@@ -100,6 +100,7 @@ When the suite contains `step "mobile"` blocks:
 - Selectors use accessibility identifiers only, never visible text
 - Every screen entry pins state with at least one `visible { id = "..." }` or `wait_visible`
 - UI transitions use `wait_visible` / `wait_not_visible` rather than sleeps
+- Controls the screen arms asynchronously are preceded by `wait_enabled`, not tapped on sight
 - Sensitive `input_text` values are flagged with `secure = true`
 - `terminate {}` lives in `teardown` and uses `when = true` (or `when = can(...)` when launch is conditional)
 - Parallel scenarios target distinct mobile targets — the runtime serializes per-target work

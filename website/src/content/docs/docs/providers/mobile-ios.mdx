@@ -186,6 +186,35 @@ Element-targeted actions:
 - `scroll { id = "..." direction = "down" }`, scrolls the element's content. `direction` is the content direction to reveal (the finger travels the opposite way). Accepts the same optional `distance` / `duration` as `swipe`.
 - `scroll_to { id = "..." }` (or `label = "..."` / `text = "..."`), scrolls the element into the viewport so a follow-up tap / input_text can hit it. Best-effort: a no-op when the element is already in the safe area, and equally when there is nothing to scroll or the container runs out of travel; the only failure is a locator that matches no element. It takes no `timeout` / `interval` — the driver bounds its own attempts. **Useful before `input_text` on offscreen fields on iOS 26.x**: a focus tap that misses the actual input affordance leaves no first responder, the synth path then trips `Failed to synthesize event: Neither element nor any descendant has keyboard focus`, and that XCTest API violation tears the runner down mid-scenario. Tales' `input_text` driver handler (both paste mode for SecureField and the regular TextField path) auto-attempts one scroll + retap before bailing with a 500, so most cases work without an explicit `scroll_to`; reach for it when the auto-scroll is not enough (deeply nested scroll containers, custom keyboard accessories) or to make the test intent explicit.
 
+Waiting actions poll the same hierarchy the expectations read, and take the same
+locator (`id` XOR `label` XOR `text`) plus optional `timeout` / `interval`:
+
+- `wait_visible { id = "..." }`, until the element exists and is visible.
+- `wait_not_visible { id = "..." }`, until the element is gone or hidden.
+- `wait_enabled { id = "..." }`, until the element exists and is enabled.
+- `wait_disabled { id = "..." }`, until the element exists and is disabled.
+
+`wait_enabled` is the one to reach for whenever a screen arms asynchronously: a
+capture button waiting on the camera, a submit button unlocked by a background
+check, a control re-enabled once an upload finishes. Being visible is not being
+actionable, and a tap on a disabled control is swallowed with no error at all —
+the run then fails several steps later on an assertion that says nothing about
+the real cause.
+
+```hcl
+actions {
+  input_text { id = "login.email" value = "user@example.com" }
+  input_text { id = "login.password" value = "Secret123!" secure = true }
+  wait_enabled { id = "login.submit" timeout = "10s" }
+  tap { id = "login.submit" }
+}
+```
+
+`expect { enabled { ... } }` polls too, so the same wait can be expressed by
+ending a step on that expectation. Use the expectation when the arming *is* the
+assertion, and `wait_enabled` when it is just a precondition of the next action:
+that way the step boundaries follow the scenario rather than the tool.
+
 Device-level actions take no `id`:
 
 - `press_key { key = "return" }`, presses a hardware keyboard key. `key` is one of `return`, `enter`, `tab`, `space`, `escape`, `delete`. When `key` is `return` or `enter` and a soft keyboard is up, the driver routes the press to the keyboard's submit button (`Return` / `Done` / `Send` / locale variants) rather than the text-input event-synthesis path — synthesizing `\r` while a SwiftUI `TextField` is the first responder crashes the XCTest runner on iOS 26.x, so the keyboard-button path is both safer and semantically more accurate (it fires the field's `submitLabel`).
@@ -205,7 +234,7 @@ If your scenario types into a long form and then needs a hierarchy snapshot, ins
 
 ### Duplicate-id sibling resolution (`first = true`)
 
-Every element-targeted action (`tap`, `double_tap`, `long_press`, `input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`, `wait_not_visible`) accepts an optional `first = true` attribute. By default the resolver requires that an `id` matches a single logical element: a node and a same-id descendant collapse to one match (the SwiftUI wrapper + inner control case), but two genuinely distinct sibling matches surface `multiple elements share the same id`. That strict default is deliberate — it keeps explicit `expect` assertions backed by a real uniqueness guarantee.
+Every element-targeted action (`tap`, `double_tap`, `long_press`, `input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`, `wait_not_visible`, `wait_enabled`, `wait_disabled`) accepts an optional `first = true` attribute. By default the resolver requires that an `id` matches a single logical element: a node and a same-id descendant collapse to one match (the SwiftUI wrapper + inner control case), but two genuinely distinct sibling matches surface `multiple elements share the same id`. That strict default is deliberate — it keeps explicit `expect` assertions backed by a real uniqueness guarantee.
 
 System pickers break that contract: iOS's `PhotosPicker`, the file importer and similar surfaces expose every cell of a grid under the same accessibility identifier (e.g. `PXGGridLayout-Info`), as siblings inside a collection view rather than as a parent-child pair. `first = true` opts the action into pre-order first-match resolution — the same semantics as XCUITest's `descendants(matching:).matching(identifier:).firstMatch` — so the first cell wins instead of failing with `ErrDuplicate`.
 
@@ -245,7 +274,7 @@ accessibility label, so `text` falls back to the label here.
 
 ### Matching by `accessibilityLabel` (`label = "..."`)
 
-Every element-targeted action (`tap`, `double_tap`, `long_press`, `input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`, `wait_not_visible`) and every expectation block (`visible`, `not_visible`, `text`, `value`, `enabled`, `disabled`) accepts an optional `label = "<accessibilityLabel>"` attribute as an **alternative** to `id`. The two are mutually exclusive at the parse layer: setting both is rejected with `Conflicting element locator`, setting neither with `Missing element locator`.
+Every element-targeted action (`tap`, `double_tap`, `long_press`, `input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`, `wait_not_visible`, `wait_enabled`, `wait_disabled`) and every expectation block (`visible`, `not_visible`, `text`, `value`, `enabled`, `disabled`) accepts an optional `label = "<accessibilityLabel>"` attribute as an **alternative** to `id`. The two are mutually exclusive at the parse layer: setting both is rejected with `Conflicting element locator`, setting neither with `Missing element locator`.
 
 `id` matches `accessibilityIdentifier` — the canonical, locale-independent locator authored on the element. `label` matches `accessibilityLabel` — the user-facing string that screen readers announce. Use `id` whenever the app defines one; reach for `label` to interact with iOS system controllers that don't expose an identifier:
 

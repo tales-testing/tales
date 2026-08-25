@@ -238,7 +238,7 @@ step "mobile" "<name>" {
   actions {
     # tap | double_tap | long_press | input_text | clear_text
     # | swipe | scroll | press_key | press_button | set_orientation
-    # | wait_visible | wait_not_visible
+    # | wait_visible | wait_not_visible | wait_enabled | wait_disabled
     # decoded in source order — order matters
   }
 
@@ -303,10 +303,18 @@ strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
   is what the step is proving.
 - `wait_visible { id = "..." }` — explicit wait until the element is visible.
 - `wait_not_visible { id = "..." }` — explicit wait until the element is gone.
+- `wait_enabled { id = "..." }` — explicit wait until the element is enabled.
+  Use it whenever the screen arms asynchronously (a capture button waiting
+  on the camera, a submit button unlocked by a background check): visible
+  is not actionable, and a tap on a disabled control is swallowed with no
+  error, so the run fails later on an unrelated assertion.
+- `wait_disabled { id = "..." }` — explicit wait until the element is
+  disabled, e.g. until a submit button locks itself while a request runs.
 
 Every element-targeted action above (`tap`, `double_tap`, `long_press`,
 `input_text`, `clear_text`, `swipe`, `scroll`, `wait_visible`,
-`wait_not_visible`) accepts an optional **`first = true`** attribute. The
+`wait_not_visible`, `wait_enabled`, `wait_disabled`) accepts an optional
+**`first = true`** attribute. The
 strict default is unchanged — two distinct sibling matches surface
 `multiple elements share the same id`. `first = true` opts the resolver
 into XCUITest-style `firstMatch` semantics (pre-order DFS, first node
@@ -356,7 +364,8 @@ Service names are simctl privacy services — `camera`, `photos`, `location`,
 `contacts`, `microphone`, etc.
 
 Prefer `wait_visible` / `wait_not_visible` as the canonical way to bridge
-asynchronous UI transitions; never insert sleeps.
+asynchronous UI transitions, and `wait_enabled` when the element is on
+screen but not yet actionable; never insert sleeps.
 
 ### Supported expectations
 
@@ -416,7 +425,10 @@ step "mobile" "fill" {
 - Pin every screen entry with at least one `visible { id = "..." }` to avoid
   racing UI transitions.
 - Use `wait_visible` / `wait_not_visible` inside `actions` to chain dependent
-  taps and inputs in a single step.
+  taps and inputs in a single step, and `wait_enabled` before tapping any
+  control the screen arms asynchronously. Splitting the step so a
+  `expect { enabled }` can carry the wait works too, but it lets the tool
+  dictate the step boundaries instead of the scenario.
 - For end-of-scenario cleanup, put `terminate {}` inside `teardown` and guard
   with `when = true` (or `when = can(...)` when the launch step is conditional).
 - Two scenarios cannot target the same mobile `target` in parallel — the
@@ -831,10 +843,18 @@ scenario "Login flow" {
 ### Action surface
 
 `goto`, `click`, `fill`, `clear`, `press`, `submit`, `scroll` (selector
-or x/y offsets), `wait_visible`, `wait_not_visible`, `hover`, `select`
-(for `<select>`), `check` / `uncheck` (for checkboxes / radios),
-`upload_file` (for `<input type="file">`), `reload`, `back`, `forward`.
-Every action accepts optional `timeout` and `interval`.
+or x/y offsets), `wait_visible`, `wait_not_visible`, `wait_enabled`,
+`wait_disabled`, `hover`, `select` (for `<select>`), `check` / `uncheck`
+(for checkboxes / radios), `upload_file` (for `<input type="file">`),
+`reload`, `back`, `forward`. Every action accepts optional `timeout` and
+`interval`.
+
+`wait_enabled` / `wait_disabled` poll the HTML `disabled` attribute with
+boolean-attribute semantics (presence is what counts). Put a
+`wait_enabled` before any click on a control a background validation
+arms: a click on a disabled element is a no-op the DOM reports as a
+success, so the failure otherwise surfaces on a later, unrelated
+assertion.
 
 `upload_file` takes `selector` plus `paths`, a list of files (a bare
 string is sugar for one file). Relative paths resolve against the

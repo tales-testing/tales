@@ -79,6 +79,13 @@ scenario "iOS register happy path" {
         value  = generate("user_password")
         secure = true
       }
+      # The submit button is gated on both fields, so it arms one
+      # recomposition after the last input_text lands. Tapping on sight
+      # would hit a disabled control and be swallowed with no error.
+      wait_enabled {
+        id      = "register.submit"
+        timeout = "10s"
+      }
       tap { id = "register.submit" }
       wait_not_visible {
         id      = "register.loading"

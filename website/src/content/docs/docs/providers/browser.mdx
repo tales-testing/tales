@@ -113,6 +113,8 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | `scroll`             | `selector` *or* `x` + `y`                                           | Scrolls element into view, or scrolls the page by offset |
 | `wait_visible`       | `selector`                                                          | Polls until the element is visible |
 | `wait_not_visible`   | `selector`                                                          | Polls until the element is gone or hidden |
+| `wait_enabled`       | `selector`                                                          | Polls until the element carries no `disabled` attribute |
+| `wait_disabled`      | `selector`                                                          | Polls until the element carries the `disabled` attribute |
 | `hover`              | `selector`                                                          | Dispatches a `mouseover` event |
 | `select`             | `selector`, `value`                                                 | Sets `<select>` value and fires `change` |
 | `check` / `uncheck`  | `selector`                                                          | Toggles a checkbox / radio input |
@@ -121,6 +123,25 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | `back` / `forward`   | none                                                                | Navigates the browser history. See limitations below |
 
 All actions accept an optional `timeout = "<duration>"` and `interval = "<duration>"`.
+
+### Waiting for a control to arm
+
+`wait_enabled` uses the same predicate as the `enabled` expectation: HTML
+boolean-attribute semantics, where the presence of `disabled` is what counts
+(`<input disabled="false">` is disabled). Reach for it whenever a form arms
+asynchronously — a submit button unlocked by a background validation, an action
+re-enabled once a request settles. A click on a disabled element is a no-op the
+DOM reports as a success, so without the wait the run fails later on an
+assertion that says nothing about the real cause.
+
+```hcl
+actions {
+  wait_visible { selector = "[data-testid='form.submit']" }
+  wait_enabled { selector = "[data-testid='form.submit']" timeout = "10s" }
+  click        { selector = "[data-testid='form.submit']" }
+  wait_disabled { selector = "[data-testid='form.submit']" }
+}
+```
 
 ### Secure values
 
