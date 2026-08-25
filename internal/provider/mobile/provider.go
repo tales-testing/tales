@@ -1122,7 +1122,11 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 		found bool
 	)
 
-	locator := elementLocator{ID: v.ID, Label: v.Label}
+	// Every locator field must be carried across here; see the note on
+	// visibilityFromAction. Text used to be dropped, so a
+	// `expect { text { text = "Sign in" } }` polled an empty id and
+	// failed with "element id=\"\" not found" instead of asserting.
+	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElement(pollCtx, session, locator)
@@ -1166,7 +1170,9 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 		lastSeen bool
 	)
 
-	locator := elementLocator{ID: v.ID, Label: v.Label}
+	// Same locator-threading rule as waitForNodeValue: dropping Text
+	// here made `expect { enabled { text = "Sign in" } }` unusable.
+	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
 		node, ok, err := findElement(pollCtx, session, locator)

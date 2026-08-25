@@ -2747,3 +2747,90 @@ func TestFetchHierarchyForArtifactsStopsOnACancelledContext(t *testing.T) {
 		t.Fatalf("a cancelled context should stop after the first attempt, got %d", drv.calls)
 	}
 }
+
+// newTextButtonNode returns a hierarchy whose only leaf is reachable by
+// its visible text, with no accessibility id at all. It is the shape a
+// `text = "..."` locator exists for.
+func newTextButtonNode() *tree.ViewNode {
+	return &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{
+				Text:    "Sign in",
+				Value:   "user@example.com",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 10, Y: 20, Width: 100, Height: 40},
+			},
+		},
+	}
+}
+
+// TestExecuteExpectationsAcceptTextLocator pins the text locator through
+// the enabled / disabled / text / value expectations.
+//
+// The parser accepts `text` on every expect block and the runtime fills
+// MobileStateExpectationExec.Text, but the provider used to build its
+// elementLocator from ID and Label only. A `text = "Sign in"` expect
+// therefore polled an empty id, found nothing, and failed with
+// `element  not found` instead of asserting anything.
+func TestExecuteExpectationsAcceptTextLocator(t *testing.T) {
+	t.Parallel()
+
+	disabled := newTextButtonNode()
+	disabled.Children[0].Enabled = false
+
+	for name, tc := range map[string]struct {
+		hierarchy *tree.ViewNode
+		expect    provider.MobileExpectExec
+	}{
+		"enabled": {
+			hierarchy: newTextButtonNode(),
+			expect: provider.MobileExpectExec{Enabled: []provider.MobileStateExpectationExec{
+				{Text: "Sign in", Timeout: 200 * time.Millisecond},
+			}},
+		},
+		"disabled": {
+			hierarchy: disabled,
+			expect: provider.MobileExpectExec{Disabled: []provider.MobileStateExpectationExec{
+				{Text: "Sign in", Timeout: 200 * time.Millisecond},
+			}},
+		},
+		"text": {
+			hierarchy: newTextButtonNode(),
+			expect: provider.MobileExpectExec{Text: []provider.MobileValueExpectationExec{
+				{Text: "Sign in", Expected: cty.StringVal("Sign in"), Timeout: 200 * time.Millisecond},
+			}},
+		},
+		"value": {
+			hierarchy: newTextButtonNode(),
+			expect: provider.MobileExpectExec{Value: []provider.MobileValueExpectationExec{
+				{Text: "Sign in", Expected: cty.StringVal("user@example.com"), Timeout: 200 * time.Millisecond},
+			}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{tc.hierarchy}}
+			lc := &fakeLifecycle{udid: "UDID"}
+			p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+			_, err := p.Execute(context.Background(), provider.Input{
+				Scenario: "demo",
+				Step:     newStep(name),
+				Config:   sampleConfigCty(),
+				Mobile: &provider.MobileExecution{
+					Platform:   "ios",
+					TargetName: "iphone",
+					Expect:     tc.expect,
+				},
+			})
+			if err != nil {
+				t.Fatalf("text-locator expectation should pass: %v", err)
+			}
+		})
+	}
+}
