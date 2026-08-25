@@ -206,31 +206,13 @@ jobs:
           # missing elements plus a screenshot, just without the modal
           # naming it.
           #
-          # Retried once, like the iOS job and for the same kind of
-          # reason: what is being absorbed is the emulator, not the
-          # suite. An APK install that takes 17s, a system-initiated app
-          # relaunch or a `/hierarchy` call outlasting its poll deadline
-          # all fail a scenario for reasons no scenario can prevent, and
-          # a single attempt is then useless as a merge gate. A real
-          # regression still fails twice.
-          #
-          # The first attempt's reports and artifacts move aside instead
-          # of being overwritten, so a retried-then-green run keeps the
-          # evidence that explains the stall.
+          # Each line below runs as its own command: this action feeds
+          # `script` to the shell line by line, so anything spanning more
+          # than one (an `if`, a loop) has to live in a file. The retry
+          # and its evidence handling are in android-e2e-ci.sh.
           script: |
             adb shell settings put global hide_error_dialogs 1
-
-            if ! make e2e-android; then
-              echo "::warning::Android e2e failed on the first attempt, retrying once (first-attempt evidence is under attempt-1/ in the artifacts)"
-
-              mkdir -p build/attempt-1
-              [ -d build/reports ] && mv build/reports build/attempt-1/reports
-              [ -d build/artifacts ] && mv build/artifacts build/attempt-1/artifacts
-
-              make e2e-android
-            fi
-
-            make e2e-android-failure
+            scripts/android-e2e-ci.sh
         timeout-minutes: 30
 
       - name: Upload Android e2e artifacts
