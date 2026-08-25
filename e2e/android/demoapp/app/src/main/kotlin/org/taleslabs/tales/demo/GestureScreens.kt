@@ -23,7 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,11 +47,11 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GesturesScreen(onBack: () -> Unit) {
-    var longPresses by remember { mutableIntStateOf(0) }
-    var doubleTaps by remember { mutableIntStateOf(0) }
-    var submits by remember { mutableIntStateOf(0) }
-    var swipeDirection by remember { mutableStateOf("none") }
-    var keyField by remember { mutableStateOf("") }
+    var longPresses by rememberSaveable { mutableIntStateOf(0) }
+    var doubleTaps by rememberSaveable { mutableIntStateOf(0) }
+    var submits by rememberSaveable { mutableIntStateOf(0) }
+    var swipeDirection by rememberSaveable { mutableStateOf("none") }
+    var keyField by rememberSaveable { mutableStateOf("") }
 
     val orientation = if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
         "landscape"

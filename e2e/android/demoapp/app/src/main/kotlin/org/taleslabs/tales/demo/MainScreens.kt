@@ -17,7 +17,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,7 +89,7 @@ fun FeedDetailScreen(index: Int, onBack: () -> Unit) {
 
 @Composable
 fun SearchScreen(onBack: () -> Unit) {
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
 
     val results = if (query.isBlank()) {
         emptyList()
@@ -134,7 +134,7 @@ fun SearchScreen(onBack: () -> Unit) {
 
 @Composable
 fun ProfileScreen(email: String, onBack: () -> Unit, onLogout: () -> Unit) {
-    var notifications by remember { mutableStateOf(false) }
+    var notifications by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier

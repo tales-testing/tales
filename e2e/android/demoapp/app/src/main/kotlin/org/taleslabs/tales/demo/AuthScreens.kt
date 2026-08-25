@@ -14,7 +14,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,8 +57,8 @@ fun WelcomeScreen(onNavigate: (Screen) -> Unit) {
 
 @Composable
 fun LoginScreen(auth: AuthStore, onBack: () -> Unit, onSignedIn: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -114,11 +114,11 @@ fun LoginScreen(auth: AuthStore, onBack: () -> Unit, onSignedIn: () -> Unit) {
 
 @Composable
 fun RegisterScreen(auth: AuthStore, onBack: () -> Unit, onRegistered: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var repeatPassword by remember { mutableStateOf("") }
-    var acceptTerms by remember { mutableStateOf(false) }
-    var acceptPrivacy by remember { mutableStateOf(false) }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var repeatPassword by rememberSaveable { mutableStateOf("") }
+    var acceptTerms by rememberSaveable { mutableStateOf(false) }
+    var acceptPrivacy by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier

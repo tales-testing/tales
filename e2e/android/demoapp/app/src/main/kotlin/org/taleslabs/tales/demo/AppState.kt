@@ -2,6 +2,8 @@ package org.taleslabs.tales.demo
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 
 /** The screens the demo app can show. */
@@ -116,10 +118,40 @@ class AuthStore {
         currentEmail = ""
     }
 
+    /**
+     * Reinstates the durable half of the store after a relaunch.
+     *
+     * Private setters keep the flow the only way to authenticate during
+     * normal use; restoration is the one exception, and it is why this
+     * exists rather than the Saver writing the fields directly.
+     */
+    private fun restore(authenticated: Boolean, email: String) {
+        isAuthenticated = authenticated
+        currentEmail = email
+    }
+
     companion object {
         /** Signing in with this address always fails, for the sad path. */
         const val BAD_EMAIL = "bad@example.com"
         const val MIN_PASSWORD_LENGTH = 8
+
+        /**
+         * Carries the store across an activity relaunch.
+         *
+         * Only the durable half is saved. The error strings and the
+         * in-flight flags describe a request that did not survive the
+         * relaunch either, so restoring them would show a spinner for a
+         * sign-in nobody is running any more. What a scenario asserts on
+         * later is the session: `profile.email` reads back
+         * [currentEmail], so losing it turns a relaunch into a
+         * wrong-value failure rather than an obvious one.
+         */
+        val Saver: Saver<AuthStore, *> = listSaver(
+            save = { listOf(it.isAuthenticated, it.currentEmail) },
+            restore = { saved ->
+                AuthStore().apply { restore(saved[0] as Boolean, saved[1] as String) }
+            },
+        )
     }
 }
 
