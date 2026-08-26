@@ -59,26 +59,75 @@ class TextInput(
     }
 
     /**
-     * Erases [characters] characters from the element.
+     * Erases the content of the element named by [locator].
      *
      * Clearing through ACTION_SET_TEXT is one operation regardless of
      * length; the count only matters on the keystroke fallback, where it
      * bounds how many deletes to send.
+     *
+     * The keystroke fallback is the dangerous half, because delete keys
+     * go wherever input focus happens to be rather than to the element
+     * asked for. It used to run unconditionally: a locator that resolved
+     * to nothing still sent deletes and still answered 200, and clearing
+     * an already-empty field sent a full default-length burst. On a
+     * Compose screen with two text fields, that burst reached the field
+     * typed into a moment earlier and emptied it, several actions before
+     * anything looked wrong (issue #63).
+     *
+     * So the fallback is now bounded by what it can prove: it runs only
+     * when the element it is meant to clear actually holds input focus,
+     * or when no locator was given at all, which is the explicit "erase
+     * whatever is focused" contract. Anything else is an error rather
+     * than a delete aimed at a stranger.
      */
     fun erase(locator: Locator, characters: Int): HttpResponse {
         val node = if (locator.isEmpty) focusedEditable() else locators.resolve(locator)
 
-        if (node != null && setText(node, "")) {
+        if (node == null) {
+            return if (locator.isEmpty) {
+                HttpResponse.error(404, "no focused text field to erase")
+            } else {
+                HttpResponse.error(404, "element $locator not found")
+            }
+        }
+
+        if (setText(node, "")) {
             return HttpResponse.ok()
         }
 
-        node?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        // The widget refused ACTION_SET_TEXT, so the deletes have to be
+        // typed. Click it first to bring the IME onto it, then check the
+        // focus actually moved before sending anything.
+        node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+
+        if (!locator.isEmpty && !holdsInputFocus(node)) {
+            return HttpResponse.error(
+                500,
+                "erase text: $locator did not accept ACTION_SET_TEXT and does not hold input focus; " +
+                    "deleting would erase whichever field does",
+            )
+        }
 
         repeat(characters.coerceIn(0, MAX_ERASE)) {
             device.pressKeyCode(KeyEvent.KEYCODE_DEL)
         }
 
         return HttpResponse.ok()
+    }
+
+    /**
+     * Reports whether [node] is the element keystrokes would reach.
+     *
+     * `isFocused` alone is not it: a view can carry accessibility focus,
+     * or keep a stale focused flag from a cached node, while the IME
+     * talks to another one. The platform's own answer is the input-focus
+     * lookup, and the node is refreshed first so a cached copy taken
+     * before the click does not answer for the live tree.
+     */
+    private fun holdsInputFocus(node: AccessibilityNodeInfo): Boolean {
+        node.refresh()
+
+        return focusedEditable()?.let { it == node } ?: false
     }
 
     /**

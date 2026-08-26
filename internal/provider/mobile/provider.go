@@ -963,7 +963,7 @@ func executeClearText(ctx context.Context, session *Session, locator driver.Loca
 		count = defaultClearTextErase
 	}
 
-	if err := session.Driver.EraseText(ctx, session.Target.AppID, count); err != nil {
+	if err := session.Driver.EraseText(ctx, session.Target.AppID, resolvedLocator(locator, node), count); err != nil {
 		return fmt.Errorf("erase text: %w", err)
 	}
 

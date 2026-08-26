@@ -230,6 +230,14 @@ fails on the step that wrote it, rather than surfacing two steps later as a
 confusing assertion failure. A field that reports no text at all — a Compose
 password field, for instance — is treated as unverifiable and trusted.
 
+`clear_text` erases the field its locator names, through the same accessibility
+action, so it is atomic and cannot reach a different field. Widgets that refuse
+the action fall back to delete keystrokes, and because keystrokes go to whatever
+holds input focus rather than to the element asked for, that fallback runs only
+once the target actually holds focus. When it does not, the step fails saying
+so instead of erasing whichever field does. A locator matching no element is a
+failure too, not a silent no-op.
+
 ## Permissions
 
 ```hcl

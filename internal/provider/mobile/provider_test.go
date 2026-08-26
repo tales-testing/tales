@@ -25,6 +25,13 @@ type fakeTap struct {
 	x, y  float64
 }
 
+// fakeErase records an /eraseText call. The locator is what issue #63
+// was about, so the fake keeps it rather than the count alone.
+type fakeErase struct {
+	locator    driver.Locator
+	characters int
+}
+
 type fakeInput struct {
 	id    string
 	label string
@@ -65,7 +72,7 @@ type fakeDriverAll struct {
 	pressedButtons  []string
 	orientations    []string
 	inputs          []fakeInput
-	erases          []int
+	erases          []fakeErase
 	dismissals      []string
 	scrollTos       []fakeScrollTo
 	launches        []string
@@ -236,11 +243,11 @@ func (f *fakeDriverAll) InputText(_ context.Context, _ string, locator driver.Lo
 	return nil
 }
 
-func (f *fakeDriverAll) EraseText(_ context.Context, _ string, count int) error {
+func (f *fakeDriverAll) EraseText(_ context.Context, _ string, locator driver.Locator, count int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.erases = append(f.erases, count)
+	f.erases = append(f.erases, fakeErase{locator: locator, characters: count})
 
 	return nil
 }
@@ -1352,7 +1359,7 @@ func TestExecuteClearTextUsesValueLength(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	if len(drv.erases) != 1 || drv.erases[0] != 5 {
+	if len(drv.erases) != 1 || drv.erases[0].characters != 5 {
 		t.Fatalf("expected erase=5, got %v", drv.erases)
 	}
 }
@@ -2992,5 +2999,123 @@ func TestExecuteWaitEnabledTimesOutWithLastSeenState(t *testing.T) {
 
 	if !strings.Contains(msg, "last seen enabled=false") {
 		t.Fatalf("expected the last-seen state in the message, got %v", msg)
+	}
+}
+
+// TestExecuteClearTextNamesItsTarget pins the contract issue #63 broke:
+// the erase must name the element it is clearing.
+//
+// Tales used to send /eraseText with a character count and nothing else,
+// so the driver could only delete from whatever held input focus. When
+// the focus had not followed the preceding tap — which is a race on
+// Compose, not a certainty — the deletes landed in a different field,
+// and clearing an already-empty one sent a full default-length burst at
+// it. The scenario then lost a value it had typed two actions earlier,
+// and nothing in the failure pointed at clear_text.
+func TestExecuteClearTextNamesItsTarget(t *testing.T) {
+	t.Parallel()
+
+	node := newButtonNode()
+	node.Children[0].Value = "abcde"
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{node}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("clear"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{Kind: model.MobileActionClearText, ID: "welcome.register"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	drv.mu.Lock()
+	erases := append([]fakeErase(nil), drv.erases...)
+	drv.mu.Unlock()
+
+	if len(erases) != 1 {
+		t.Fatalf("expected one erase, got %d", len(erases))
+	}
+
+	if erases[0].locator.ID != "welcome.register" {
+		t.Fatalf("erase must carry the element locator, got %+v", erases[0].locator)
+	}
+
+	if erases[0].characters != 5 {
+		t.Fatalf("expected erase=5, got %d", erases[0].characters)
+	}
+}
+
+// TestExecuteClearTextCarriesLabelAndTextLocators mirrors the threading
+// rule the wait helpers document: a locator field that is not carried
+// across leaves the driver guessing.
+func TestExecuteClearTextCarriesLabelAndTextLocators(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		action  provider.MobileActionExec
+		want    driver.Locator
+		asLabel bool
+	}{
+		"label": {
+			action:  provider.MobileActionExec{Kind: model.MobileActionClearText, Label: "Sign in"},
+			want:    driver.Locator{Label: "Sign in"},
+			asLabel: true,
+		},
+		"text": {
+			action: provider.MobileActionExec{Kind: model.MobileActionClearText, Text: "Sign in"},
+			want:   driver.Locator{Text: "Sign in"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			node := newTextButtonNode()
+			node.Children[0].Value = "abcde"
+
+			if tc.asLabel {
+				node.Children[0].Text = ""
+				node.Children[0].Label = "Sign in"
+			}
+
+			drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{node}}
+			lc := &fakeLifecycle{udid: "UDID"}
+			p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+			_, err := p.Execute(context.Background(), provider.Input{
+				Scenario: "demo",
+				Step:     newStep("clear"),
+				Config:   sampleConfigCty(),
+				Mobile: &provider.MobileExecution{
+					Platform:   "ios",
+					TargetName: "iphone",
+					Actions:    []provider.MobileActionExec{tc.action},
+				},
+			})
+			if err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+
+			drv.mu.Lock()
+			erases := append([]fakeErase(nil), drv.erases...)
+			drv.mu.Unlock()
+
+			if len(erases) != 1 {
+				t.Fatalf("expected one erase, got %d", len(erases))
+			}
+
+			if erases[0].locator.Label != tc.want.Label || erases[0].locator.Text != tc.want.Text {
+				t.Fatalf("erase locator: want %+v got %+v", tc.want, erases[0].locator)
+			}
+		})
 	}
 }
