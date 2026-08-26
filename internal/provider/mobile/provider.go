@@ -876,11 +876,7 @@ func handleDeviceAction(ctx context.Context, session *Session, action provider.M
 	}
 
 	if action.Kind == model.MobileActionScrollTo {
-		if err := session.Driver.ScrollTo(ctx, session.Target.AppID, actionLocator(action)); err != nil {
-			return true, fmt.Errorf("scroll to: %w", err)
-		}
-
-		return true, nil
+		return true, scrollToWithRetry(ctx, session, action)
 	}
 
 	return false, nil
@@ -1042,6 +1038,50 @@ func oppositeDirection(direction string) string {
 	default:
 		return direction
 	}
+}
+
+// scrollToWithRetry dispatches scroll_to until it succeeds or the
+// timeout expires.
+//
+// A single dispatch made scroll_to a race against the screen it runs on.
+// Both drivers answer 404 when the locator matches nothing at the end of
+// their own attempts, and on a screen still being built that is simply
+// "not yet". The scenario shape that reads as tolerant put the wait
+// after the scroll:
+//
+//	tap          { id = "list.row.3" }
+//	scroll_to    { id = "detail.delete" }
+//	wait_visible { id = "detail.delete" timeout = "15s" }
+//
+// The wait never ran, because the scroll had already failed. It read as
+// unlucky rather than wrong (issue #64).
+//
+// The retry deliberately wraps the whole dispatch rather than waiting
+// for the element to appear first. Waiting for presence would have
+// broken what the action is chiefly for: a lazy list does not compose
+// its off-screen rows, so the element does not exist until something
+// scrolls, and the Android driver scrolls blind precisely to bring it
+// into being. Gating the dispatch on a locator that resolves would make
+// that case time out without ever scrolling.
+func scrollToWithRetry(ctx context.Context, session *Session, action provider.MobileActionExec) error {
+	opts := pollOptions(action.Timeout, action.Interval, actionDefaultTimeout)
+	locator := actionLocator(action)
+
+	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
+		if err := session.Driver.ScrollTo(pollCtx, session.Target.AppID, locator); err != nil {
+			// Transient by assumption: the driver has just told us the
+			// element is not reachable *yet*. poll keeps the last error
+			// and surfaces it on timeout.
+			return pollResult{}, fmt.Errorf("scroll to: %w", err)
+		}
+
+		return pollResult{Done: true}, nil
+	})
+	if err != nil {
+		return fmt.Errorf("%s: gave up after %s: %w", elementLocator{ID: action.ID, Label: action.Label, Text: action.Text}, opts.Timeout, err)
+	}
+
+	return nil
 }
 
 func (p *Provider) waitForActionElement(ctx context.Context, session *Session, action provider.MobileActionExec) (*tree.ViewNode, error) {

@@ -842,7 +842,7 @@ scenario "form" {
 	}
 }
 
-func TestLoadPathMobileScrollToRejectsTimeout(t *testing.T) {
+func TestLoadPathMobileScrollToAcceptsTimeout(t *testing.T) {
 	t.Parallel()
 
 	content := `version = 1
@@ -853,21 +853,46 @@ scenario "form" {
     target = "iphone"
     actions {
       scroll_to {
-        id      = "form.field"
-        timeout = "5s"
+        id       = "form.field"
+        timeout  = "5s"
+        interval = "100ms"
+      }
+      scroll_to {
+        id    = "form.other"
+        value = "nope"
       }
     }
   }
 }
 `
 
-	_, diags := LoadPath(writeTales(t, content))
+	suite, diags := LoadPath(writeTales(t, content))
+
+	// The wait for the element to appear is sizeable (issue #64); the
+	// rest of the surface stays closed.
 	if !diags.HasErrors() {
 		t.Fatal("expected diagnostics when scroll_to carries an unsupported attribute")
 	}
 
 	if !strings.Contains(diags.Error(), "Unknown scroll_to attribute") {
 		t.Fatalf("expected Unknown scroll_to attribute diagnostic, got: %s", diags.Error())
+	}
+
+	if strings.Contains(diags.Error(), `"timeout"`) || strings.Contains(diags.Error(), `"interval"`) {
+		t.Fatalf("timeout / interval must be accepted on scroll_to, got: %s", diags.Error())
+	}
+
+	if suite == nil {
+		return
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Mobile.Actions
+	if len(actions) == 0 {
+		t.Fatal("expected the scroll_to actions to be decoded")
+	}
+
+	if actions[0].Timeout.Empty() || actions[0].Interval.Empty() {
+		t.Fatal("expected scroll_to timeout and interval expressions to be captured")
 	}
 }
 
