@@ -357,6 +357,17 @@ device that was not ready. Raise the budget with `ANDROID_READY_TIMEOUT`
 
 **`N devices are attached`** — set `serial` on the target. Tales will not guess.
 
+**`element ... was not disabled after 10s (41 reads, always enabled=true, resolved
+type="other" with children [static_text, button])`** — a failed `enabled` /
+`disabled` expectation reports how many times it read the element, whether the
+reading ever moved, and what the node that answered looks like. Read it before
+blaming the assertion: a reading that never moved across dozens of polls is a
+state that really did not change, or a tree that never refreshed, and neither is
+a timing problem a longer `timeout` would fix. The node description matters on
+Compose, where a control is published as a wrapper around its own `button` — the
+wrapper is the node that carries the state, and the inner one reports
+`enabled=true` whatever the control does.
+
 **`the Android driver APKs are not embedded in this build`** — a working tree that
 has never built the driver. Run `make build-android-driver`, or set
 `driver.external = true` to connect to a driver you started yourself.
