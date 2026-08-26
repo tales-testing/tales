@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -67,13 +70,27 @@ fun FeedScreen(onOpen: (Int) -> Unit, onSearch: () -> Unit, onProfile: () -> Uni
     }
 }
 
+/**
+ * A detail screen whose action sits below the fold.
+ *
+ * The container is a plain `verticalScroll` column rather than a lazy
+ * list, and the delete button is its last child, so reaching it takes
+ * the scroll all the way to the end of the range. That is the shape
+ * issue #69 was reported against: the scroll that finally reveals the
+ * button is the one the container answers "cannot travel further" to,
+ * and the driver used to leave the loop on that answer while reading a
+ * tree from before it.
+ */
 @Composable
 fun FeedDetailScreen(index: Int, onBack: () -> Unit) {
     val (title, subtitle) = feedItems.getOrElse(index) { "Unknown" to "" }
 
+    var deleted by rememberSaveable { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp)
             .testTag("feed.detail.screen"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -84,6 +101,29 @@ fun FeedDetailScreen(index: Int, onBack: () -> Unit) {
 
         Text(title, modifier = Modifier.testTag("feed.detail.title"))
         Text(subtitle, modifier = Modifier.testTag("feed.detail.body"))
+
+        // Filler, sized so the button below is off screen on any phone
+        // form factor the suites run on.
+        repeat(12) { section ->
+            Text(
+                "Section $section",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .testTag("feed.detail.section.$section"),
+            )
+        }
+
+        if (deleted) {
+            Text("deleted", modifier = Modifier.testTag("feed.detail.deleted"))
+        }
+
+        Button(
+            onClick = { deleted = true },
+            modifier = Modifier.testTag("feed.detail.delete"),
+        ) {
+            Text("Delete")
+        }
     }
 }
 

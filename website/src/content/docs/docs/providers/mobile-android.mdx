@@ -196,6 +196,11 @@ Elements above the current position are reachable too: the driver scrolls
 backward when the element sits above the viewport, and flips direction when a
 container reports it cannot travel any further the way it first tried.
 
+When it does give up, the 404 says which of the three endings it hit — nothing
+on screen can scroll, the element has no scrollable ancestor, or the container
+cannot travel any further — because `element not found` on its own reads as a
+statement about the app when it is often a statement about the container.
+
 An element the tree does not hold yet is not a failure either. Tales retries the
 whole action for `timeout` (default `10s`, `interval` sizes the gap), so
 `scroll_to` can be written straight after the tap that opens a screen still
