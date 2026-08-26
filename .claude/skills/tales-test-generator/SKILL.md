@@ -292,10 +292,13 @@ strings such as `"2s"`, `"250ms"`). Implicit defaults are `10s` timeout with
   scrolls the element into the viewport so a follow-up tap / input_text
   can hit it, in either direction. Best-effort on both platforms: a
   no-op when the element is already on screen, and equally when there
-  is nothing to scroll or the container runs out of travel; the only
-  failure is a locator that matches no element for the whole `timeout`
-  (default `10s`, `interval` sizes the retries). It waits, so it is safe
-  to write straight after the tap that opens a screen still loading.
+  is nothing to scroll or the container runs out of travel *and the
+  element is on screen anyway*. On Android it fails when the element is
+  not on screen once the driver stops trying, naming which ending it hit;
+  on iOS only a locator matching no element fails. Either way the action
+  retries for the whole `timeout` (default `10s`, `interval` sizes the
+  retries), so it is safe to write straight after the tap that opens a
+  screen still loading.
   Pair it with `input_text` when typing into a field that
   may be offscreen on a tall SwiftUI form. The Tales driver also
   auto-scrolls inside the paste path of `input_text`, but explicit
