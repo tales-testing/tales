@@ -223,12 +223,15 @@ func (c *Client) InputText(ctx context.Context, bundleID string, locator Locator
 }
 
 // EraseText posts to /eraseText.
-func (c *Client) EraseText(ctx context.Context, bundleID string, characters int) error {
+func (c *Client) EraseText(ctx context.Context, bundleID string, locator Locator, characters int) error {
 	if characters < 0 {
 		return fmt.Errorf("eraseText: characters must be non-negative, got %d", characters)
 	}
 
-	return c.postJSON(ctx, "/eraseText", map[string]any{payloadBundleIDKey: bundleID, "characters": characters})
+	payload := map[string]any{payloadBundleIDKey: bundleID, "characters": characters}
+	applyLocator(payload, locator)
+
+	return c.postJSON(ctx, "/eraseText", payload)
 }
 
 // DismissKeyboard posts to /dismissKeyboard.

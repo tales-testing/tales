@@ -1,0 +1,112 @@
+version = 1
+
+config {
+  mobile = {
+    targets = {
+      phone = {
+        platform    = "android"
+        device_name = env("ANDROID_AVD_NAME", "tales-e2e")
+        serial      = env("ANDROID_SERIAL", "")
+        app         = env("ANDROID_APP_PATH")
+        app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+      }
+    }
+  }
+}
+
+# Regression for issue #63: clear_text used to erase whichever field held
+# focus rather than the one its locator names. Tales sent no locator with
+# /eraseText, so the driver fell back to deleting characters from the
+# focused element; clearing an already-empty field sent 64 deletes, and a
+# value typed into a *different* field a moment earlier was what they
+# reached. The symptom surfaced far from the cause: a field that came
+# back neither new, nor old, nor concatenated, just empty.
+scenario "Android clear_text only touches the field it names" {
+  tags = ["android", "mobile", "demo", "clear_text"]
+
+  skip_unless {
+    env_set = ["ANDROID_APP_PATH"]
+    reason  = "Android tests need ANDROID_APP_PATH pointing at the demo APK and a running device"
+  }
+
+  step "mobile" "android_open_login" {
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.signin"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id      = "login.screen"
+        timeout = "10s"
+      }
+    }
+  }
+
+  # The whole experiment: type into one field, then clear the other one.
+  # The password field starts empty, which is the case that used to send
+  # a full 64-delete burst at whatever had focus.
+  step "mobile" "android_clear_the_other_field" {
+    depends_on = ["android_open_login"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      input_text {
+        id    = "login.email"
+        value = "user@example.com"
+      }
+      clear_text {
+        id = "login.password"
+      }
+    }
+
+    expect {
+      value {
+        id    = "login.email"
+        value = "user@example.com"
+      }
+    }
+  }
+
+  # And clear_text still clears the field it does name.
+  step "mobile" "android_clears_its_own_field" {
+    depends_on = ["android_clear_the_other_field"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      clear_text {
+        id = "login.email"
+      }
+    }
+
+    expect {
+      value {
+        id    = "login.email"
+        value = ""
+      }
+    }
+  }
+
+  teardown {
+    step "mobile" "android_terminate" {
+      when = true
+
+      platform = "android"
+      target   = "phone"
+      terminate {}
+    }
+  }
+}

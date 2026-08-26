@@ -52,7 +52,7 @@ func (d *recordingDriver) InputText(_ context.Context, _ string, _ driver.Locato
 	return d.inputTextErr
 }
 
-func (d *recordingDriver) EraseText(_ context.Context, _ string, _ int) error {
+func (d *recordingDriver) EraseText(_ context.Context, _ string, _ driver.Locator, _ int) error {
 	return nil
 }
 

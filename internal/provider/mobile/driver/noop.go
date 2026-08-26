@@ -50,7 +50,7 @@ func (NoopDriver) InputText(_ context.Context, _ string, _ Locator, _ string, _ 
 }
 
 // EraseText does nothing.
-func (NoopDriver) EraseText(_ context.Context, _ string, _ int) error { return nil }
+func (NoopDriver) EraseText(_ context.Context, _ string, _ Locator, _ int) error { return nil }
 
 // DismissKeyboard does nothing.
 func (NoopDriver) DismissKeyboard(_ context.Context, _ string) error { return nil }

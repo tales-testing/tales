@@ -624,12 +624,53 @@ func TestClientEraseTextSendsPayload(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	if err := client.EraseText(context.Background(), "com.example.MyApp", 5); err != nil {
+	if err := client.EraseText(context.Background(), "com.example.MyApp", Locator{ID: "login.email"}, 5); err != nil {
 		t.Fatalf("eraseText: %v", err)
 	}
 
 	if captured["bundleId"] != "com.example.MyApp" || captured["characters"] != float64(5) {
 		t.Fatalf("unexpected payload %v", captured)
+	}
+
+	// The locator is the point: without it the driver can only delete
+	// from whatever holds input focus (issue #63).
+	if captured["id"] != "login.email" {
+		t.Fatalf("payload missing the element locator, got %v", captured)
+	}
+}
+
+func TestClientEraseTextSendsLabelAndTextLocators(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		locator Locator
+		key     string
+		want    string
+	}{
+		"label": {locator: Locator{Label: "Search"}, key: "label", want: "Search"},
+		"text":  {locator: Locator{Text: "Search"}, key: "text", want: "Search"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var captured map[string]any
+
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+					t.Fatalf("decode: %v", err)
+				}
+
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			if err := client.EraseText(context.Background(), "com.example.MyApp", tc.locator, 3); err != nil {
+				t.Fatalf("eraseText: %v", err)
+			}
+
+			if captured[tc.key] != tc.want {
+				t.Fatalf("payload missing %s locator, got %v", tc.key, captured)
+			}
+		})
 	}
 }
 
@@ -637,7 +678,7 @@ func TestClientEraseTextRejectsNegative(t *testing.T) {
 	t.Parallel()
 
 	client := New("http://unused")
-	if err := client.EraseText(context.Background(), "com.example.MyApp", -1); err == nil {
+	if err := client.EraseText(context.Background(), "com.example.MyApp", Locator{ID: "x"}, -1); err == nil {
 		t.Fatal("expected error for negative characters")
 	}
 }

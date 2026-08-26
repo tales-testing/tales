@@ -89,9 +89,15 @@ type Driver interface {
 	// is required when paste is true.
 	InputText(ctx context.Context, bundleID string, locator Locator, text string, paste bool) error
 
-	// EraseText erases the given number of characters from the focused
-	// element.
-	EraseText(ctx context.Context, bundleID string, characters int) error
+	// EraseText erases the content of the element named by locator.
+	//
+	// The locator is what makes the erase addressable: a driver that
+	// receives only a character count can do nothing but delete from
+	// whatever holds input focus, and the focus does not reliably follow
+	// the preceding tap (issue #63). Backends that can clear an element
+	// directly do so and ignore characters; the ones that can only send
+	// delete keys use it as the bound.
+	EraseText(ctx context.Context, bundleID string, locator Locator, characters int) error
 
 	// DismissKeyboard dismisses the soft keyboard if one is currently up.
 	// Idempotent: returns nil whether or not a keyboard was actually
