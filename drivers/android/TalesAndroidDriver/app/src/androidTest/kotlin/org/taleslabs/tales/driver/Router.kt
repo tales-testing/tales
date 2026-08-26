@@ -296,14 +296,6 @@ class Router(
 
         val screen = screenBounds()
 
-        // Start from a tree that describes the screen as it is now.
-        // Every other element-targeted route is reached after Tales has
-        // polled /hierarchy, which refreshes the cache on the way in;
-        // scroll_to is dispatched on its own, so the first resolve below
-        // would otherwise read whatever the last snapshot left behind —
-        // typically from before the tap that opened this screen.
-        automation.invalidateNodeCache()
-
         // Only used while the locator resolves to nothing, and sticky on
         // purpose: once a container reports it cannot travel any further
         // one way, the other way is the only one left, and re-deriving
@@ -324,7 +316,7 @@ class Router(
 
             // Idempotent by contract: scenarios call it before every
             // interaction without first querying UI state.
-            if (node != null && isOnScreen(node, screen)) return HttpResponse.ok()
+            if (node != null && isReachable(node, screen)) return HttpResponse.ok()
 
             // An unresolved locator is not yet a failure: a lazy list
             // does not compose its off-screen rows, so the element
@@ -386,8 +378,30 @@ class Router(
             }
         }
 
-        locators.resolve(locator)
-            ?: return HttpResponse.error(404, "element $locator not found: $ending")
+        // The verdict is read from a live tree. Every path that scrolled
+        // has already invalidated, but the ones that never scrolled have
+        // not, and deciding between 200 and 404 on a cached view is what
+        // issue #69 was: a refusal for an element the next /hierarchy
+        // call held.
+        //
+        // Doing this here rather than at the top of the handler is
+        // deliberate. Refreshing before the *first* resolve changes
+        // which branch the loop takes — an off-screen element that used
+        // to be invisible to the resolver becomes visible to it, and the
+        // known-direction branch runs where blind scrolling used to —
+        // and that swap broke a suite that rc.18 scrolled correctly
+        // (issue #71). The verdict needs freshness; the loop's opening
+        // read does not.
+        automation.invalidateNodeCache()
+
+        // The same predicate the loop opens with. Reporting success on
+        // the strength of the element merely existing is what let every
+        // early exit above answer 200 for something still off screen.
+        val settled = locators.resolve(locator)
+
+        if (settled == null || !isReachable(settled, screen)) {
+            return HttpResponse.error(404, "element $locator not on screen: $ending")
+        }
 
         return HttpResponse.ok()
     }
@@ -397,6 +411,39 @@ class Router(
     /** Defers to the encoder so scroll_to and the hierarchy dump never disagree. */
     private fun isOnScreen(node: AccessibilityNodeInfo, screen: Bounds): Boolean =
         HierarchyEncoder.isOnScreen(AccessibilityNode(node), screen)
+
+    /**
+     * Whether the element is where a scenario can act on it — that is,
+     * whether the hierarchy Tales reads would contain it.
+     *
+     * [isOnScreen] answers for the node alone, and the encoder drops a
+     * whole subtree the moment an ancestor is invisible, so a node can
+     * pass on its own while never appearing in a snapshot. scroll_to
+     * read that as "already there" and returned 200 without scrolling,
+     * for an element that stayed off screen and that the following
+     * wait_visible then hunted for until it timed out (issue #71). A
+     * false positive is worse than the 404 of issue #69: a refusal
+     * fails on the action that caused it, while a wrongful success
+     * fails later, somewhere else.
+     *
+     * Resolution walks the raw tree on purpose — that is what lets the
+     * loop see an element it has yet to bring into view — so the
+     * ancestor chain has to be checked here rather than left to the
+     * resolver.
+     */
+    private fun isReachable(node: AccessibilityNodeInfo, screen: Bounds): Boolean {
+        if (!isOnScreen(node, screen)) return false
+
+        var parent = node.parent
+
+        while (parent != null) {
+            if (!parent.isVisibleToUser) return false
+
+            parent = parent.parent
+        }
+
+        return true
+    }
 
     private fun boundsOf(node: AccessibilityNodeInfo): Bounds = AccessibilityNode(node).boundsInScreen
 

@@ -179,10 +179,18 @@ button "back" is not supported on ios (supported: home, lock)
 
 ### Scrolling to an element
 
-`scroll_to { id | label | text }` is best-effort, exactly as on iOS: it is a
-no-op when the element is already on screen, and also when the screen has
-nothing to scroll or the container runs out of travel. The only failure is a
-locator that matches no element at all.
+`scroll_to { id | label | text }` is a no-op when the element is already on
+screen, and equally when the screen has nothing to scroll but the element is
+visible anyway. It fails when the element is **not on screen once the driver has
+finished trying** — whether because the locator matches nothing, because nothing
+can scroll, or because the container ran out of travel.
+
+That last part is stricter than it used to be, and than iOS still is. The driver
+used to answer success on the strength of the element merely existing in the
+tree, so any early exit reported a scroll that had not happened: the following
+`wait_visible` then hunted for an element on a screen that never moved, and
+timed out pointing at the app (issue #71). A refusal fails on the action that
+caused it; a wrongful success fails later, somewhere else.
 
 That matters more on Android than on iOS, because a Compose container publishes
 itself as scrollable only once its content overflows the viewport. On a screen
@@ -196,10 +204,16 @@ Elements above the current position are reachable too: the driver scrolls
 backward when the element sits above the viewport, and flips direction when a
 container reports it cannot travel any further the way it first tried.
 
-When it does give up, the 404 says which of the three endings it hit — nothing
-on screen can scroll, the element has no scrollable ancestor, or the container
-cannot travel any further — because `element not found` on its own reads as a
-statement about the app when it is often a statement about the container.
+When it does give up, the failure says which of the three endings it hit —
+nothing on screen can scroll, the element has no scrollable ancestor, or the
+container cannot travel any further — because `element not found` on its own
+reads as a statement about the app when it is often a statement about the
+container.
+
+"On screen" here means what the hierarchy dump means by `visible`, ancestors
+included. A node can pass the check on its own while sitting under a clipped
+container that keeps the whole subtree out of every snapshot, and taking that
+for "already there" is what produced the wrongful success above.
 
 An element the tree does not hold yet is not a failure either. Tales retries the
 whole action for `timeout` (default `10s`, `interval` sizes the gap), so
