@@ -75,6 +75,10 @@ type fakeDriverAll struct {
 	erases          []fakeErase
 	dismissals      []string
 	scrollTos       []fakeScrollTo
+	// scrollToFailures makes the fake answer the drivers' own "element
+	// not found" for that many dispatches before succeeding, which is
+	// what a screen still being built looks like from Tales' side.
+	scrollToFailures int
 	launches        []string
 	activates       []string
 	terminatesDrv   []string
@@ -266,6 +270,15 @@ func (f *fakeDriverAll) ScrollTo(_ context.Context, _ string, locator driver.Loc
 	defer f.mu.Unlock()
 
 	f.scrollTos = append(f.scrollTos, fakeScrollTo{id: locator.ID, label: locator.Label})
+
+	// Both real drivers resolve the locator themselves and answer 404
+	// when it matches nothing at the end of their own attempts, which is
+	// what issue #64 was about.
+	if f.scrollToFailures > 0 {
+		f.scrollToFailures--
+
+		return errors.New("element not found")
+	}
 
 	return nil
 }
@@ -1173,7 +1186,19 @@ func TestExecuteSurfacesDriverDeathDiagnostics(t *testing.T) {
 func TestExecuteScrollToDispatchesLocatorToDriver(t *testing.T) {
 	t.Parallel()
 
-	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{newButtonNode()}}
+	// Both targets have to be in the tree: since issue #64 scroll_to
+	// waits for its element to exist before dispatching.
+	screen := &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{ID: "form.identifier_value", Visible: true, Enabled: true, Bounds: tree.Rect{X: 10, Y: 20, Width: 100, Height: 40}},
+			{Label: "Done", Visible: true, Enabled: true, Bounds: tree.Rect{X: 10, Y: 80, Width: 100, Height: 40}},
+		},
+	}
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{screen}}
 	lc := &fakeLifecycle{udid: "UDID"}
 	p := newProviderWithFake(drv, lc, sampleProviderTarget())
 
@@ -3117,5 +3142,102 @@ func TestExecuteClearTextCarriesLabelAndTextLocators(t *testing.T) {
 				t.Fatalf("erase locator: want %+v got %+v", tc.want, erases[0].locator)
 			}
 		})
+	}
+}
+
+// TestExecuteScrollToWaitsForTheElement covers issue #64: scroll_to used
+// to dispatch immediately, so an element that the screen was still
+// building was a 404 rather than something to wait for. The scenario
+// that reads as tolerant — scroll_to then wait_visible — was on the
+// wrong side of the race, and failed on the step that looks best-effort.
+func TestExecuteScrollToWaitsForTheElement(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{
+		hierarchies:      []*tree.ViewNode{newButtonNode()},
+		scrollToFailures: 2,
+	}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("scroll"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{
+					Kind:     model.MobileActionScrollTo,
+					ID:       "welcome.register",
+					Timeout:  2 * time.Second,
+					Interval: 10 * time.Millisecond,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("scroll_to should wait for a late element: %v", err)
+	}
+
+	drv.mu.Lock()
+	scrollTos := append([]fakeScrollTo(nil), drv.scrollTos...)
+	drv.mu.Unlock()
+
+	if len(scrollTos) != 3 {
+		t.Fatalf("expected the dispatch to be retried until it took, got %d", len(scrollTos))
+	}
+
+	if scrollTos[0].id != "welcome.register" {
+		t.Fatalf("expected the element locator on every dispatch, got %v", scrollTos)
+	}
+}
+
+func TestExecuteScrollToTimesOutOnAMissingElement(t *testing.T) {
+	t.Parallel()
+
+	drv := &fakeDriverAll{
+		hierarchies:      []*tree.ViewNode{newButtonNode()},
+		scrollToFailures: 1000,
+	}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("scroll"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Actions: []provider.MobileActionExec{
+				{
+					Kind:     model.MobileActionScrollTo,
+					ID:       "never.appears",
+					Timeout:  100 * time.Millisecond,
+					Interval: 10 * time.Millisecond,
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected a timeout error for an element that never appears")
+	}
+
+	if !strings.Contains(err.Error(), `id="never.appears": gave up after`) {
+		t.Fatalf("expected the give-up summary naming the element, got %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "scroll to: element not found") {
+		t.Fatalf("expected the driver's own reason to survive, got %v", err)
+	}
+
+	drv.mu.Lock()
+	scrollTos := len(drv.scrollTos)
+	drv.mu.Unlock()
+
+	if scrollTos < 2 {
+		t.Fatalf("expected the dispatch to be retried before giving up, got %d", scrollTos)
 	}
 }

@@ -490,28 +490,41 @@ func decodeMobileActionBlock(path string, block *hclsyntax.Block) (*model.Mobile
 	}
 }
 
-// decodeScrollToBlock parses a `scroll_to { id | label | text }` action.
-// The locator is XOR-validated like every other element-targeted action;
-// no other attributes are accepted (no timeout / interval — the driver
-// bounds its own scroll attempts, so there is no polling loop to size
-// from the scenario).
+// decodeScrollToBlock parses a
+// `scroll_to { id | label | text; timeout?; interval? }` action.
+//
+// The locator is XOR-validated like every other element-targeted action.
+// `timeout` / `interval` size the wait for the element to *appear*, not
+// the scrolling itself: each driver still bounds its own scroll
+// attempts, so there is no loop here to configure. The wait exists
+// because dispatching straight away made scroll_to fail on a screen
+// that had not finished building, which is the one case where the
+// action reads as tolerant (issue #64).
 func decodeScrollToBlock(path string, block *hclsyntax.Block) (*model.MobileAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0, len(block.Body.Attributes)+len(block.Body.Blocks))
 
 	locator, locatorDiags := requireActionLocator(block, "scroll_to")
 	diags = append(diags, locatorDiags...)
 
-	for name, attr := range block.Body.Attributes {
-		if name == "id" || name == mobileLabelAttr || name == mobileTextLocAttr {
-			continue
-		}
+	timeoutExpr := hcl.Expression(nil)
+	intervalExpr := hcl.Expression(nil)
 
-		attrRange := attr.Range()
-		diags = append(diags, diagError(
-			"Unknown scroll_to attribute",
-			fmt.Sprintf("scroll_to attribute %q is not supported; allowed: id, label, text.", name),
-			&attrRange,
-		))
+	for name, attr := range block.Body.Attributes {
+		switch name {
+		case "id", mobileLabelAttr, mobileTextLocAttr:
+			continue
+		case mobileTimeoutAttr:
+			timeoutExpr = attr.Expr
+		case mobileIntervalAttr:
+			intervalExpr = attr.Expr
+		default:
+			attrRange := attr.Range()
+			diags = append(diags, diagError(
+				"Unknown scroll_to attribute",
+				fmt.Sprintf("scroll_to attribute %q is not supported; allowed: id, label, text, timeout, interval.", name),
+				&attrRange,
+			))
+		}
 	}
 
 	for _, sub := range block.Body.Blocks {
@@ -524,12 +537,14 @@ func decodeScrollToBlock(path string, block *hclsyntax.Block) (*model.MobileActi
 	}
 
 	action := &model.MobileAction{
-		Kind:  model.MobileActionScrollTo,
-		File:  path,
-		Line:  block.DefRange().Start.Line,
-		ID:    expr(path, locator.ID),
-		Label: expr(path, locator.Label),
-		Text:  expr(path, locator.Text),
+		Kind:     model.MobileActionScrollTo,
+		File:     path,
+		Line:     block.DefRange().Start.Line,
+		ID:       expr(path, locator.ID),
+		Label:    expr(path, locator.Label),
+		Text:     expr(path, locator.Text),
+		Timeout:  expr(path, timeoutExpr),
+		Interval: expr(path, intervalExpr),
 	}
 
 	return action, diags

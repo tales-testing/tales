@@ -178,6 +178,59 @@ scenario "Android scroll_to reaches elements in both directions" {
     }
   }
 
+  # Regression for issue #64: scroll_to used to dispatch once and fail
+  # the moment the element was absent, so a screen still being built
+  # made it a race. The scenario shape that reads as tolerant put the
+  # wait *after* the scroll, where it never ran, and the failure landed
+  # on the step that looks best-effort. Signing in shows the feed 400ms
+  # later, so this scroll_to starts before its screen exists.
+  step "mobile" "android_scroll_to_on_a_loading_screen" {
+    depends_on = ["android_scroll_to_by_text"]
+
+    platform = "android"
+    target   = "phone"
+
+    launch {
+      clear_state = true
+    }
+
+    actions {
+      wait_visible {
+        id      = "welcome.signin"
+        timeout = "30s"
+      }
+      tap {
+        id = "welcome.signin"
+      }
+      wait_visible {
+        id      = "login.screen"
+        timeout = "10s"
+      }
+      input_text {
+        id    = "login.email"
+        value = "user@example.com"
+      }
+      input_text {
+        id     = "login.password"
+        value  = "Secret123!"
+        secure = true
+      }
+      tap {
+        id = "login.submit"
+      }
+      # No wait in between, on purpose: this is the ordering the issue
+      # reported, and it must now work rather than merely be unlucky.
+      scroll_to {
+        id      = "feed.item.20"
+        timeout = "20s"
+      }
+      wait_visible {
+        id      = "feed.item.20"
+        timeout = "10s"
+      }
+    }
+  }
+
   teardown {
     step "mobile" "android_terminate" {
       when = true
