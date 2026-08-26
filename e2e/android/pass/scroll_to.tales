@@ -231,6 +231,48 @@ scenario "Android scroll_to reaches elements in both directions" {
     }
   }
 
+  # Regression for issue #69: the driver answered 404 for an element it
+  # had just scrolled into view. Its loop skipped the settle + cache
+  # invalidation when a container reported it could not travel further,
+  # so the closing lookup read the tree from before the scroll that
+  # revealed the element. The detail screen below is that shape: a plain
+  # verticalScroll column whose Delete button is the last child, so the
+  # scroll that brings it on screen is exactly the one that hits the end
+  # of the range.
+  step "mobile" "android_scroll_to_the_end_of_a_column" {
+    depends_on = ["android_scroll_to_on_a_loading_screen"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      # The previous step left the feed scrolled to this row.
+      wait_visible {
+        id      = "feed.item.20"
+        timeout = "10s"
+      }
+      tap {
+        id = "feed.item.20"
+      }
+      wait_visible {
+        id      = "feed.detail.screen"
+        timeout = "10s"
+      }
+      scroll_to {
+        id = "feed.detail.delete"
+      }
+    }
+
+    # The scroll itself is what this step proves, so it asserts on the
+    # element being on screen rather than on a follow-up tap, which a
+    # still-settling scroll container can swallow.
+    expect {
+      visible {
+        id = "feed.detail.delete"
+      }
+    }
+  }
+
   teardown {
     step "mobile" "android_terminate" {
       when = true

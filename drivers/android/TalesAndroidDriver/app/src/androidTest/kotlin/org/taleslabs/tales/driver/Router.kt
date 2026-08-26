@@ -296,6 +296,14 @@ class Router(
 
         val screen = screenBounds()
 
+        // Start from a tree that describes the screen as it is now.
+        // Every other element-targeted route is reached after Tales has
+        // polled /hierarchy, which refreshes the cache on the way in;
+        // scroll_to is dispatched on its own, so the first resolve below
+        // would otherwise read whatever the last snapshot left behind —
+        // typically from before the tap that opened this screen.
+        automation.invalidateNodeCache()
+
         // Only used while the locator resolves to nothing, and sticky on
         // purpose: once a container reports it cannot travel any further
         // one way, the other way is the only one left, and re-deriving
@@ -304,6 +312,12 @@ class Router(
         var blind = ScrollDirection.FORWARD
 
         var attemptsLeft = SCROLL_TO_ATTEMPTS
+
+        // Why the loop stopped, so a 404 says which of the three
+        // endings it is. "not found" alone sends the reader to the app,
+        // which is where issue #69 started: the message stated the
+        // opposite of what the very next /hierarchy call observed.
+        var ending = "out of attempts"
 
         while (attemptsLeft-- > 0) {
             val node = locators.resolve(locator)
@@ -315,24 +329,34 @@ class Router(
             // An unresolved locator is not yet a failure: a lazy list
             // does not compose its off-screen rows, so the element
             // genuinely does not exist until something scrolls.
-            val scrollable = node?.let { locators.scrollableAncestor(it) } ?: firstScrollable() ?: break
+            val scrollable = node?.let { locators.scrollableAncestor(it) } ?: firstScrollable()
 
-            if (node != null) {
+            if (scrollable == null) {
+                ending = if (node == null) {
+                    "nothing on screen can scroll, and the element is not in the tree"
+                } else {
+                    "the element has no scrollable ancestor"
+                }
+
+                break
+            }
+
+            val moved = if (node != null) {
                 // The tree says where the element is relative to the
                 // container that has to move, so the direction is a
                 // fact. A container that will not travel that way cannot
                 // help — the element is outside its range, and flipping
                 // would only scroll away from it.
-                if (!scrollable.performAction(scrollActionOf(directionFor(node, boundsOf(scrollable))))) break
+                scrollable.performAction(scrollActionOf(directionFor(node, boundsOf(scrollable))))
             } else {
-                if (!scrollable.performAction(scrollActionOf(blind))) {
+                scrollable.performAction(scrollActionOf(blind)) || run {
                     // At its end this way. Flip and keep going: an
                     // element above the viewport is only reachable
                     // backwards, and an unresolved one has no position
                     // to read the direction off.
                     blind = opposite(blind)
 
-                    if (!scrollable.performAction(scrollActionOf(blind))) break
+                    scrollable.performAction(scrollActionOf(blind))
                 }
             }
 
@@ -343,10 +367,27 @@ class Router(
             // this the next resolve re-reads the pre-scroll tree and the
             // loop scrolls a lazy list to its end while insisting the
             // rows it realized are not there.
+            //
+            // This runs even when the container refused to travel, which
+            // is what a `break` here used to skip. That refusal is the
+            // interesting case: performAction returns false once the
+            // container cannot go *further*, which on a scrolling column
+            // is the state it reaches as the last section comes into
+            // view. Leaving early left the closing resolve reading the
+            // tree from before the scroll that revealed the element, so
+            // the driver answered 404 for something the very next
+            // /hierarchy call held (issue #69).
             automation.invalidateNodeCache()
+
+            if (!moved) {
+                ending = "the container cannot travel any further"
+
+                break
+            }
         }
 
-        locators.resolve(locator) ?: return HttpResponse.error(404, "element $locator not found")
+        locators.resolve(locator)
+            ?: return HttpResponse.error(404, "element $locator not found: $ending")
 
         return HttpResponse.ok()
     }
