@@ -3022,8 +3022,8 @@ func TestExecuteWaitEnabledTimesOutWithLastSeenState(t *testing.T) {
 		t.Fatalf("expected the not-enabled summary, got %v", msg)
 	}
 
-	if !strings.Contains(msg, "last seen enabled=false") {
-		t.Fatalf("expected the last-seen state in the message, got %v", msg)
+	if !strings.Contains(msg, "always enabled=false") {
+		t.Fatalf("expected the observed state in the message, got %v", msg)
 	}
 }
 
@@ -3239,5 +3239,106 @@ func TestExecuteScrollToTimesOutOnAMissingElement(t *testing.T) {
 
 	if scrollTos < 2 {
 		t.Fatalf("expected the dispatch to be retried before giving up, got %d", scrollTos)
+	}
+}
+
+// TestExecuteEnabledFailureCarriesReadTrace covers the diagnostic issue
+// #66 asks for: when a state assertion fails, the message has to say
+// whether the reading ever moved and which node answered.
+//
+// The occurrence that prompted it read enabled=true for a full poll on
+// a button the screen showed as disabled, and answering those two
+// questions meant hand-parsing hierarchy.json out of the artifacts.
+func TestExecuteEnabledFailureCarriesReadTrace(t *testing.T) {
+	t.Parallel()
+
+	// A control published as a wrapper around its own button, which is
+	// the shape Compose produces and the one that made the report hard
+	// to read.
+	screen := &tree.ViewNode{
+		ID:      "root",
+		Visible: true,
+		Enabled: true,
+		Children: []*tree.ViewNode{
+			{
+				ID:      "login.submit",
+				Type:    "other",
+				Visible: true,
+				Enabled: true,
+				Bounds:  tree.Rect{X: 10, Y: 20, Width: 100, Height: 40},
+				Children: []*tree.ViewNode{
+					{Type: "static_text", Text: "Sign in", Visible: true, Enabled: true},
+					{Type: "button", Visible: true, Enabled: true},
+				},
+			},
+		},
+	}
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{screen}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("assert"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Disabled: []provider.MobileStateExpectationExec{
+					{ID: "login.submit", Timeout: 120 * time.Millisecond, Interval: 10 * time.Millisecond},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected the disabled expectation to fail")
+	}
+
+	msg := err.Error()
+
+	for _, want := range []string{
+		"was not disabled after",
+		"always enabled=true",
+		`resolved type="other" with children [static_text, button]`,
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("expected %q in the failure, got %v", want, msg)
+		}
+	}
+
+	if !strings.Contains(msg, " reads,") {
+		t.Fatalf("expected the read count in the failure, got %v", msg)
+	}
+
+}
+
+func TestStateReadTraceReportsAFlippingValue(t *testing.T) {
+	t.Parallel()
+
+	var trace stateReadTrace
+
+	node := &tree.ViewNode{ID: "x", Type: "button", Enabled: true}
+	trace.record(node)
+
+	flipped := &tree.ViewNode{ID: "x", Type: "button", Enabled: false}
+	trace.record(flipped)
+	trace.record(node)
+
+	got := trace.String()
+
+	if !strings.Contains(got, "3 reads") {
+		t.Fatalf("expected every read counted, got %q", got)
+	}
+
+	// A value that moves is a different problem from one that never
+	// does, so the two must not read the same.
+	if !strings.Contains(got, "flipped between true and false") {
+		t.Fatalf("expected the flip to be reported, got %q", got)
+	}
+
+	if !strings.Contains(got, `type="button" with no children`) {
+		t.Fatalf("expected the node description, got %q", got)
 	}
 }

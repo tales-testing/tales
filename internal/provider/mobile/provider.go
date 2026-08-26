@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1247,12 +1248,81 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 	return fmt.Errorf("%s mismatch for %s after %s: want=%q got=%q: %w", kind, locator, opts.Timeout, want, got, err)
 }
 
+// stateReadTrace records what the poll actually observed, so a state
+// assertion that fails can be diagnosed from its own message.
+//
+// It exists because of issue #66: an `expect { disabled }` read
+// enabled=true for a full ten-second poll on a screen whose button was
+// disabled, and answering the first two questions — did the value ever
+// change, and which node answered — meant hand-parsing hierarchy.json
+// out of the artifacts. Both are known here for free.
+type stateReadTrace struct {
+	// reads counts the polls that resolved the element. A high count
+	// with one distinct value is a state that never moved, which is a
+	// different problem from one that flapped.
+	reads int
+	// values holds the distinct readings in the order first seen.
+	values []bool
+	// node describes the node that answered: its type, and the types of
+	// its children. A control published as a generic wrapper reads
+	// nothing like the control itself, and that difference is invisible
+	// in a message that only quotes the locator.
+	node string
+}
+
+func (t stateReadTrace) String() string {
+	if t.reads == 0 {
+		return "no successful read"
+	}
+
+	seen := "always enabled=" + strconv.FormatBool(t.values[0])
+	if len(t.values) > 1 {
+		seen = "enabled flipped between " + strconv.FormatBool(t.values[0]) + " and " + strconv.FormatBool(t.values[len(t.values)-1])
+	}
+
+	return fmt.Sprintf("%d reads, %s, resolved %s", t.reads, seen, t.node)
+}
+
+// record adds one observation of the node's state.
+func (t *stateReadTrace) record(node *tree.ViewNode) {
+	t.reads++
+	t.node = describeNode(node)
+
+	for _, seen := range t.values {
+		if seen == node.Enabled {
+			return
+		}
+	}
+
+	t.values = append(t.values, node.Enabled)
+}
+
+// describeNode renders a node's identity for a failure message: its own
+// type plus its children's, which is what distinguishes the control from
+// a wrapper published under the same id.
+func describeNode(node *tree.ViewNode) string {
+	if node == nil {
+		return "no node"
+	}
+
+	kinds := make([]string, 0, len(node.Children))
+	for _, child := range node.Children {
+		kinds = append(kinds, child.Type)
+	}
+
+	if len(kinds) == 0 {
+		return fmt.Sprintf("type=%q with no children", node.Type)
+	}
+
+	return fmt.Sprintf("type=%q with children [%s]", node.Type, strings.Join(kinds, ", "))
+}
+
 func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provider.MobileStateExpectationExec, want, first bool) error {
 	opts := pollOptions(v.Timeout, v.Interval, expectDefaultTimeout)
 
 	var (
-		found    bool
-		lastSeen bool
+		found bool
+		trace stateReadTrace
 	)
 
 	// Same locator-threading rule as waitForNodeValue: dropping Text
@@ -1270,7 +1340,8 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 		}
 
 		found = true
-		lastSeen = node.Enabled
+
+		trace.record(node)
 
 		if node.Enabled == want {
 			return pollResult{Done: true}, nil
@@ -1291,7 +1362,10 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 		state = "disabled"
 	}
 
-	return fmt.Errorf("element %s was not %s after %s (last seen enabled=%t): %w", locator, state, opts.Timeout, lastSeen, err)
+	// The trace already carries the readings, so the old "last seen"
+	// clause would say the same thing a third time, next to the wrapped
+	// mismatch.
+	return fmt.Errorf("element %s was not %s after %s (%s): %w", locator, state, opts.Timeout, trace, err)
 }
 
 // PollOptions configures a single poll() invocation.
