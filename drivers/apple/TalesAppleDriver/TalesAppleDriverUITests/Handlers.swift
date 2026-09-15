@@ -237,6 +237,7 @@ final class TalesRouter {
                 }
 
                 if waitForHittable(element, timeout: 1.5) {
+                    waitForFrameToSettle(of: element)
                     tapResolvedElement(element)
 
                     return HTTPResponse.json(["ok": true])
@@ -260,13 +261,16 @@ final class TalesRouter {
                     dismissKeyboardIfPresent(in: app)
                 }
 
-                // Wait for the element to be hittable. SwiftUI animates
-                // scroll position when the keyboard appears or dismisses,
-                // and a tap fired during that animation can land on the
-                // element's stale frame and miss silently — exactly the
-                // pattern observed on a sequence of Toggle taps right
-                // after a SecureField input.
+                // Wait for the element to be hittable, then for it to hold
+                // still. SwiftUI animates scroll position when the keyboard
+                // appears or dismisses, and a tap fired during that animation
+                // can land on the element's stale frame and miss silently —
+                // exactly the pattern observed on a sequence of Toggle taps
+                // right after a SecureField input. Hittable is not still: a
+                // scroll view still settling from a scroll_to consumes the
+                // touch that stops it, so the element never sees the tap.
                 if waitForHittable(element, timeout: 1.5) {
+                    waitForFrameToSettle(of: element)
                     tapResolvedElement(element)
 
                     return HTTPResponse.json(["ok": true])
@@ -1051,16 +1055,63 @@ final class TalesRouter {
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
             .withOffset(CGVector(dx: centerX, dy: endY))
 
-        // Short hold before drag, then drag. The hold gives SwiftUI
-        // gesture recognizers time to attach to the scroll view; a
-        // 0-duration press behaves like a flick and can cancel.
-        start.press(forDuration: 0.05, thenDragTo: end)
+        // Short hold before drag, then drag, then hold again before the
+        // release. The first hold gives SwiftUI gesture recognizers time
+        // to attach to the scroll view; a 0-duration press behaves like a
+        // flick and can cancel. The second hold takes some of the speed
+        // out of the release, but not all of it: a synthesized finger held
+        // still sends no micro-movements, so UIKit keeps the last velocity
+        // it computed, and the scroll view goes on decelerating for one to
+        // two seconds after the finger lifts (measured: ~110pt over 1.7s).
+        start.press(
+            forDuration: 0.05,
+            thenDragTo: end,
+            withVelocity: .default,
+            thenHoldForDuration: 0.2
+        )
 
-        // Let the scroll settle before the caller queries the element
-        // frame again or re-taps.
-        Thread.sleep(forTimeInterval: 0.2)
+        // Which is why the handler hands back only once the element has
+        // stopped moving. The touch that stops a decelerating scroll view
+        // is consumed by it, never delivered to the content: a tap sent to
+        // the element during that time landed on nothing, and the scenario
+        // failed later on whatever the tap should have caused (a form's
+        // submit button, in the case that surfaced this).
+        waitForFrameToSettle(of: element)
 
         return true
+    }
+
+    /// Returns once the element's frame has held still — within half a
+    /// point, since the tail of a deceleration moves it by less than a
+    /// pixel per read — over two consecutive reads, or after three
+    /// seconds. The implicit XCTest quiescence wait that would cover this
+    /// is disabled on purpose (see Quiescence.swift), so an animation the
+    /// driver itself set off is the driver's to wait out.
+    private func waitForFrameToSettle(of element: XCUIElement) {
+        let deadline = Date().addingTimeInterval(3.0)
+        let tolerance: CGFloat = 0.5
+        var previous = element.frame
+        var stableReads = 0
+
+        while Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+
+            let current = element.frame
+            let moved = abs(current.minX - previous.minX) > tolerance
+                || abs(current.minY - previous.minY) > tolerance
+
+            if moved {
+                stableReads = 0
+            } else {
+                stableReads += 1
+
+                if stableReads >= 2 {
+                    return
+                }
+            }
+
+            previous = current
+        }
     }
 
     /// Resolves an element by label-first then identifier, and scrolls
