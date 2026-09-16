@@ -206,6 +206,56 @@ class HierarchyEncoderTest {
         )
     }
 
+    // A scroll is asynchronous on the platform side — Compose animates it
+    // over frames that begin after the action has returned — so the
+    // driver tells "still" from "moving" by reading the container twice.
+    // The fingerprint is what those two reads compare.
+    @Test
+    fun `fingerprints where the on-screen nodes are`() {
+        fun list(firstRowTop: Int, rowText: String = "row") = FakeNode(
+            className = "android.widget.ScrollView",
+            boundsInScreen = Bounds(0, 200, 1080, 1600),
+            childNodes = listOf(
+                FakeNode(text = rowText, boundsInScreen = Bounds(0, firstRowTop, 1080, 120)),
+                FakeNode(text = rowText, boundsInScreen = Bounds(0, firstRowTop + 120, 1080, 120)),
+            ),
+        )
+
+        val atRest = HierarchyEncoder.layoutFingerprint(list(firstRowTop = 200), SCREEN)
+
+        // The same layout read again is the same string: that is the
+        // "held still" verdict.
+        assertEquals(atRest, HierarchyEncoder.layoutFingerprint(list(firstRowTop = 200), SCREEN))
+
+        // Content that moved by a pixel reads differently.
+        assertTrue(atRest != HierarchyEncoder.layoutFingerprint(list(firstRowTop = 199), SCREEN))
+
+        // Only geometry counts: a caption changing under a still layout
+        // must not read as movement, or a ticking clock would never settle.
+        assertEquals(atRest, HierarchyEncoder.layoutFingerprint(list(firstRowTop = 200, rowText = "other"), SCREEN))
+    }
+
+    @Test
+    fun `leaves invisible nodes out of the fingerprint`() {
+        // Compose reports a row that has left the viewport as not visible
+        // to the user before dropping it from the tree altogether, and a
+        // row entering it the other way round. Both are a change in what
+        // is on screen, and both have to show up as one.
+        fun list(rowVisible: Boolean) = FakeNode(
+            className = "android.widget.ScrollView",
+            boundsInScreen = Bounds(0, 200, 1080, 1600),
+            childNodes = listOf(
+                FakeNode(boundsInScreen = Bounds(0, 200, 1080, 120)),
+                FakeNode(isVisibleToUser = rowVisible, boundsInScreen = Bounds(0, 320, 1080, 120)),
+            ),
+        )
+
+        assertTrue(
+            HierarchyEncoder.layoutFingerprint(list(rowVisible = true), SCREEN) !=
+                HierarchyEncoder.layoutFingerprint(list(rowVisible = false), SCREEN),
+        )
+    }
+
     @Test
     fun `serialises the shape the Go tree decoder expects`() {
         val node = FakeNode(

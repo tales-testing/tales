@@ -210,6 +210,18 @@ container cannot travel any further — because `element not found` on its own
 reads as a statement about the app when it is often a statement about the
 container.
 
+A scroll goes on after the action that started it returns: Compose animates the
+accessibility scroll over the frames that follow, and on a slow emulator those
+frames come in fits and starts. So the driver reads the container until its
+content has held still across two reads (three seconds at most) before it looks
+for the element again, and a container that refuses to travel further is asked
+once more for the element before the driver turns around. Both guard the same
+failure: a column scrolled to its end, read one frame too early, was scrolled
+back by the flip, and the verdict was taken off a tree from the middle of the
+way back — `scroll_to` answered success for a form parked back at the top. The
+element-based `tap` waits for the same stillness on the element it names, so a
+touch does not land where the element was a frame ago.
+
 "On screen" here means what the hierarchy dump means by `visible`, ancestors
 included. A node can pass the check on its own while sitting under a clipped
 container that keeps the whole subtree out of every snapshot, and taking that

@@ -186,6 +186,40 @@ object HierarchyEncoder {
     fun scrollDirectionFor(bounds: Bounds, viewport: Bounds): ScrollDirection =
         if (bounds.y < viewport.y) ScrollDirection.BACKWARD else ScrollDirection.FORWARD
 
+    /**
+     * Where the on-screen nodes of a subtree are, as one string.
+     *
+     * A scroll is asynchronous on the platform side: Compose animates
+     * the accessibility scroll action over frames that begin after
+     * performAction has returned, and a synthesized drag decelerates
+     * after the finger lifts. So the driver tells "moving" from "still"
+     * by reading the container twice and comparing — this is what it
+     * compares. Only geometry goes in: text and state change under a
+     * layout that is not moving (a clock, a counter), and taking them
+     * into account would keep the wait from ever ending. A node leaving
+     * or entering the screen changes the string on its own, since the
+     * invisible ones are left out.
+     */
+    fun layoutFingerprint(node: NodeAttributes, screen: Bounds): String {
+        val out = StringBuilder()
+        appendFingerprint(node, screen, out)
+
+        return out.toString()
+    }
+
+    private fun appendFingerprint(node: NodeAttributes, screen: Bounds, out: StringBuilder) {
+        val bounds = clip(node.boundsInScreen, screen)
+
+        out.append(bounds.x).append(',').append(bounds.y).append(',')
+            .append(bounds.width).append(',').append(bounds.height).append(';')
+
+        for (child in node.childNodes) {
+            if (!child.isVisibleToUser) continue
+
+            appendFingerprint(child, screen, out)
+        }
+    }
+
     /** Intersects with the screen, so off-screen nodes report empty bounds. */
     fun clip(bounds: Bounds, screen: Bounds): Bounds {
         val left = maxOf(bounds.x, screen.x)
