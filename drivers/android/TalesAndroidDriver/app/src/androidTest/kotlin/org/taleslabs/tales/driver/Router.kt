@@ -108,8 +108,7 @@ class Router(
 
         if (!locator.isEmpty) {
             locators.resolve(locator)?.let { node ->
-                val rect = Rect()
-                node.getBoundsInScreen(rect)
+                val rect = settledBounds(node)
 
                 if (!rect.isEmpty) return rect.centerX() to rect.centerY()
             }
@@ -119,6 +118,43 @@ class Router(
         val y = payload.intOrNull("y") ?: return null
 
         return x to y
+    }
+
+    /**
+     * The element's bounds once they have held still across two reads
+     * [SETTLE_POLL_MS] apart, or the latest reading once [SETTLE_CAP_MS]
+     * has passed.
+     *
+     * A scroll goes on after the call that started it returns: Compose
+     * animates the accessibility scroll action over the following
+     * frames, and a synthesized drag decelerates after the finger lifts.
+     * Tapping the centre of an element still gliding into place lands
+     * the touch where the element was a frame ago — on a slow emulator
+     * the tap that followed scroll_to hit nothing, and the scenario
+     * failed on the navigation the tap should have caused. The same
+     * rule as the iOS driver's frame settle, for the same reason.
+     */
+    private fun settledBounds(node: AccessibilityNodeInfo): Rect {
+        val deadline = SystemClock.uptimeMillis() + SETTLE_CAP_MS
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+
+        while (SystemClock.uptimeMillis() < deadline) {
+            SystemClock.sleep(SETTLE_POLL_MS)
+            automation.invalidateNodeCache()
+
+            // Gone from the tree: the last reading is all there is.
+            if (!node.refresh()) break
+
+            val again = Rect()
+            node.getBoundsInScreen(again)
+
+            if (again == rect) break
+
+            rect.set(again)
+        }
+
+        return rect
     }
 
     private fun tap(payload: Map<String, Any?>): HttpResponse {
@@ -333,32 +369,47 @@ class Router(
                 break
             }
 
-            val moved = if (node != null) {
+            val before = fingerprintOf(scrollable)
+
+            val moved: Boolean
+
+            if (node != null) {
                 // The tree says where the element is relative to the
                 // container that has to move, so the direction is a
                 // fact. A container that will not travel that way cannot
                 // help — the element is outside its range, and flipping
                 // would only scroll away from it.
-                scrollable.performAction(scrollActionOf(directionFor(node, boundsOf(scrollable))))
+                moved = scrollable.performAction(scrollActionOf(directionFor(node, boundsOf(scrollable))))
+            } else if (scrollable.performAction(scrollActionOf(blind))) {
+                moved = true
             } else {
-                scrollable.performAction(scrollActionOf(blind)) || run {
-                    // At its end this way. Flip and keep going: an
-                    // element above the viewport is only reachable
-                    // backwards, and an unresolved one has no position
-                    // to read the direction off.
-                    blind = opposite(blind)
+                // At its end this way. Before turning around, look once
+                // more for the element: a refusal right after a scroll
+                // is the state a column reaches as its last section
+                // comes into view, and if the tree read a frame behind
+                // that scroll, the element is there and merely unseen.
+                // Turning around here is what undid a correct scroll —
+                // on a slow emulator the sign-up form's last link was
+                // scrolled into view, missed by one stale read, scrolled
+                // back out by the flip, and the verdict read "on screen"
+                // off the tree from the middle of the way back.
+                automation.invalidateNodeCache()
 
-                    scrollable.performAction(scrollActionOf(blind))
-                }
+                if (locators.resolve(locator) != null) continue
+
+                // Flip and keep going: an element above the viewport is
+                // only reachable backwards, and an unresolved one has no
+                // position to read the direction off.
+                blind = opposite(blind)
+
+                moved = scrollable.performAction(scrollActionOf(blind))
             }
 
-            device.waitForIdle(SCROLL_SETTLE_MS)
-
-            // The scroll just happened on this thread, so every cached
-            // node still describes the screen from before it. Without
-            // this the next resolve re-reads the pre-scroll tree and the
-            // loop scrolls a lazy list to its end while insisting the
-            // rows it realized are not there.
+            // Every cached node still describes the screen from before
+            // the scroll, and the scroll itself is still happening:
+            // performAction returns as soon as the container has taken
+            // the request, and the content then moves over the frames
+            // that follow. Wait for it to come to rest, then re-read.
             //
             // This runs even when the container refused to travel, which
             // is what a `break` here used to skip. That refusal is the
@@ -369,7 +420,7 @@ class Router(
             // tree from before the scroll that revealed the element, so
             // the driver answered 404 for something the very next
             // /hierarchy call held (issue #69).
-            automation.invalidateNodeCache()
+            settleScroll(scrollable, if (moved) before else null)
 
             if (!moved) {
                 ending = "the container cannot travel any further"
@@ -447,6 +498,71 @@ class Router(
 
     private fun boundsOf(node: AccessibilityNodeInfo): Bounds = AccessibilityNode(node).boundsInScreen
 
+    /**
+     * Where the container's on-screen content is right now, read fresh.
+     *
+     * refresh() re-reads the node itself — its child list included, which
+     * is what changes as rows enter and leave a scrolled viewport — and
+     * the cache drop makes the walk below fetch the children anew rather
+     * than hand back the copies taken before the scroll. A container that
+     * has left the tree has no content to read: the empty string.
+     */
+    private fun fingerprintOf(scrollable: AccessibilityNodeInfo): String {
+        automation.invalidateNodeCache()
+
+        if (!scrollable.refresh()) return ""
+
+        return HierarchyEncoder.layoutFingerprint(AccessibilityNode(scrollable), screenBounds())
+    }
+
+    /**
+     * Blocks until the container's content has held still: two reads,
+     * [SETTLE_POLL_MS] apart, that place every on-screen descendant at
+     * the same bounds. Capped at [SETTLE_CAP_MS], because a container
+     * with a perpetual animation inside would otherwise never return.
+     *
+     * [before] is the content's fingerprint from before the scroll was
+     * requested, when one was. The scroll is asynchronous — Compose
+     * animates it over frames that begin after performAction has
+     * returned — so two reads taken before the first of those frames
+     * agree with each other and describe the content at rest where it
+     * was. With [before] the wait first holds until the content has
+     * left that state, up to [SETTLE_START_CAP_MS]: a container that
+     * accepted the action but has nowhere to go (its last pixel already
+     * in view) would otherwise hold the loop for the whole cap.
+     *
+     * The old `waitForIdle(300)` was a 300ms sleep in disguise: the idle
+     * it waits for is 500ms without an accessibility event, longer than
+     * the budget, so it only ever returned on the timeout — long before
+     * a scroll that a slow emulator renders in fits and starts was over.
+     */
+    private fun settleScroll(scrollable: AccessibilityNodeInfo, before: String?) {
+        val deadline = SystemClock.uptimeMillis() + SETTLE_CAP_MS
+        var previous = before
+
+        if (before != null) {
+            val startDeadline = SystemClock.uptimeMillis() + SETTLE_START_CAP_MS
+
+            while (SystemClock.uptimeMillis() < startDeadline) {
+                SystemClock.sleep(SETTLE_POLL_MS)
+
+                previous = fingerprintOf(scrollable)
+
+                if (previous != before) break
+            }
+        }
+
+        while (SystemClock.uptimeMillis() < deadline) {
+            SystemClock.sleep(SETTLE_POLL_MS)
+
+            val current = fingerprintOf(scrollable)
+
+            if (current == previous) return
+
+            previous = current
+        }
+    }
+
     private fun directionFor(node: AccessibilityNodeInfo, viewport: Bounds): ScrollDirection =
         HierarchyEncoder.scrollDirectionFor(boundsOf(node), viewport)
 
@@ -521,7 +637,14 @@ class Router(
         const val SCREENSHOT_RETRY_MS = 200L
         const val KEYBOARD_SETTLE_MS = 500L
         const val SCROLL_TO_ATTEMPTS = 10
-        const val SCROLL_SETTLE_MS = 300L
+        const val SETTLE_POLL_MS = 100L
+        const val SETTLE_START_CAP_MS = 1_000L
+
+        // Short of the host's 10s budget per call even with a couple of
+        // scroll attempts inside it: a container that never holds still
+        // (a spinner in a list) costs the cap per attempt, and a clean
+        // 404 at the end is worth more than a deadline cut off midway.
+        const val SETTLE_CAP_MS = 2_000L
         const val LAUNCH_TIMEOUT_MS = 10_000L
 
         /**
