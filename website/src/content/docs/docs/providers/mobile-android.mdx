@@ -213,14 +213,23 @@ container.
 A scroll goes on after the action that started it returns: Compose animates the
 accessibility scroll over the frames that follow, and on a slow emulator those
 frames come in fits and starts. So the driver reads the container until its
-content has held still across two reads (three seconds at most) before it looks
+content has held still across two reads (two seconds at most) before it looks
 for the element again, and a container that refuses to travel further is asked
 once more for the element before the driver turns around. Both guard the same
 failure: a column scrolled to its end, read one frame too early, was scrolled
 back by the flip, and the verdict was taken off a tree from the middle of the
-way back — `scroll_to` answered success for a form parked back at the top. The
-element-based `tap` waits for the same stillness on the element it names, so a
-touch does not land where the element was a frame ago.
+way back: `scroll_to` answered success for a form parked back at the top.
+
+An element-based `tap`, `double_tap` or `long_press` waits for stillness too,
+on the element it names, so a touch does not land where the element was a frame
+ago. Its bar is higher: the element has to hold still for 300ms, not merely
+read the same twice. Bounds are whole pixels, and the tail of a scroll moves
+the content by less than one per read well before it ends, while a Compose
+scrollable consumes a touch that lands before it has finished scrolling (that
+is how a finger stops a fling). A tap sent on two equal reads therefore reached
+the screen, exactly on the element, and clicked nothing (issue #77). The wait
+costs a few hundred milliseconds per touch, and gives up after two seconds on
+content that never stops moving.
 
 "On screen" here means what the hierarchy dump means by `visible`, ancestors
 included. A node can pass the check on its own while sitting under a clipped
@@ -284,6 +293,15 @@ holds input focus rather than to the element asked for, that fallback runs only
 once the target actually holds focus. When it does not, the step fails saying
 so instead of erasing whichever field does. A locator matching no element is a
 failure too, not a silent no-op.
+
+`input_text` and `clear_text` both look for their field for up to two seconds
+before reporting it missing. The tap that focuses a field brings the soft
+keyboard up, and while the keyboard's window appears the app's is resized: for
+that moment a single read of the accessibility tree can miss a field that is
+plainly on screen, and `input_text` used to fail with `element ... not found`
+for the field it had just focused (issue #77). A field found on the first read
+costs nothing extra; a locator that matches nothing still fails, two seconds
+later.
 
 ## Permissions
 
