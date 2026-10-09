@@ -121,9 +121,9 @@ class Router(
     }
 
     /**
-     * The element's bounds once they have held still across two reads
-     * [SETTLE_POLL_MS] apart, or the latest reading once [SETTLE_CAP_MS]
-     * has passed.
+     * The element's bounds once they have held still for
+     * [Waits.TOUCH_QUIET_MS], read every [SETTLE_POLL_MS], or the latest
+     * reading once [SETTLE_CAP_MS] has passed.
      *
      * A scroll goes on after the call that started it returns: Compose
      * animates the accessibility scroll action over the following
@@ -133,6 +133,10 @@ class Router(
      * the tap that followed scroll_to hit nothing, and the scenario
      * failed on the navigation the tap should have caused. The same
      * rule as the iOS driver's frame settle, for the same reason.
+     *
+     * Two equal reads used to count as still. They do not: see
+     * [Waits.TOUCH_QUIET_MS] for the tap that landed on its element and
+     * was taken by the scroll still winding down under it.
      */
     private fun settledBounds(node: AccessibilityNodeInfo): Rect {
         val first = Rect()
@@ -140,7 +144,7 @@ class Router(
 
         return Waits.untilStill(
             first,
-            quietMs = SETTLE_POLL_MS,
+            quietMs = Waits.TOUCH_QUIET_MS,
             pollMs = SETTLE_POLL_MS,
             capMs = SETTLE_CAP_MS,
             clock = DeviceClock,

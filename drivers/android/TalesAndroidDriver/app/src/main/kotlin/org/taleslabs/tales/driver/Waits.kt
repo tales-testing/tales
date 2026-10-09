@@ -26,6 +26,20 @@ interface Clock {
 object Waits {
 
     /**
+     * How long an element has to hold still before the driver touches it.
+     *
+     * Two equal reads 100ms apart used to be enough, and they prove
+     * nothing: bounds are whole pixels, and the tail of a scroll moves
+     * the content by less than one per read well before it ends. A
+     * Compose scrollable consumes a touch that lands while it is still
+     * scrolling (that is how a finger stops a fling), so the tap that
+     * followed scroll_to reached the screen, exactly on an element at
+     * rest to the pixel, and clicked nothing (issue #77). The iOS driver
+     * waits out the same deceleration for the same reason.
+     */
+    const val TOUCH_QUIET_MS = 300L
+
+    /**
      * Reads [read] every [pollMs] until it has returned the same value
      * for [quietMs], and returns that value; once [capMs] has passed,
      * returns the latest reading instead, because something that never
