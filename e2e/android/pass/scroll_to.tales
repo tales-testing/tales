@@ -264,11 +264,42 @@ scenario "Android scroll_to reaches elements in both directions" {
     }
 
     # The scroll itself is what this step proves, so it asserts on the
-    # element being on screen rather than on a follow-up tap, which a
-    # still-settling scroll container can swallow.
+    # element being on screen. The tap that follows a scroll_to is the
+    # next step's subject.
     expect {
       visible {
         id = "feed.detail.delete"
+      }
+    }
+  }
+
+  # Regression for issue #77: a tap sent right after scroll_to reached
+  # the screen, exactly on the element, and clicked nothing. The element
+  # read the same twice in a row while the scroll that brought it there
+  # was still winding down, and a Compose scrollable consumes a touch
+  # that lands mid-scroll to stop the scroll rather than delivering it.
+  # The driver now holds a touch until its element has been still for
+  # 300ms. The column goes back to the top first, so the scroll_to below
+  # has to move it, and the tap follows that scroll with no wait.
+  step "mobile" "android_tap_right_after_scroll_to" {
+    depends_on = ["android_scroll_to_the_end_of_a_column"]
+
+    platform = "android"
+    target   = "phone"
+
+    actions {
+      scroll_to {
+        id = "feed.detail.back"
+      }
+      scroll_to {
+        id = "feed.detail.delete"
+      }
+      tap {
+        id = "feed.detail.delete"
+      }
+      wait_visible {
+        id      = "feed.detail.deleted"
+        timeout = "10s"
       }
     }
   }
