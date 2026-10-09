@@ -44,6 +44,30 @@ class LocatorResolver(private val automation: UiAutomation) {
         return null
     }
 
+    /**
+     * [resolve], kept trying for a moment before giving up.
+     *
+     * For the actions that answer 404 on a miss: text entry has no
+     * coordinates to fall back on, unlike a tap. A single read can miss
+     * an element that is plainly on screen. When the tap that focuses a
+     * field brings the keyboard up, the app's window is resized while
+     * the IME's appears, and for that moment the window list can hold
+     * the keyboard's root without the app's, or the app's tree in the
+     * middle of a layout. input_text then answered "not found" for the
+     * field it had just focused, which the failure screenshot showed on
+     * screen, focused, above the keyboard (issue #77). wait_visible never
+     * hit this because it polls.
+     *
+     * A locator that names nothing still fails, [Waits.RESOLVE_TIMEOUT_MS]
+     * later.
+     */
+    fun resolveWithRetry(locator: Locator): AccessibilityNodeInfo? = Waits.untilFound(
+        timeoutMs = Waits.RESOLVE_TIMEOUT_MS,
+        pollMs = Waits.RESOLVE_POLL_MS,
+        clock = DeviceClock,
+        beforeRetry = { automation.invalidateNodeCache() },
+    ) { resolve(locator) }
+
     private fun findIn(node: AccessibilityNodeInfo, locator: Locator): AccessibilityNodeInfo? {
         if (matches(node, locator)) return node
 

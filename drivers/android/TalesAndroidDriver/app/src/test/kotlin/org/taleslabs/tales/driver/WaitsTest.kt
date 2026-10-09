@@ -1,6 +1,7 @@
 package org.taleslabs.tales.driver
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -107,5 +108,59 @@ class WaitsTest {
         assertEquals(2065, got)
         assertEquals(1, reads)
         assertEquals(350, clock.now)
+    }
+
+    @Test
+    fun `returns a first-read hit without waiting`() {
+        val clock = FakeClock()
+        var retries = 0
+
+        val got = Waits.untilFound(Waits.RESOLVE_TIMEOUT_MS, Waits.RESOLVE_POLL_MS, clock, beforeRetry = { retries++ }) {
+            "field"
+        }
+
+        assertEquals("field", got)
+        assertEquals(0, retries)
+        assertEquals(0, clock.now)
+    }
+
+    @Test
+    fun `keeps looking through a transient miss`() {
+        // Issue #77. While the keyboard comes up the app's window is
+        // resized, and for that moment the window list can hold the
+        // IME's root without the app's. A single read then misses the
+        // field the previous tap focused, and input_text answered 404
+        // for a field the failure screenshot showed on screen.
+        val clock = FakeClock()
+        val calls = mutableListOf<String>()
+        val readings = ArrayDeque(listOf(null, null, "field"))
+
+        val got = Waits.untilFound(Waits.RESOLVE_TIMEOUT_MS, Waits.RESOLVE_POLL_MS, clock, beforeRetry = { calls += "invalidate" }) {
+            calls += "read"
+            readings.removeFirst()
+        }
+
+        assertEquals("field", got)
+        // The cache is dropped before every re-read, and never before
+        // the first one, so a hit costs what it always did.
+        assertEquals(listOf("read", "invalidate", "read", "invalidate", "read"), calls)
+        assertEquals(2 * Waits.RESOLVE_POLL_MS, clock.now)
+    }
+
+    @Test
+    fun `gives up once the time is up`() {
+        // A locator that names nothing still fails, only later.
+        val clock = FakeClock()
+        var reads = 0
+
+        val got = Waits.untilFound<String>(Waits.RESOLVE_TIMEOUT_MS, Waits.RESOLVE_POLL_MS, clock, beforeRetry = {}) {
+            reads++
+
+            null
+        }
+
+        assertNull(got)
+        assertEquals(Waits.RESOLVE_TIMEOUT_MS, clock.now)
+        assertEquals(Waits.RESOLVE_TIMEOUT_MS / Waits.RESOLVE_POLL_MS + 1, reads.toLong())
     }
 }
