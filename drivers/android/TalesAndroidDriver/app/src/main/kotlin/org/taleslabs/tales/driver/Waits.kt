@@ -40,6 +40,48 @@ object Waits {
     const val TOUCH_QUIET_MS = 300L
 
     /**
+     * How long an action that cannot fall back on coordinates keeps
+     * looking for its element before answering 404.
+     *
+     * Short next to the host's own budget: the host has just seen the
+     * element visible, so a miss here is either a moment's gap in the
+     * tree or a genuine disagreement, and only the first is worth
+     * waiting for.
+     */
+    const val RESOLVE_TIMEOUT_MS = 2_000L
+
+    /** How often it looks again in the meantime. */
+    const val RESOLVE_POLL_MS = 100L
+
+    /**
+     * Calls [read] until it returns something, for at most [timeoutMs],
+     * and returns null once the time is up.
+     *
+     * The first call is made as is, so a hit costs what it always did.
+     * Only a miss waits [pollMs] and runs [beforeRetry] before reading
+     * again: that is where the caller drops the node cache, since a
+     * cached tree would only repeat the miss.
+     */
+    fun <T : Any> untilFound(
+        timeoutMs: Long,
+        pollMs: Long,
+        clock: Clock,
+        beforeRetry: () -> Unit,
+        read: () -> T?,
+    ): T? {
+        val deadline = clock.uptimeMillis() + timeoutMs
+
+        while (true) {
+            read()?.let { return it }
+
+            if (clock.uptimeMillis() >= deadline) return null
+
+            clock.sleep(pollMs)
+            beforeRetry()
+        }
+    }
+
+    /**
      * Reads [read] every [pollMs] until it has returned the same value
      * for [quietMs], and returns that value; once [capMs] has passed,
      * returns the latest reading instead, because something that never

@@ -29,7 +29,7 @@ class TextInput(
      * contract supports.
      */
     fun input(locator: Locator, value: String): HttpResponse {
-        val node = if (locator.isEmpty) focusedEditable() else locators.resolve(locator)
+        val node = if (locator.isEmpty) focusedEditable() else locators.resolveWithRetry(locator)
 
         if (node == null) {
             return if (locator.isEmpty) {
@@ -81,7 +81,7 @@ class TextInput(
      * than a delete aimed at a stranger.
      */
     fun erase(locator: Locator, characters: Int): HttpResponse {
-        val node = if (locator.isEmpty) focusedEditable() else locators.resolve(locator)
+        val node = if (locator.isEmpty) focusedEditable() else locators.resolveWithRetry(locator)
 
         if (node == null) {
             return if (locator.isEmpty) {
