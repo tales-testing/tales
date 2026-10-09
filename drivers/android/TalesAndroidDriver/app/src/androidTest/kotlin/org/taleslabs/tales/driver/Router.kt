@@ -135,26 +135,21 @@ class Router(
      * rule as the iOS driver's frame settle, for the same reason.
      */
     private fun settledBounds(node: AccessibilityNodeInfo): Rect {
-        val deadline = SystemClock.uptimeMillis() + SETTLE_CAP_MS
-        val rect = Rect()
-        node.getBoundsInScreen(rect)
+        val first = Rect()
+        node.getBoundsInScreen(first)
 
-        while (SystemClock.uptimeMillis() < deadline) {
-            SystemClock.sleep(SETTLE_POLL_MS)
+        return Waits.untilStill(
+            first,
+            quietMs = SETTLE_POLL_MS,
+            pollMs = SETTLE_POLL_MS,
+            capMs = SETTLE_CAP_MS,
+            clock = DeviceClock,
+        ) {
             automation.invalidateNodeCache()
 
             // Gone from the tree: the last reading is all there is.
-            if (!node.refresh()) break
-
-            val again = Rect()
-            node.getBoundsInScreen(again)
-
-            if (again == rect) break
-
-            rect.set(again)
+            if (node.refresh()) Rect().also { node.getBoundsInScreen(it) } else null
         }
-
-        return rect
     }
 
     private fun tap(payload: Map<String, Any?>): HttpResponse {
