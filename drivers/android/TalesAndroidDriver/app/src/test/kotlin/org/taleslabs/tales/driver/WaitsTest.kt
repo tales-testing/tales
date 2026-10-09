@@ -1,6 +1,7 @@
 package org.taleslabs.tales.driver
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** A clock that only moves when the code under test sleeps, or a read takes time. */
@@ -15,6 +16,29 @@ private class FakeClock : Clock {
 }
 
 class WaitsTest {
+
+    @Test
+    fun `does not take two equal reads for an element at rest`() {
+        // Issue #77. Bounds are whole pixels, and the tail of a Compose
+        // scroll moves the content by less than one per read well before
+        // the scroll ends. The scrollable consumes a touch that lands
+        // while it is still scrolling, so an element that reads the same
+        // twice, 100ms apart, may still be on its way: the tap that
+        // followed scroll_to reached the screen, right on the element,
+        // and clicked nothing.
+        val clock = FakeClock()
+        var reads = 0
+
+        val got = Waits.untilStill(2065, Waits.TOUCH_QUIET_MS, pollMs = 100, capMs = 2_000, clock = clock) {
+            reads++
+
+            2065
+        }
+
+        assertEquals(2065, got)
+        assertTrue("touch sent after ${clock.now}ms of stillness", clock.now >= 300)
+        assertTrue("touch sent after $reads equal re-reads", reads >= 3)
+    }
 
     @Test
     fun `restarts the quiet window whenever the value moves`() {
