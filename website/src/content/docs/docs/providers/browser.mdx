@@ -272,6 +272,14 @@ Artifact paths are surfaced on `StepResult.Artifacts` and per-action `ActionResu
 - `steps`: one screenshot + dom.html at the end of each step (success or failure)
 - `actions` (default with `--report-html`): per-action capture, plus a failure capture if any action fails
 
+### Captures never hold the run
+
+A capture is evidence for the report, not part of what the step checks, so it runs under its own bounds instead of the step's:
+
+- One capture (screenshot + `dom.html`) has a 5s budget, and each read inside it 2s. A read that runs out of time is tried again, up to 3 times within the budget.
+- Chrome never answers a screenshot once a navigation replaces the page it was requested on, for example a page that redirects by script right after `goto`. The provider watches for that navigation, gives up on the screenshot and takes it again on the new page, so the frame shows the page the browser landed on.
+- A read that still fails is skipped. The action keeps its own status and error, the next action keeps its whole timeout, and the action carries a note saying why the frame is missing (`capture_note` in the [JSONL action event](/docs/reports/jsonl/#action-event-mobile-only), the **Capture** row of the [visual report](/docs/reports/visual/)), such as `screenshot skipped: the browser did not answer in time (a navigation was probably in progress)`.
+
 ## Visual report integration
 
 When `--report-html` is set, the browser provider populates the same `report.ActionResult` records used by the mobile provider's visual replay. The HTML report shows:
@@ -294,6 +302,8 @@ Tales applies timeouts in this precedence order (innermost first):
 3. Target `driver.timeout` (default for actions / expectations in the step)
 4. Built-in 10s default for expectations, 30s default for actions
 5. CLI `--timeout` (wraps the entire suite ctx)
+
+Screenshot / DOM captures are bounded separately (see [Captures never hold the run](#captures-never-hold-the-run)) and never eat into the timeout of the action that follows them.
 
 ## Selectors
 
