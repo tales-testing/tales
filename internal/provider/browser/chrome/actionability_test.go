@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -104,6 +105,123 @@ func TestAwaitActionableIgnoresTheProbeTheDeadlineInterrupted(t *testing.T) {
 
 	if res.Reason != reasonDisabled {
 		t.Fatalf("reason = %q, want the last real answer %q", res.Reason, reasonDisabled)
+	}
+}
+
+// expiringCtx is a context whose deadline has passed while its own timer
+// has not fired yet: Err stays nil until expire is called. That is the
+// window issue #92 falls into, because the probe does not run under the
+// action's context: chromedpDriver.run derives one with the same deadline
+// from the browser's context, and that timer can fire first.
+type expiringCtx struct {
+	context.Context
+
+	deadline time.Time
+	done     chan struct{}
+
+	mu  sync.Mutex
+	err error
+}
+
+func newExpiringCtx(deadline time.Time) *expiringCtx {
+	return &expiringCtx{Context: context.Background(), deadline: deadline, done: make(chan struct{})}
+}
+
+func (c *expiringCtx) Deadline() (time.Time, bool) { return c.deadline, true }
+
+func (c *expiringCtx) Done() <-chan struct{} { return c.done }
+
+func (c *expiringCtx) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.err
+}
+
+func (c *expiringCtx) expire() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.err == nil {
+		c.err = context.DeadlineExceeded
+		close(c.done)
+	}
+}
+
+func TestAwaitActionableKeepsTheLastAnswerWhenTheProbeTimerFiresFirst(t *testing.T) {
+	t.Parallel()
+
+	ctx := newExpiringCtx(time.Now().Add(-time.Millisecond))
+
+	calls := 0
+	probe := func(_ context.Context, _ int) (probeResult, error) {
+		calls++
+
+		switch calls {
+		case 1:
+			return probeResult{Reason: reasonCovered, Hit: `<div id="veil">`, X: floatPtr(65), Y: floatPtr(59)}, nil
+		case 2:
+			// The probe's own copy of the deadline fired; the action's
+			// has not yet.
+			return probeResult{}, context.DeadlineExceeded
+		default:
+			ctx.expire()
+
+			return probeResult{}, context.DeadlineExceeded
+		}
+	}
+
+	res, err := awaitActionable(ctx, time.Millisecond, probe)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want the deadline", err)
+	}
+
+	if got := res.describe(); got != `point (65, 59) is covered by <div id="veil">` {
+		t.Fatalf("describe() = %q, want the cover seen before the deadline", got)
+	}
+}
+
+func TestAwaitActionableReportsADeadlineBeforeAnyAnswer(t *testing.T) {
+	t.Parallel()
+
+	ctx := newExpiringCtx(time.Now().Add(-time.Millisecond))
+
+	calls := 0
+	probe := func(_ context.Context, _ int) (probeResult, error) {
+		calls++
+		if calls > 1 {
+			ctx.expire()
+		}
+
+		return probeResult{}, context.DeadlineExceeded
+	}
+
+	res, err := awaitActionable(ctx, time.Millisecond, probe)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want the deadline", err)
+	}
+
+	if got := res.describe(); got != "the page did not answer the actionability probe" {
+		t.Fatalf("describe() = %q", got)
+	}
+}
+
+func TestAwaitActionableRetriesADeadlineErrorBeforeTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	// A DeadlineExceeded that is not the action's own deadline (it is
+	// hours away) is an ordinary probe failure: retried, not final.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+
+	probe := &scriptedProbe{
+		answers: []probeResult{{}, {Ready: true, X: floatPtr(1), Y: floatPtr(2)}},
+		errs:    []error{context.DeadlineExceeded},
+	}
+
+	res, err := awaitActionable(ctx, time.Millisecond, probe.probe)
+	if err != nil || !res.Ready {
+		t.Fatalf("awaitActionable = %+v, %v; want ready after a retry", res, err)
 	}
 }
 
