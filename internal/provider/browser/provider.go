@@ -13,8 +13,9 @@
 //     setup.
 //   - all sessions cancelled at suite end via io.Closer; every
 //     termination is PID-scoped through context cancellation.
-//   - artifacts (screenshot, dom.html) written under
-//     build/artifacts/browser/.
+//   - artifacts (screenshot, dom.html, and for a failed step the
+//     console.jsonl / network.jsonl / state.json diagnostics recorded
+//     from its start) written under build/artifacts/browser/.
 package browser
 
 import (
@@ -148,6 +149,8 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	stepDir := stepArtifactDir(p.artifactsBase, stepFile, input.Scenario, stepName(input), input.Phase, input.Attempt)
 	defaultURL := readConfigBaseURL(input.Config)
 
+	p.startDiagnostics(ctx, sc.Driver)
+
 	results, runErr := p.runActions(ctx, sc.Driver, sc, stepDir, defaultURL, target, input.Browser.Actions, stepFile)
 
 	out := &provider.Output{
@@ -157,20 +160,12 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	}
 
 	if runErr != nil {
-		out.Duration = time.Since(start)
-		out.Response = browserResponseValues(target, sc.Driver, ctx, nil)
-		out.Response["artifacts"] = artifactsListValue(p.captureStepLevel(ctx, sc.Driver, stepDir, true))
-
-		return out, runErr
+		return p.failStep(ctx, out, target, sc.Driver, stepDir, start, runErr)
 	}
 
 	if input.Browser.Expect.HasAny() {
 		if err := p.handleExpect(ctx, sc.Driver, input.Browser.Expect); err != nil {
-			out.Duration = time.Since(start)
-			out.Response = browserResponseValues(target, sc.Driver, ctx, nil)
-			out.Response["artifacts"] = artifactsListValue(p.captureStepLevel(ctx, sc.Driver, stepDir, true))
-
-			return out, err
+			return p.failStep(ctx, out, target, sc.Driver, stepDir, start, err)
 		}
 	}
 
@@ -183,6 +178,8 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 		stepArtifacts = p.captureStepLevel(ctx, sc.Driver, stepDir, false)
 	}
 
+	stepArtifacts = append(stepArtifacts, p.captureDiagnostics(ctx, sc.Driver, stepDir, false)...)
+
 	if len(stepArtifacts) > 0 {
 		out.Response["artifacts"] = artifactsListValue(stepArtifacts)
 	} else {
@@ -192,6 +189,22 @@ func (p *Provider) Execute(ctx context.Context, input provider.Input) (*provider
 	out.Duration = time.Since(start)
 
 	return out, nil
+}
+
+// failStep completes out for a step that failed with err: the page's URL
+// and title, then the failure artifacts (screenshot and DOM, then the
+// console, network and page state). The duration stops before the
+// captures, which are evidence, not part of the step.
+func (p *Provider) failStep(ctx context.Context, out *provider.Output, target Target, drv driver.Driver, stepDir string, start time.Time, err error) (*provider.Output, error) {
+	out.Duration = time.Since(start)
+	out.Response = browserResponseValues(target, drv, ctx, nil)
+
+	artifacts := p.captureStepLevel(ctx, drv, stepDir, true)
+	artifacts = append(artifacts, p.captureDiagnostics(ctx, drv, stepDir, true)...)
+
+	out.Response["artifacts"] = artifactsListValue(artifacts)
+
+	return out, err
 }
 
 func (p *Provider) acquireSession(ctx context.Context, target Target) (*Session, error) {
