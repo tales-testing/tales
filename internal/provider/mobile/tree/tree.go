@@ -243,3 +243,19 @@ func Value(node *ViewNode) string {
 
 	return node.Value
 }
+
+// Count returns the number of nodes in the tree rooted at root, root
+// included, and 0 for a nil tree.
+func Count(root *ViewNode) int {
+	if root == nil {
+		return 0
+	}
+
+	n := 1
+
+	for _, child := range root.Children {
+		n += Count(child)
+	}
+
+	return n
+}

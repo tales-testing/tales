@@ -460,3 +460,27 @@ func TestFindFirstByTextMissAndEmptyAreNotErrors(t *testing.T) {
 		t.Fatalf("a nil tree must not match, got found=%v err=%v", found, err)
 	}
 }
+
+func TestCountIncludesEveryNode(t *testing.T) {
+	t.Parallel()
+
+	root := &ViewNode{
+		ID: "root",
+		Children: []*ViewNode{
+			{ID: "a", Children: []*ViewNode{{ID: "a.1"}, {ID: "a.2"}}},
+			{ID: "b"},
+		},
+	}
+
+	if got := Count(root); got != 5 {
+		t.Fatalf("Count = %d, want 5", got)
+	}
+
+	if got := Count(&ViewNode{ID: "leaf"}); got != 1 {
+		t.Fatalf("a lone root counts as one element, got %d", got)
+	}
+
+	if got := Count(nil); got != 0 {
+		t.Fatalf("a nil tree has no element, got %d", got)
+	}
+}
