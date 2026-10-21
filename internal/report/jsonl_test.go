@@ -391,3 +391,53 @@ func readJSONLEvents(t *testing.T, path string) []map[string]interface{} {
 
 	return events
 }
+
+func TestWriteJSONLActionEventCarriesCaptureNote(t *testing.T) {
+	t.Parallel()
+
+	const note = "screenshot skipped: the page kept navigating while it was captured"
+
+	file := t.TempDir() + "/events.jsonl"
+	result := &SuiteResult{
+		Scenarios: []*ScenarioResult{{
+			File:   "web.tales",
+			Name:   "web",
+			Status: StatusPass,
+			Steps: []*StepResult{{
+				File:     "web.tales",
+				Scenario: "web",
+				Name:     "bounce",
+				Provider: "browser",
+				Status:   StatusPass,
+				Actions: []*ActionResult{
+					{Index: 0, Kind: "goto", Label: "goto /bounce", Status: StatusPass, CaptureNote: note},
+					{Index: 1, Kind: "wait_visible", Label: "wait_visible #email", Status: StatusPass},
+				},
+			}},
+		}},
+	}
+
+	if err := WriteJSONL(file, result); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	var actions []map[string]any
+
+	for _, e := range readJSONLEvents(t, file) {
+		if e["type"] == "action" {
+			actions = append(actions, e)
+		}
+	}
+
+	if len(actions) != 2 {
+		t.Fatalf("expected 2 action events, got %d", len(actions))
+	}
+
+	if actions[0]["capture_note"] != note {
+		t.Errorf("capture_note = %v, want %q", actions[0]["capture_note"], note)
+	}
+
+	if _, ok := actions[1]["capture_note"]; ok {
+		t.Errorf("an action with a complete capture must not carry capture_note: %v", actions[1])
+	}
+}

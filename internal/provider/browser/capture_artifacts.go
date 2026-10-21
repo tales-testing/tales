@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -58,6 +59,8 @@ func (p *Provider) captureForAction(ctx context.Context, drv driver.Driver, step
 			result.Hierarchy = a.Path
 		}
 	}
+
+	result.CaptureNote = strings.Join(frame.notes, "; ")
 }
 
 // captureStepLevel writes the end-of-step screenshot + DOM under the step's
@@ -95,10 +98,11 @@ func (p *Provider) captureStepLevel(ctx context.Context, drv driver.Driver, step
 }
 
 // capturedFrame is what one capture read from the page. A part the browser
-// did not deliver in time is left empty.
+// did not deliver is left empty, and notes says why for the report.
 type capturedFrame struct {
-	png []byte
-	dom string
+	png   []byte
+	dom   string
+	notes []string
 }
 
 // capture reads the screenshot and the DOM under the capture budget, each
@@ -113,7 +117,7 @@ func (p *Provider) capture(ctx context.Context, drv driver.Driver) capturedFrame
 
 	png, err := retryCapture(ctx, p.captureAttemptTimeout, drv.Screenshot)
 	if err != nil {
-		debugf("capture", "screenshot skipped: %v", err)
+		frame.skip("screenshot", err)
 	} else {
 		frame.png = png
 	}
@@ -122,12 +126,31 @@ func (p *Provider) capture(ctx context.Context, drv driver.Driver) capturedFrame
 		return drv.OuterHTML(ctx, "html")
 	})
 	if err != nil {
-		debugf("capture", "dom skipped: %v", err)
+		frame.skip("DOM", err)
 	} else {
 		frame.dom = dom
 	}
 
 	return frame
+}
+
+// skip records why part of the capture is missing, in words that point at
+// the likely cause rather than at a bare context error.
+func (f *capturedFrame) skip(part string, err error) {
+	var note string
+
+	switch {
+	case errors.Is(err, driver.ErrNavigated):
+		note = part + " skipped: the page kept navigating while it was captured"
+	case errors.Is(err, context.DeadlineExceeded):
+		note = part + " skipped: the browser did not answer in time (a navigation was probably in progress)"
+	default:
+		note = fmt.Sprintf("%s skipped: %v", part, err)
+	}
+
+	debugf("capture", "%s (%v)", note, err)
+
+	f.notes = append(f.notes, note)
 }
 
 // retryCapture runs one capture read under attemptTimeout. An attempt that

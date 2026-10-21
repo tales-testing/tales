@@ -836,6 +836,8 @@ func actionsFromOutput(output *provider.Output) []*report.ActionResult {
 			StartedAt:  a.StartedAt,
 		}
 
+		entry.CaptureNote = a.CaptureNote
+
 		if a.Err != nil {
 			entry.Error = &report.ErrorDetail{Kind: "action", Message: a.Err.Error()}
 		}
