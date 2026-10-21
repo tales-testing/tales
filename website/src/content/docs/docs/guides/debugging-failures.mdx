@@ -41,6 +41,18 @@ The three things to look at:
 
 For JSON assertions, the path drills further: `at scenario.create_user.expect.json.email` tells you the `email` field of the JSON body failed, not the top-level status.
 
+### Browser and mobile expectations
+
+A failed `expect { text | value | attribute | url | title }` on a browser step, or `expect { text | value }` on a mobile step, carries both values in its message:
+
+```text
+  step title_mismatch       [browser] FAIL    1.79s
+    provider failed
+      message: expect.text [data-testid='login.title']: text mismatch: assertion at [data-testid='login.title']: want="Login " got="Login"
+```
+
+`want` and `got` are printed as JSON. A string keeps its quotes, so a leading or trailing space shows; numbers, booleans and `null` print bare; objects and arrays print as compact JSON, with fields named like secrets (`password`, `token`, ...) masked as `***`.
+
 ## Reproducing a CI failure locally
 
 The most useful single line you'll write:
@@ -99,6 +111,8 @@ Run them locally to see the failure rendering:
 ```bash
 tales test ./e2e/fail   # always exits with code 1
 ```
+
+Browser failures live in `e2e/browser-fail/` (Chrome required), for example `text_mismatch.tales`, an `expect.text` that differs from the page by a trailing space.
 
 ## When the parser rejects your file
 
