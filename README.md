@@ -628,7 +628,7 @@ Each line is one event (`scenario`, `step`, or `action`) with fields like:
 - `duration_ms`, `seed`
 - `error` (when failing)
 
-When per-action recording is on (any `--capture-screenshots` other than `none`), each step event is followed by one `"type":"action"` event per UI action. Action events carry `index`, `kind`, `label`, `selector_id`, `secure`, `value`, `status`, `duration_ms`, and optional `screenshot` / `hierarchy` paths. A browser action whose capture had to be skipped (for example a screenshot Chrome never answered because the page navigated under it) also carries `capture_note`. Secure values are masked to `"***"`.
+When per-action recording is on (any `--capture-screenshots` other than `none`), each step event is followed by one `"type":"action"` event per UI action. Action events carry `index`, `kind`, `label`, `selector_id`, `secure`, `value`, `status`, `duration_ms`, `started_at` / `ended_at` (absent on skipped actions), and optional `screenshot` / `hierarchy` paths; browser pointer actions (`click`, `hover`, `check`, `uncheck`) also carry the `point` their mouse events went to. A browser action whose capture had to be skipped (for example a screenshot Chrome never answered because the page navigated under it) also carries `capture_note`. Secure values are masked to `"***"`.
 
 ### Visual HTML
 
@@ -642,6 +642,8 @@ Picking a capture mode:
 - `actions`: one screenshot per UI action. Required for a usable visual replay; selected automatically when `--report-html` is set.
 
 Browser captures run under their own short bounds (5s per capture) and are retaken on the new page after a navigation, so a capture never holds the run or eats into the next action's timeout.
+
+A failed browser step (every browser step in `actions` mode) also writes `console.jsonl` (console messages and uncaught exceptions), `network.jsonl` (requests, responses, failures) and `state.json` (focused element, viewport, scroll offsets, URL) next to its `dom.html`, recorded from the start of the step. Header values, cookies, bodies and URL query strings are never recorded. See [docs/providers/browser/#failure-diagnostics](https://taleslabs.org/docs/providers/browser/#failure-diagnostics).
 
 Per-action artifacts live under:
 
