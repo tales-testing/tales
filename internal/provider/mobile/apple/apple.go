@@ -329,6 +329,10 @@ func (l *Lifecycle) startEmbeddedDriver(ctx context.Context, device Device, targ
 		HealthURL:     target.Driver.BaseURL() + "/health",
 		LogPath:       logPath,
 		Env:           driverEnv(target.Driver),
+		// driver.startup_timeout; zero keeps the launcher's default. The
+		// retry after a rebuild below reuses these options, so each
+		// attempt gets the full budget.
+		HealthTimeout: target.Driver.StartupTimeout,
 	}
 
 	handle, startErr := l.Xcodebuild.Start(ctx, opts, client)
