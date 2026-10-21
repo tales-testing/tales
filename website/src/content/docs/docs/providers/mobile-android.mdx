@@ -452,6 +452,19 @@ the driver log the error names.
 
 **`N devices are attached`** — set `serial` on the target. Tales will not guess.
 
+**`element id="main.tab_bar" not found after 30s (last hierarchy fetched 0.2s ago,
+214 elements)`**: the wait ran out while the driver kept answering. The last
+hierarchy came back 0.2s before the deadline and held 214 elements, none of them
+the one you asked for. The element genuinely never appeared, so look at the app
+(a backend it could not reach, a screen it never navigated to), not at the
+driver, and do not raise `driver.timeout`: it bounds a single request and cannot
+help a screen that never renders. The other shape, `(no hierarchy fetched during
+the wait): fetch hierarchy: ...`, followed by a transport error, is the one that
+points at the driver: no fetch came back for the whole wait. A failure that
+names `connection refused` or `EOF` is a driver problem too, whatever the note
+says. The same reading applies to every wait: `wait_*`, the element wait before
+a tap, every `expect`, and `scroll_to`.
+
 **`element ... was not disabled after 10s (41 reads, always enabled=true, resolved
 type="other" with children [static_text, button])`** — a failed `enabled` /
 `disabled` expectation reports how many times it read the element, whether the

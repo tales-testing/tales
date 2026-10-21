@@ -230,6 +230,13 @@ config {
   wait longer)`; raising `driver.timeout` does not help there. It has no effect
   with `driver.external = true`, whose single health check is bounded by
   `driver.timeout`.
+- Read a wait timeout before raising any timeout. `element id="x" not found
+  after 30s (last hierarchy fetched 0.2s ago, 214 elements)` means the driver
+  kept answering and the element never appeared: the cause is in the app or
+  the scenario, and `driver.timeout` will not help. Only `(no hierarchy fetched
+  during the wait): fetch hierarchy: ...`, `connection refused` or `EOF` point
+  at the driver. Every mobile wait (`wait_*`, the element wait before a tap,
+  `expect`, `scroll_to`) reports this way.
 
 ### Step shape
 
