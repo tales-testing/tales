@@ -61,7 +61,8 @@ type Options struct {
 	// LogPath receives the instrumentation's stdout and stderr.
 	LogPath string
 
-	// HealthTimeout and PollInterval override the defaults above.
+	// HealthTimeout and PollInterval override the defaults above. A
+	// target's driver.startup_timeout arrives as HealthTimeout.
 	HealthTimeout time.Duration
 	PollInterval  time.Duration
 }
@@ -205,10 +206,18 @@ func waitForHealth(ctx context.Context, opts Options, pinger Pinger) error {
 
 		select {
 		case <-deadline.Done():
+			// The run itself was cancelled (--timeout, Ctrl-C): the
+			// startup budget is not what ran out, so do not point at it.
+			if ctx.Err() != nil {
+				return fmt.Errorf("stopped waiting for the driver to become healthy: %w (last health check: %w)", ctx.Err(), err)
+			}
+
 			// Carry the last transport error: "did not become healthy"
 			// alone does not distinguish a crashed driver from a wrong
 			// port, and that is the first thing a user needs to know.
-			return fmt.Errorf("driver did not become healthy within %s: %w", timeout, err)
+			// Name the knob too: driver.timeout, the one that looks like
+			// it applies, only bounds single requests.
+			return fmt.Errorf("driver did not become healthy within %s (raise driver.startup_timeout to wait longer): %w", timeout, err)
 		case <-ticker.C:
 		}
 	}
