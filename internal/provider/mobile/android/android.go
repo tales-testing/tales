@@ -312,6 +312,8 @@ func (l *Lifecycle) EnsureDriver(ctx context.Context, device adb.Device, target 
 		TestPackage: DriverTestPackage,
 		DevicePort:  DriverDevicePort,
 		LogPath:     logPath,
+		// driver.startup_timeout; zero keeps the launcher's default.
+		HealthTimeout: target.Driver.StartupTimeout,
 	}, client)
 	if err != nil {
 		l.ADB.RemoveForward(ctx, device.Serial, target.Driver.Port)

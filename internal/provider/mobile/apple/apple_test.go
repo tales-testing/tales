@@ -477,3 +477,65 @@ func TestLaunchAppStopsRetryingOnACancelledContext(t *testing.T) {
 		t.Fatalf("a cancelled context should stop after the first attempt, got %d", len(sim.launches))
 	}
 }
+
+// deadlineDriver records how much of the health wait is left when it is
+// first polled, which is the startup budget the launcher actually applied.
+type deadlineDriver struct {
+	driver.NoopDriver
+
+	budget atomic.Int64
+}
+
+func (d *deadlineDriver) Health(ctx context.Context) error {
+	if deadline, ok := ctx.Deadline(); ok {
+		d.budget.CompareAndSwap(0, int64(time.Until(deadline)))
+	}
+
+	return nil
+}
+
+// nopSpawner stands in for xcodebuild: the real launcher runs its health
+// wait against the driver, but nothing is spawned.
+type nopSpawner struct{}
+
+func (nopSpawner) Spawn(context.Context, string, []string, string, map[string]string) (xcodebuild.Process, error) {
+	return nopProcess{}, nil
+}
+
+type nopProcess struct{}
+
+func (nopProcess) Stop(context.Context) error { return nil }
+
+// driver.startup_timeout must reach the health wait after the runner is
+// started. Issue #74: the wait was a fixed 60s, and the one knob that
+// looked like it applied, driver.timeout, only bounds single requests.
+func TestEnsureDriverBoundsTheHealthWaitByStartupTimeout(t *testing.T) {
+	t.Parallel()
+
+	drv := &deadlineDriver{}
+	lc := &Lifecycle{
+		Simctl:     &fakeSimctl{},
+		Xcodebuild: xcodebuild.New(nopSpawner{}),
+		NewDriver:  func(_ mobile.DriverConfig) driver.Driver { return drv },
+		Embedded: &fakeEmbedded{prepared: embeddeddriver.Prepared{
+			XCTestRunPath: "/cache/key123/Build/Products/Driver.xctestrun",
+			CacheKey:      "key123",
+		}},
+	}
+
+	target := sampleTarget(false)
+	target.Driver.Timeout = 30 * time.Second
+	target.Driver.StartupTimeout = 3 * time.Minute
+
+	if _, _, _, err := lc.EnsureDriver(context.Background(), Device{UDID: "AAA"}, target); err != nil {
+		t.Fatalf("ensure driver: %v", err)
+	}
+
+	// The first poll happens right away, so what is left of the budget
+	// is the budget itself, give or take scheduling.
+	got := time.Duration(drv.budget.Load())
+	if got <= 2*time.Minute || got > 3*time.Minute {
+		t.Fatalf("health wait budget = %v, want about 3m0s (driver.startup_timeout); the %v default was applied instead",
+			got.Round(time.Second), xcodebuild.DefaultHealthTimeout)
+	}
+}
