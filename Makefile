@@ -645,6 +645,10 @@ e2e-browser-failure: build
 	fi; \
 	if [ "$(BROWSER_FAIL_SUITE)" = "./e2e/browser-fail" ]; then \
 	  scripts/verify-browser-diagnostics.sh failure $(BROWSER_ARTIFACTS) $(BUILD_DIR)/reports/e2e-browser-failure.jsonl; \
+	  if ! grep '"type":"step"' $(BUILD_DIR)/reports/e2e-browser-failure.jsonl | grep '"step":"submit_under_toast"' | grep -q 'is covered by'; then \
+	    echo "the covered click must fail naming what covers the button, not the probe deadline (issue #92)"; \
+	    exit 1; \
+	  fi; \
 	fi
 
 .PHONY: release-check
