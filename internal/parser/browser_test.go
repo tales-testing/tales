@@ -302,6 +302,139 @@ scenario "upload" {
 	}
 }
 
+func TestLoadPathBrowserForceOnPointerActions(t *testing.T) {
+	t.Parallel()
+
+	content := `version = 1
+
+scenario "force" {
+  step "browser" "pointer" {
+    target = "chrome"
+    actions {
+      click {
+        selector = "#behind"
+        force    = true
+      }
+      hover {
+        selector = "#menu"
+        force    = true
+      }
+      check {
+        selector = "#tos"
+        force    = true
+      }
+      uncheck {
+        selector = "#news"
+        force    = false
+      }
+      click {
+        selector = "#plain"
+      }
+    }
+  }
+}
+`
+
+	suite, diags := LoadPath(writeTales(t, content))
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %s", diags.Error())
+	}
+
+	actions := suite.Scenarios[0].Steps[0].Browser.Actions
+	if len(actions) != 5 {
+		t.Fatalf("expected 5 actions, got %d", len(actions))
+	}
+
+	wantKinds := []model.BrowserActionKind{
+		model.BrowserActionClick,
+		model.BrowserActionHover,
+		model.BrowserActionCheck,
+		model.BrowserActionUncheck,
+	}
+
+	for i, kind := range wantKinds {
+		if actions[i].Kind != kind {
+			t.Fatalf("actions[%d].Kind = %q, want %q", i, actions[i].Kind, kind)
+		}
+
+		if actions[i].Force.Empty() {
+			t.Fatalf("actions[%d] (%s) must carry the force expression", i, kind)
+		}
+	}
+
+	if !actions[4].Force.Empty() {
+		t.Fatalf("a click without force must leave the expression empty, got %+v", actions[4].Force)
+	}
+}
+
+func TestLoadPathBrowserForceRejectedOnOtherActions(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		block string
+		want  string
+	}{
+		{
+			name:  "clear",
+			block: "clear {\n        selector = \"#a\"\n        force    = true\n      }",
+			want:  `clear attribute "force" is not supported; allowed: selector, timeout, interval.`,
+		},
+		{
+			name:  "submit",
+			block: "submit {\n        selector = \"form\"\n        force    = true\n      }",
+			want:  `submit attribute "force" is not supported`,
+		},
+		{
+			name:  "wait_visible",
+			block: "wait_visible {\n        selector = \"#a\"\n        force    = true\n      }",
+			want:  `wait_visible attribute "force" is not supported`,
+		},
+		{
+			name:  "fill",
+			block: "fill {\n        selector = \"#a\"\n        value    = \"x\"\n        force    = true\n      }",
+			want:  `fill attribute "force" is not supported`,
+		},
+		{
+			name:  "goto",
+			block: "goto {\n        url   = \"https://example.com\"\n        force = true\n      }",
+			want:  `goto attribute "force" is not supported`,
+		},
+		{
+			name:  "pointer action lists force among the allowed attributes",
+			block: "click {\n        selector = \"#a\"\n        value    = \"x\"\n      }",
+			want:  `click attribute "value" is not supported; allowed: selector, force, timeout, interval.`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			content := `version = 1
+
+scenario "force" {
+  step "browser" "pointer" {
+    target = "chrome"
+    actions {
+      ` + tc.block + `
+    }
+  }
+}
+`
+
+			_, diags := LoadPath(writeTales(t, content))
+			if !diags.HasErrors() {
+				t.Fatalf("expected diagnostics for %s", tc.name)
+			}
+
+			if !strings.Contains(diags.Error(), tc.want) {
+				t.Fatalf("diagnostics = %s, want it to mention %q", diags.Error(), tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadPathBrowserMissingTargetAcceptedAtParseTime(t *testing.T) {
 	t.Parallel()
 

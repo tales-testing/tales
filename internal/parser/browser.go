@@ -21,6 +21,7 @@ const (
 	browserKeyAttr      = "key"
 	browserSecureAttr   = "secure"
 	browserPathsAttr    = "paths"
+	browserForceAttr    = "force"
 )
 
 // browserActionList is the human-readable action inventory reused by the
@@ -184,6 +185,16 @@ var browserSelectorOnlyActions = map[string]model.BrowserActionKind{
 	string(model.BrowserActionUncheck):        model.BrowserActionUncheck,
 }
 
+// browserPointerActions are the selector-only actions that drive the mouse.
+// They run actionability checks first, so they are the ones that accept
+// `force` to skip them.
+var browserPointerActions = map[model.BrowserActionKind]bool{
+	model.BrowserActionClick:   true,
+	model.BrowserActionHover:   true,
+	model.BrowserActionCheck:   true,
+	model.BrowserActionUncheck: true,
+}
+
 func decodeBrowserActionBlock(path string, block *hclsyntax.Block) (*model.BrowserAction, hcl.Diagnostics) {
 	if kind, ok := browserSelectorOnlyActions[block.Type]; ok {
 		return decodeBrowserSelectorOnly(path, block, kind)
@@ -257,29 +268,37 @@ func decodeBrowserGoto(path string, block *hclsyntax.Block) (*model.BrowserActio
 
 // decodeBrowserSelectorOnly decodes actions that take only a selector plus
 // the optional timeout / interval (click, clear, submit, wait_*, hover,
-// check, uncheck).
+// check, uncheck). The pointer actions also accept `force`.
 func decodeBrowserSelectorOnly(path string, block *hclsyntax.Block, kind model.BrowserActionKind) (*model.BrowserAction, hcl.Diagnostics) {
 	diags := make(hcl.Diagnostics, 0)
 	actionName := string(kind)
+	pointer := browserPointerActions[kind]
+
+	allowed := "selector, timeout, interval"
+	if pointer {
+		allowed = "selector, force, timeout, interval"
+	}
 
 	selectorExpr, sDiags := requireActionAttr(block, actionName, browserSelectorAttr)
 	diags = append(diags, sDiags...)
 
-	var timeoutExpr, intervalExpr hcl.Expression
+	var forceExpr, timeoutExpr, intervalExpr hcl.Expression
 
 	for name, attr := range block.Body.Attributes {
-		switch name {
-		case browserSelectorAttr:
+		switch {
+		case name == browserSelectorAttr:
 			continue
-		case browserTimeoutAttr:
+		case name == browserForceAttr && pointer:
+			forceExpr = attr.Expr
+		case name == browserTimeoutAttr:
 			timeoutExpr = attr.Expr
-		case browserIntervalAttr:
+		case name == browserIntervalAttr:
 			intervalExpr = attr.Expr
 		default:
 			rng := attr.Range()
 			diags = append(diags, diagError(
 				"Unknown "+actionName+" attribute",
-				fmt.Sprintf("%s attribute %q is not supported; allowed: selector, timeout, interval.", actionName, name),
+				fmt.Sprintf("%s attribute %q is not supported; allowed: %s.", actionName, name, allowed),
 				&rng,
 			))
 		}
@@ -290,6 +309,7 @@ func decodeBrowserSelectorOnly(path string, block *hclsyntax.Block, kind model.B
 		File:     path,
 		Line:     block.DefRange().Start.Line,
 		Selector: expr(path, selectorExpr),
+		Force:    expr(path, forceExpr),
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
 	}, diags
