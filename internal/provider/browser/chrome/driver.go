@@ -366,11 +366,25 @@ func (d *chromedpDriver) OuterHTML(ctx context.Context, selector string) (string
 	return out, nil
 }
 
-// Screenshot implements driver.Driver.
+// Screenshot implements driver.Driver. Chrome never answers
+// Page.captureScreenshot once a navigation replaces the document it was
+// sent to (issue #79), so the call gives up with driver.ErrNavigated as
+// soon as the main frame navigates, and the caller retries against the new
+// document instead of waiting for its deadline.
 func (d *chromedpDriver) Screenshot(ctx context.Context) ([]byte, error) {
 	var out []byte
 
-	if err := d.run(ctx, chromedp.CaptureScreenshot(&out)); err != nil {
+	capture := chromedp.ActionFunc(func(ctx context.Context) error {
+		return abortOnNavigation(ctx, chromedp.ListenTarget, func(ctx context.Context) error {
+			if err := chromedp.CaptureScreenshot(&out).Do(ctx); err != nil {
+				return fmt.Errorf("capture screenshot: %w", err)
+			}
+
+			return nil
+		})
+	})
+
+	if err := d.run(ctx, capture); err != nil {
 		return nil, err
 	}
 
