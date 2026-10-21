@@ -1,0 +1,259 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+# Pointer actions (click, hover, check, uncheck) wait until their element is
+# actionable: visible, enabled, standing still, and the element the mouse
+# would actually hit. Each scenario below used to lose its click in silence:
+# the action passed, and the failure surfaced on the following wait.
+
+scenario "Click waits for a transparent veil to go" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "submit_through_veil" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/veil"
+      }
+      click {
+        selector = "[data-testid='veil.submit']"
+      }
+      wait_visible {
+        selector = "[data-testid='veil.done']"
+        timeout  = "3s"
+      }
+    }
+  }
+}
+
+scenario "Click waits for a sliding button to settle" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "submit_sliding" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/sliding"
+      }
+      click {
+        selector = "[data-testid='sliding.submit']"
+      }
+      wait_visible {
+        selector = "[data-testid='sliding.done']"
+        timeout  = "3s"
+      }
+    }
+  }
+}
+
+scenario "Click waits for a disabled button to arm" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "submit_arming" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/arming"
+      }
+      click {
+        selector = "[data-testid='arming.submit']"
+      }
+      wait_disabled {
+        selector = "[data-testid='arming.submit']"
+        timeout  = "3s"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='arming.status']"
+        value    = "submitted"
+      }
+    }
+  }
+}
+
+scenario "Click scrolls a button out from under a fixed header" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "submit_under_header" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/sticky"
+      }
+      # Leaves the button 20px below the top of the viewport, under the
+      # 80px fixed header, yet fully inside the viewport.
+      scroll {
+        x = 0
+        y = 980
+      }
+      click {
+        selector = "[data-testid='sticky.submit']"
+      }
+      wait_visible {
+        selector = "[data-testid='sticky.done']"
+        timeout  = "3s"
+      }
+    }
+  }
+}
+
+scenario "Hover moves the mouse and opens a CSS hover menu" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "open_menu" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/menu"
+      }
+      hover {
+        selector = "[data-testid='menu.trigger']"
+      }
+      wait_visible {
+        selector = "[data-testid='menu.logout']"
+        timeout  = "3s"
+      }
+      click {
+        selector = "[data-testid='menu.logout']"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='menu.status']"
+        value    = "logged out"
+      }
+    }
+  }
+}
+
+scenario "Click reaches nested and shadow DOM targets" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "click_nested" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/widgets"
+      }
+      # The center of the button is one of its own <span> children.
+      click {
+        selector = "[data-testid='widgets.nested']"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='widgets.status']"
+        value    = "nested clicked"
+      }
+    }
+  }
+
+  step "browser" "click_shadow" {
+    target = "chrome"
+
+    actions {
+      # The host's button lives in an open shadow root: the hit test
+      # resolves through it.
+      click {
+        selector = "[data-testid='widgets.shadow']"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='widgets.status']"
+        value    = "shadow clicked"
+      }
+    }
+  }
+}
+
+scenario "Check and uncheck a styled checkbox" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "toggle_switch" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/widgets"
+      }
+      # The input sits under its own knob, so a hit test at its center
+      # finds the knob: force = true clicks anyway, the label forwards
+      # the click to the input.
+      check {
+        selector = "[data-testid='widgets.switch.input']"
+        force    = true
+      }
+      # A label is accepted as a checkbox: its state is read from the
+      # control it labels, and the label itself is the visible target.
+      uncheck {
+        selector = "[data-testid='widgets.switch.label']"
+      }
+      # Already unchecked: no click is dispatched, so no change event.
+      uncheck {
+        selector = "[data-testid='widgets.switch.label']"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='widgets.changes']"
+        value    = "2"
+      }
+    }
+  }
+}
+
+scenario "Force clicks through a modal backdrop" {
+  tags = ["browser", "web", "actionability"]
+
+  step "browser" "dismiss_modal" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/modal"
+      }
+      # Deliberate: the button is covered by the backdrop, and the test
+      # pins that a click there dismisses the modal instead of reaching
+      # the button.
+      click {
+        selector = "[data-testid='modal.behind']"
+        force    = true
+      }
+      wait_not_visible {
+        selector = "[data-testid='modal.backdrop']"
+        timeout  = "3s"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='modal.status']"
+        value    = "dismissed"
+      }
+    }
+  }
+}
