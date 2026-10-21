@@ -1852,6 +1852,43 @@ func TestExecuteTextExpectationPreservesMatcherMessageOnTimeout(t *testing.T) {
 	}
 }
 
+// TestExecuteTextExpectationMismatchPrintsValues pins the wrapped
+// assertion message of issue #81: it printed the internals of the
+// cty.Values it compared (`want={{{{} 83}} Welcome}`).
+func TestExecuteTextExpectationMismatchPrintsValues(t *testing.T) {
+	t.Parallel()
+
+	node := newButtonNode()
+	node.Children[0].Text = "Welcome "
+
+	drv := &fakeDriverAll{hierarchies: []*tree.ViewNode{node}}
+	lc := &fakeLifecycle{udid: "UDID"}
+	p := newProviderWithFake(drv, lc, sampleProviderTarget())
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     newStep("text"),
+		Config:   sampleConfigCty(),
+		Mobile: &provider.MobileExecution{
+			Platform:   "ios",
+			TargetName: "iphone",
+			Expect: provider.MobileExpectExec{
+				Text: []provider.MobileValueExpectationExec{
+					{ID: "welcome.register", Expected: cty.StringVal("Welcome"), Timeout: 30 * time.Millisecond},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected mismatch error")
+	}
+
+	want := `assertion at text.id="welcome.register": want="Welcome" got="Welcome "`
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %q, want it to contain %q", err.Error(), want)
+	}
+}
+
 func TestExecuteValueExpectationPasses(t *testing.T) {
 	t.Parallel()
 
