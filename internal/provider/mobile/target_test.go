@@ -375,6 +375,78 @@ func TestResolveTargetLeavesDriverTimeoutUnsetWhenAbsent(t *testing.T) {
 	}
 }
 
+// startup_timeout is its own knob: it must be read, and it must not leak
+// into the per-request timeout (nor the other way round), since the two
+// want opposite tuning.
+func TestResolveTargetReadsDriverStartupTimeout(t *testing.T) {
+	t.Parallel()
+
+	config := driverConfigWith(map[string]cty.Value{
+		"timeout":         cty.StringVal("30s"),
+		"startup_timeout": cty.StringVal("3m"),
+	})
+
+	target, err := ResolveTarget(config, "iphone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.Driver.StartupTimeout != 3*time.Minute {
+		t.Fatalf("startup timeout = %v, want 3m0s", target.Driver.StartupTimeout)
+	}
+
+	if target.Driver.Timeout != 30*time.Second {
+		t.Fatalf("timeout = %v, want 30s", target.Driver.Timeout)
+	}
+}
+
+// An absent startup_timeout stays zero: the launchers own the default,
+// as the driver client owns the per-request one.
+func TestResolveTargetLeavesDriverStartupTimeoutUnsetWhenAbsent(t *testing.T) {
+	t.Parallel()
+
+	config := driverConfigWith(map[string]cty.Value{"timeout": cty.StringVal("90s")})
+
+	target, err := ResolveTarget(config, "iphone")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	if target.Driver.StartupTimeout != 0 {
+		t.Fatalf("startup timeout = %v, want zero", target.Driver.StartupTimeout)
+	}
+}
+
+func TestResolveTargetRejectsBadDriverStartupTimeout(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		value cty.Value
+		want  string
+	}{
+		"number":       {value: cty.NumberIntVal(180), want: "startup_timeout: must be a duration string"},
+		"unparseable":  {value: cty.StringVal("later"), want: "startup_timeout: \"later\" is not a valid duration"},
+		"zero":         {value: cty.StringVal("0s"), want: "startup_timeout: must be positive"},
+		"negative":     {value: cty.StringVal("-1m"), want: "startup_timeout: must be positive"},
+		"bare integer": {value: cty.StringVal("180"), want: "startup_timeout: \"180\" is not a valid duration"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ResolveTarget(driverConfigWith(map[string]cty.Value{"startup_timeout": tc.value}), "iphone")
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q should contain %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveTargetRejectsBadDriverTimeout(t *testing.T) {
 	t.Parallel()
 
