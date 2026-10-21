@@ -347,8 +347,15 @@ assertions intentionally keep the uniqueness guarantee.
 
 ```hcl
 actions {
-  wait_visible { id = "PXGGridLayout-Info" first = true timeout = "15s" }
-  tap          { id = "PXGGridLayout-Info" first = true }
+  wait_visible {
+    id      = "PXGGridLayout-Info"
+    first   = true
+    timeout = "15s"
+  }
+  tap {
+    id    = "PXGGridLayout-Info"
+    first = true
+  }
 }
 ```
 
@@ -365,7 +372,10 @@ the share sheet, mail / SMS composer, and system alerts.
 
 ```hcl
 actions {
-  wait_visible { label = "Done" timeout = "10s" }
+  wait_visible {
+    label   = "Done"
+    timeout = "10s"
+  }
   tap          { label = "Done" }
 }
 
@@ -430,13 +440,23 @@ pattern:
 ```hcl
 step "mobile" "launch" {
   launch { clear_state = true }
-  actions { wait_visible { id = "welcome.signin" } }
+  actions {
+    wait_visible { id = "welcome.signin" }
+  }
   capture { password = generate("password_gen") }
 }
 step "mobile" "fill" {
   actions {
-    input_text { id = "form.password",         value = result.launch.password, secure = true }
-    input_text { id = "form.password_confirm", value = result.launch.password, secure = true }
+    input_text {
+      id     = "form.password"
+      value  = result.launch.password
+      secure = true
+    }
+    input_text {
+      id     = "form.password_confirm"
+      value  = result.launch.password
+      secure = true
+    }
   }
 }
 ```
@@ -523,8 +543,14 @@ step "mobile" "submit_register" {
       secure = true
     }
     tap { id = "register.submit" }
-    wait_not_visible { id = "register.loading"; timeout = "5s" }
-    wait_visible     { id = "verify.screen";   timeout = "10s" }
+    wait_not_visible {
+      id      = "register.loading"
+      timeout = "5s"
+    }
+    wait_visible {
+      id      = "verify.screen"
+      timeout = "10s"
+    }
   }
 
   expect {
@@ -846,8 +872,15 @@ scenario "Login flow" {
 
     expect {
       visible   { selector = "[data-testid='dashboard.title']" }
-      text      { selector = "[data-testid='dashboard.title']" value = "Dashboard" }
-      attribute { selector = "meta[name='csrf-token']" name = "content" value = is_string() }
+      text {
+        selector = "[data-testid='dashboard.title']"
+        value    = "Dashboard"
+      }
+      attribute {
+        selector = "meta[name='csrf-token']"
+        name     = "content"
+        value    = is_string()
+      }
       url       { value = contains("/web/dashboard") }
       title     { value = "Dashboard" }
     }

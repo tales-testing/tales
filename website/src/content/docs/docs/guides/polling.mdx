@@ -71,7 +71,10 @@ The capture block runs only on the **successful** attempt. So the values you cap
 
 ```hcl
 step "http" "wait_for_processed" {
-  retry { attempts = 30, interval = "1s" }
+  retry {
+    attempts = 30
+    interval = "1s"
+  }
 
   request { ... }
 
@@ -113,7 +116,10 @@ scenario "Verify email then claim" {
   }
 
   step "http" "find_verification_email" {
-    retry { attempts = 20, interval = "200ms" }
+    retry {
+      attempts = 20
+      interval = "200ms"
+    }
 
     request {
       method = "GET"
@@ -134,7 +140,10 @@ scenario "Verify email then claim" {
       url     = "${config.base_url}/verify-email"
       body { json = { user_id = result.register.id, code = result.find_verification_email.code } }
     }
-    expect { status = 200, json = { verified = true } }
+    expect {
+      status = 200
+      json   = { verified = true }
+    }
   }
 
   teardown {

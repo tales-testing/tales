@@ -48,7 +48,10 @@ keyword "authenticate" {
       url    = "${config.base_url}/auth"
       body { json = { email = input.email, password = input.password } }
     }
-    expect { status = 200, json = { access_token = is_string() } }
+    expect {
+      status = 200
+      json   = { access_token = is_string() }
+    }
   }
 
   outputs {

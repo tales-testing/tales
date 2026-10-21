@@ -152,7 +152,10 @@ scenario "iOS register demo app" {
     target   = "iphone"
     launch { clear_state = true }
     expect {
-      visible { id = "welcome.register"; timeout = "20s" }
+      visible {
+        id      = "welcome.register"
+        timeout = "20s"
+      }
     }
   }
 
@@ -163,7 +166,10 @@ scenario "iOS register demo app" {
       tap { id = "welcome.register" }
     }
     expect {
-      visible { id = "register.screen"; timeout = "10s" }
+      visible {
+        id      = "register.screen"
+        timeout = "10s"
+      }
     }
   }
 }
@@ -203,9 +209,19 @@ the real cause.
 
 ```hcl
 actions {
-  input_text { id = "login.email" value = "user@example.com" }
-  input_text { id = "login.password" value = "Secret123!" secure = true }
-  wait_enabled { id = "login.submit" timeout = "10s" }
+  input_text {
+    id    = "login.email"
+    value = "user@example.com"
+  }
+  input_text {
+    id     = "login.password"
+    value  = "Secret123!"
+    secure = true
+  }
+  wait_enabled {
+    id      = "login.submit"
+    timeout = "10s"
+  }
   tap { id = "login.submit" }
 }
 ```
@@ -286,7 +302,10 @@ Every element-targeted action (`tap`, `double_tap`, `long_press`, `input_text`, 
 
 ```hcl
 actions {
-  wait_visible { label = "Done" timeout = "10s" }
+  wait_visible {
+    label   = "Done"
+    timeout = "10s"
+  }
   tap          { label = "Done" }
 }
 
@@ -303,10 +322,22 @@ Unlike `first`, `label` IS accepted in `expect` blocks: the goal is to *assert* 
 
 ```hcl
 expect {
-  visible     { id = "..." timeout = "10s" }
-  not_visible { id = "..." timeout = "10s" }
-  text        { id = "..." value = contains("Welcome") }
-  value       { id = "..." value = "..." }
+  visible {
+    id      = "..."
+    timeout = "10s"
+  }
+  not_visible {
+    id      = "..."
+    timeout = "10s"
+  }
+  text {
+    id    = "..."
+    value = contains("Welcome")
+  }
+  value {
+    id    = "..."
+    value = "..."
+  }
   enabled     { id = "..." }
   disabled    { id = "..." }
 }
@@ -341,7 +372,9 @@ step "mobile" "launch" {
 ```hcl
 step "mobile" "launch" {
   launch { clear_state = true }
-  actions { wait_visible { id = "welcome.signin" } }
+  actions {
+    wait_visible { id = "welcome.signin" }
+  }
   capture {
     password = generate("password_gen")   # generated once, real value
   }
@@ -350,8 +383,16 @@ step "mobile" "launch" {
 step "mobile" "fill" {
   depends_on = ["launch"]
   actions {
-    input_text { id = "form.password",         value = result.launch.password, secure = true }
-    input_text { id = "form.password_confirm", value = result.launch.password, secure = true }
+    input_text {
+      id     = "form.password"
+      value  = result.launch.password
+      secure = true
+    }
+    input_text {
+      id     = "form.password_confirm"
+      value  = result.launch.password
+      secure = true
+    }
   }
 }
 ```
