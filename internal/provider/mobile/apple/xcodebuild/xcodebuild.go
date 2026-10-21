@@ -11,7 +11,9 @@ import (
 	"time"
 )
 
-// DefaultHealthTimeout is how long Start polls for /health before giving up.
+// DefaultHealthTimeout is how long Start polls for /health before giving up
+// when Options.HealthTimeout is unset. A target's driver.startup_timeout
+// arrives as Options.HealthTimeout.
 const DefaultHealthTimeout = 60 * time.Second
 
 // DefaultPollInterval is the wait between two health pings.
@@ -202,12 +204,20 @@ func waitForHealth(ctx context.Context, pinger Pinger, opts Options) error {
 
 		select {
 		case <-deadlineCtx.Done():
+			// The run itself was cancelled (--timeout, Ctrl-C): the
+			// startup budget is not what ran out, so do not point at it.
+			if ctx.Err() != nil {
+				return fmt.Errorf("stopped waiting for the apple driver to become healthy: %w (last health check: %w)", ctx.Err(), lastErr)
+			}
+
 			healthURL := opts.HealthURL
 			if healthURL == "" {
 				healthURL = "/health"
 			}
 
-			return fmt.Errorf("apple driver did not become healthy at %s within %s: %w", healthURL, timeout, lastErr)
+			// Name the knob: driver.timeout, the one that looks like it
+			// applies, only bounds single requests.
+			return fmt.Errorf("apple driver did not become healthy at %s within %s (raise driver.startup_timeout to wait longer): %w", healthURL, timeout, lastErr)
 		case <-time.After(interval):
 		}
 	}

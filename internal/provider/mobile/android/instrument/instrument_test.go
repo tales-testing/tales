@@ -181,6 +181,56 @@ func TestStartSurfacesTheLastHealthError(t *testing.T) {
 	}
 }
 
+// The wait gave up on its own budget, so the error names the knob that
+// sets it. driver.timeout, the one that looks like it should apply, only
+// bounds single requests (issue #74).
+func TestStartTimeoutNamesTheStartupTimeoutKnob(t *testing.T) {
+	t.Parallel()
+
+	spawner := &fakeSpawner{}
+	pinger := &fakePinger{failures: 1_000_000}
+
+	_, err := New(spawner).Start(context.Background(), sampleOptions(), pinger)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+
+	want := "driver did not become healthy within 200ms (raise driver.startup_timeout to wait longer): connection refused"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("error should contain %q, got: %v", want, err)
+	}
+}
+
+// A run cancelled from above (--timeout, Ctrl-C) is not a slow driver:
+// pointing at the startup budget there would send the user after a knob
+// that cannot help.
+func TestStartCancelledRunDoesNotBlameTheStartupBudget(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	spawner := &fakeSpawner{}
+	pinger := &fakePinger{failures: 1_000_000}
+
+	_, err := New(spawner).Start(ctx, sampleOptions(), pinger)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error should wrap context.Canceled, got: %v", err)
+	}
+
+	if strings.Contains(err.Error(), "startup_timeout") {
+		t.Fatalf("a cancelled run must not point at driver.startup_timeout, got: %v", err)
+	}
+
+	if spawner.process.stops.Load() != 1 {
+		t.Fatalf("expected the process to be stopped once, got %d", spawner.process.stops.Load())
+	}
+}
+
 func TestStartReportsSpawnFailures(t *testing.T) {
 	t.Parallel()
 
