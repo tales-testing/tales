@@ -1,0 +1,62 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "10s"
+      }
+    }
+  }
+}
+
+# Issue #79. /web/bounce sends the browser to /web/login by script right
+# after `goto` returns, so the screenshot taken after goto (this suite
+# runs with --capture-screenshots actions) is still in flight when the
+# navigation commits, and Chrome never answers it. That capture used to
+# wait for the suite --timeout, then wait_visible started with an expired
+# context and failed with "context deadline exceeded". The round trip is
+# repeated because the race depends on timing on a loaded runner.
+scenario "Browser capture survives a scripted navigation" {
+  tags = ["browser", "web", "navigation", "capture"]
+
+  step "browser" "bounce_to_login" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/bounce"
+      }
+      wait_visible {
+        selector = "[data-testid='login.email']"
+        timeout  = "10s"
+      }
+      goto {
+        url = "${config.base_url}/web/bounce"
+      }
+      wait_visible {
+        selector = "[data-testid='login.email']"
+        timeout  = "10s"
+      }
+      goto {
+        url = "${config.base_url}/web/bounce"
+      }
+      wait_visible {
+        selector = "[data-testid='login.email']"
+        timeout  = "10s"
+      }
+    }
+
+    expect {
+      url {
+        value = contains("/web/login")
+      }
+      title {
+        value = "Login"
+      }
+    }
+  }
+}

@@ -125,6 +125,30 @@ const armingPage = `<!doctype html>
 </html>
 `
 
+// bouncePage backs the browser capture e2e (issue #79). It stands for a
+// SPA that finds no session and sends the browser to the login page by
+// script right after `goto` returns: the fetch stands for the session
+// check, the busy loop for the work a bootstrap keeps doing after it asked
+// to leave. The loop holds the renderer while the navigation commits, so
+// the screenshot taken after `goto` is reliably still in flight at the
+// commit, and Chrome never answers it.
+const bouncePage = `<!doctype html>
+<html>
+  <head>
+    <title>Bounce</title>
+  </head>
+  <body>
+    <h1 data-testid="bounce.title">Bounce</h1>
+    <script type="module">
+      await fetch("/healthz");
+      location.assign("/web/login");
+      var started = Date.now();
+      while (Date.now() - started < 300) {}
+    </script>
+  </body>
+</html>
+`
+
 func (s *serverState) webLoginGet(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -186,4 +210,10 @@ func (s *serverState) webArming(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(armingPage))
+}
+
+func (s *serverState) webBounce(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(bouncePage))
 }
