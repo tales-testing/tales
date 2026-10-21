@@ -142,6 +142,8 @@ func main() {
 	r.HandleFunc("/web/upload", state.webUpload).Methods(http.MethodGet)
 	r.HandleFunc("/web/arming", state.webArming).Methods(http.MethodGet)
 	r.HandleFunc("/web/bounce", state.webBounce).Methods(http.MethodGet)
+	r.HandleFunc("/web/diagnostics", state.webDiagnostics).Methods(http.MethodGet)
+	r.HandleFunc("/web/diagnostics/ping", state.webDiagnosticsPing).Methods(http.MethodGet)
 	registerActionabilityPages(func(path, page string) {
 		r.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) { writeHTML(w, page) }).Methods(http.MethodGet)
 	})
