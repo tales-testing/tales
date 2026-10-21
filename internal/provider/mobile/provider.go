@@ -1079,7 +1079,9 @@ func scrollToWithRetry(ctx context.Context, session *Session, action provider.Mo
 		return pollResult{Done: true}, nil
 	})
 	if err != nil {
-		return fmt.Errorf("%s: gave up after %s: %w", elementLocator{ID: action.ID, Label: action.Label, Text: action.Text}, opts.Timeout, err)
+		subject := elementLocator{ID: action.ID, Label: action.Label, Text: action.Text}.String() + ": gave up"
+
+		return waitFailure(subject, opts.Timeout, nil, err)
 	}
 
 	return nil
@@ -1091,9 +1093,10 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 	var found *tree.ViewNode
 
 	locator := elementLocator{ID: action.ID, Label: action.Label, Text: action.Text, First: action.First}
+	seen := &hierarchyLog{}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElement(pollCtx, session, locator)
+		node, ok, err := findElement(pollCtx, session, locator, seen)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -1107,7 +1110,7 @@ func (p *Provider) waitForActionElement(ctx context.Context, session *Session, a
 		return pollResult{}, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("element %s was not visible after %s: %w", locator, opts.Timeout, err)
+		return nil, waitFailure(fmt.Sprintf("element %s was not visible", locator), opts.Timeout, seen, err)
 	}
 
 	return found, nil
@@ -1159,9 +1162,10 @@ func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v pr
 	var found bool
 
 	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text, First: first}
+	seen := &hierarchyLog{}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElement(pollCtx, session, locator)
+		node, ok, err := findElement(pollCtx, session, locator, seen)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -1183,13 +1187,13 @@ func (p *Provider) waitForVisibility(ctx context.Context, session *Session, v pr
 
 	if want {
 		if !found {
-			return fmt.Errorf("element %s not found after %s: %w", locator, opts.Timeout, err)
+			return waitFailure(fmt.Sprintf("element %s not found", locator), opts.Timeout, seen, err)
 		}
 
-		return fmt.Errorf("element %s was not visible after %s: %w", locator, opts.Timeout, err)
+		return waitFailure(fmt.Sprintf("element %s was not visible", locator), opts.Timeout, seen, err)
 	}
 
-	return fmt.Errorf("element %s was still visible after %s: %w", locator, opts.Timeout, err)
+	return waitFailure(fmt.Sprintf("element %s was still visible", locator), opts.Timeout, seen, err)
 }
 
 func (p *Provider) waitForText(ctx context.Context, session *Session, v provider.MobileValueExpectationExec) error {
@@ -1213,9 +1217,10 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 	// `expect { text { text = "Sign in" } }` polled an empty id and
 	// failed with "element id=\"\" not found" instead of asserting.
 	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text}
+	seen := &hierarchyLog{}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElement(pollCtx, session, locator)
+		node, ok, err := findElement(pollCtx, session, locator, seen)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -1240,7 +1245,7 @@ func (p *Provider) waitForNodeValue(ctx context.Context, session *Session, v pro
 	}
 
 	if !found {
-		return fmt.Errorf("element %s not found after %s: %w", locator, opts.Timeout, err)
+		return waitFailure(fmt.Sprintf("element %s not found", locator), opts.Timeout, seen, err)
 	}
 
 	want := diagnostic.ScalarString(v.Expected)
@@ -1328,9 +1333,10 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 	// Same locator-threading rule as waitForNodeValue: dropping Text
 	// here made `expect { enabled { text = "Sign in" } }` unusable.
 	locator := elementLocator{ID: v.ID, Label: v.Label, Text: v.Text, First: first}
+	seen := &hierarchyLog{}
 
 	err := poll(ctx, opts, func(pollCtx context.Context) (pollResult, error) {
-		node, ok, err := findElement(pollCtx, session, locator)
+		node, ok, err := findElement(pollCtx, session, locator, seen)
 		if err != nil {
 			return pollResult{}, err
 		}
@@ -1354,7 +1360,7 @@ func (p *Provider) waitForEnabled(ctx context.Context, session *Session, v provi
 	}
 
 	if !found {
-		return fmt.Errorf("element %s not found after %s: %w", locator, opts.Timeout, err)
+		return waitFailure(fmt.Sprintf("element %s not found", locator), opts.Timeout, seen, err)
 	}
 
 	state := "enabled"
@@ -1397,49 +1403,209 @@ type pollResult struct {
 // returns a fatal error from outside the matcher pipeline.
 //
 // Transient fatal errors (e.g. driver / hierarchy fetch hiccups) are recorded
-// as lastErr and the loop keeps polling; on timeout, lastMismatch wins over
-// lastErr so matcher-specific messages survive into the final error.
+// and the loop keeps polling; on timeout, the last mismatch wins over the
+// last error so matcher-specific messages survive into the final error. An
+// attempt the wait's own deadline cut short is not an error of its own (see
+// pollState), and a wait that simply ran out returns a *pollExpired for
+// waitFailure to render.
 //
 // The poll interval reuses a single time.Ticker so frequent polling does not
 // allocate a new timer per iteration.
 func poll(ctx context.Context, opts PollOptions, fn func(context.Context) (pollResult, error)) error {
+	started := time.Now()
+
 	deadlineCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
 	ticker := time.NewTicker(opts.Interval)
 	defer ticker.Stop()
 
-	var (
-		lastErr      error
-		lastMismatch error
-	)
+	var state pollState
 
 	for {
 		res, err := fn(deadlineCtx)
-
-		switch {
-		case err != nil:
-			lastErr = err
-		case res.Done:
+		if err == nil && res.Done {
 			return nil
-		case res.Mismatch != nil:
-			lastMismatch = res.Mismatch
 		}
+
+		state.observe(deadlineCtx, res, err)
 
 		select {
 		case <-deadlineCtx.Done():
-			if lastMismatch != nil {
-				return lastMismatch
-			}
-
-			if lastErr != nil {
-				return lastErr
-			}
-
-			return fmt.Errorf("poll timed out: %w", deadlineCtx.Err())
+			return state.outcome(ctx, time.Since(started))
 		case <-ticker.C:
 		}
 	}
+}
+
+// pollState is what poll remembers across attempts to explain a wait that
+// ran out.
+//
+// It exists because of issue #73. The deadline that ends a wait also
+// cancels whatever request is in flight at that moment, and that request
+// used to be reported as the reason the wait failed: a healthy driver
+// answering every poll in 150ms read as one that had stopped answering,
+// when the element simply never appeared. Where the deadline happened to
+// land decided which of two messages the same cause produced.
+type pollState struct {
+	// lastMismatch is the last reading of a found element that did not
+	// match. It says the most about the element, so it wins.
+	lastMismatch error
+	// lastErr is the last attempt that failed on its own: a refused
+	// connection, an EOF, a non-2xx, a per-request timeout that fired
+	// while the wait still had time. A later clean answer clears it,
+	// since a refusal the driver has recovered from explains nothing.
+	lastErr error
+	// cutOff is the attempt the wait's deadline interrupted. It is only
+	// worth reporting when nothing came back during the whole wait.
+	cutOff error
+}
+
+func (s *pollState) observe(waitCtx context.Context, res pollResult, err error) {
+	switch {
+	case err != nil && cutShort(waitCtx, err):
+		s.cutOff = err
+	case err != nil:
+		s.lastErr = err
+	default:
+		s.lastErr = nil
+
+		if res.Mismatch != nil {
+			s.lastMismatch = res.Mismatch
+		}
+	}
+}
+
+// outcome is the error poll returns once its deadline has passed. parent
+// is the context the wait was started with: when it is done too, the run
+// itself was cancelled (suite --timeout) rather than the wait running its
+// course.
+func (s *pollState) outcome(parent context.Context, elapsed time.Duration) error {
+	if s.lastMismatch != nil {
+		return s.lastMismatch
+	}
+
+	if s.lastErr != nil {
+		return s.lastErr
+	}
+
+	return &pollExpired{cutOff: s.cutOff, interrupted: context.Cause(parent), elapsed: elapsed}
+}
+
+// cutShort reports whether err is an attempt that the wait's own context
+// ended, rather than one that failed on its own. Both halves matter: the
+// per-request driver timeout (driver.timeout) is a DeadlineExceeded too,
+// and it is a driver problem whenever the wait still had time left.
+func cutShort(waitCtx context.Context, err error) bool {
+	if waitCtx.Err() == nil {
+		return false
+	}
+
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+}
+
+// pollExpired is what poll returns when its time ran out with nothing more
+// specific to say: no mismatch, and no attempt that failed on its own.
+// waitFailure renders it; Error is only a fallback.
+type pollExpired struct {
+	// cutOff is the attempt the deadline interrupted in flight, nil when
+	// the deadline fell between two attempts.
+	cutOff error
+	// interrupted is why the run's own context ended, nil when the wait
+	// ran its full course.
+	interrupted error
+	elapsed     time.Duration
+}
+
+func (e *pollExpired) Error() string {
+	if e.interrupted != nil {
+		return fmt.Sprintf("wait interrupted after %s: %v", formatSeconds(e.elapsed), e.interrupted)
+	}
+
+	return "wait timed out"
+}
+
+// waitFailure reports a wait that ended without its condition holding.
+//
+// subject says what did not happen (`element id="x" not found`) and seen,
+// when the wait polls the hierarchy, what the driver answered meanwhile.
+// What follows depends on why poll stopped:
+//
+//   - a mismatch, or an attempt that failed on its own, is the story and
+//     is wrapped as is;
+//   - a run cancelled from outside says so, with how long the wait lasted
+//     rather than the timeout it never reached;
+//   - a wait that ran out with no fetch ever answering keeps the request
+//     the deadline cut off, since the driver not answering is then exactly
+//     what went wrong;
+//   - otherwise the wait simply ran out, and nothing more is added: the
+//     request its own deadline cancelled is not a reason (issue #73).
+func waitFailure(subject string, timeout time.Duration, seen *hierarchyLog, err error) error {
+	note := ""
+	if seen != nil {
+		note = " (" + seen.String() + ")"
+	}
+
+	var expired *pollExpired
+	if !errors.As(err, &expired) {
+		return fmt.Errorf("%s after %s%s: %w", subject, timeout, note, err)
+	}
+
+	if expired.interrupted != nil {
+		return fmt.Errorf("%s after %s%s: wait interrupted before its %s timeout: %w",
+			subject, formatSeconds(expired.elapsed), note, timeout, expired.interrupted)
+	}
+
+	if expired.cutOff != nil && !seen.fetched() {
+		return fmt.Errorf("%s after %s%s: %w", subject, timeout, note, expired.cutOff)
+	}
+
+	return fmt.Errorf("%s after %s%s", subject, timeout, note)
+}
+
+// hierarchyLog remembers the last hierarchy a wait managed to fetch.
+//
+// A wait that runs out has two very different stories to tell: the driver
+// kept answering and the element never appeared, or the driver stopped
+// answering. When the last fetch came back, and how much it held, tells
+// them apart at a glance.
+type hierarchyLog struct {
+	at       time.Time
+	elements int
+}
+
+// record notes a hierarchy the driver just returned. A nil log ignores it.
+func (l *hierarchyLog) record(hierarchy *tree.ViewNode) {
+	if l == nil {
+		return
+	}
+
+	l.at = time.Now()
+	l.elements = tree.Count(hierarchy)
+}
+
+// fetched reports whether any fetch came back during the wait.
+func (l *hierarchyLog) fetched() bool {
+	return l != nil && !l.at.IsZero()
+}
+
+func (l *hierarchyLog) String() string {
+	if !l.fetched() {
+		return "no hierarchy fetched during the wait"
+	}
+
+	unit := "elements"
+	if l.elements == 1 {
+		unit = "element"
+	}
+
+	return fmt.Sprintf("last hierarchy fetched %s ago, %d %s", formatSeconds(time.Since(l.at)), l.elements, unit)
+}
+
+// formatSeconds renders d to a tenth of a second ("0.2s"), the precision a
+// failure message needs.
+func formatSeconds(d time.Duration) string {
+	return strconv.FormatFloat(d.Seconds(), 'f', 1, 64) + "s"
 }
 
 // elementLocator carries the per-call resolution mode for findElement.
@@ -1491,11 +1657,15 @@ func (l elementLocator) String() string {
 	return fmt.Sprintf("id=%q", l.ID)
 }
 
-func findElement(ctx context.Context, session *Session, locator elementLocator) (*tree.ViewNode, bool, error) {
+// findElement fetches the hierarchy and resolves locator in it. seen
+// records the fetch when it succeeds.
+func findElement(ctx context.Context, session *Session, locator elementLocator, seen *hierarchyLog) (*tree.ViewNode, bool, error) {
 	hierarchy, err := session.Driver.Hierarchy(ctx, session.Target.AppID)
 	if err != nil {
 		return nil, false, fmt.Errorf("fetch hierarchy: %w", err)
 	}
+
+	seen.record(hierarchy)
 
 	if locator.Label != "" {
 		node, ok, err := tree.FindFirstByLabel(hierarchy, locator.Label)
