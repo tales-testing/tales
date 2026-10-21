@@ -123,6 +123,8 @@ func encodeActionEvents(encoder *json.Encoder, seed int64, phase string, step *S
 			event["capture_note"] = action.CaptureNote
 		}
 
+		addActionTiming(event, action)
+
 		if action.Error != nil {
 			event["error"] = sanitizeErrorDetail(action.Error)
 		}
@@ -133,6 +135,22 @@ func encodeActionEvents(encoder *json.Encoder, seed int64, phase string, step *S
 	}
 
 	return nil
+}
+
+// addActionTiming adds when the action ran and, for a pointer action, where
+// it pointed. The times use diagnostic.TimestampLayout, the layout of the
+// browser's console.jsonl and network.jsonl, so an action lines up with
+// what the page logged and sent around it. A skipped action never started
+// and carries neither time.
+func addActionTiming(event map[string]interface{}, action *ActionResult) {
+	if !action.StartedAt.IsZero() {
+		event["started_at"] = diagnostic.FormatTimestamp(action.StartedAt)
+		event["ended_at"] = diagnostic.FormatTimestamp(action.EndedAt())
+	}
+
+	if action.Point != nil {
+		event["point"] = action.Point
+	}
 }
 
 func encodeScenarioEvent(encoder *json.Encoder, seed int64, scenario *ScenarioResult) error {

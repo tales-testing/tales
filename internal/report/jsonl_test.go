@@ -441,3 +441,75 @@ func TestWriteJSONLActionEventCarriesCaptureNote(t *testing.T) {
 		t.Errorf("an action with a complete capture must not carry capture_note: %v", actions[1])
 	}
 }
+
+// TestWriteJSONLActionEventCarriesTimingAndPoint pins the action timeline of
+// issue #83: an action event says when it started and ended, in the layout
+// of the browser's console.jsonl / network.jsonl, and a pointer action says
+// where it pointed.
+func TestWriteJSONLActionEventCarriesTimingAndPoint(t *testing.T) {
+	t.Parallel()
+
+	started := time.Date(2026, 10, 21, 11, 54, 34, 120_000_000, time.FixedZone("CEST", 2*60*60))
+
+	file := t.TempDir() + "/events.jsonl"
+	result := &SuiteResult{
+		Scenarios: []*ScenarioResult{{
+			File:   "web.tales",
+			Name:   "web",
+			Status: StatusFail,
+			Steps: []*StepResult{{
+				File:     "web.tales",
+				Scenario: "web",
+				Name:     "submit",
+				Provider: "browser",
+				Status:   StatusFail,
+				Actions: []*ActionResult{
+					{Index: 0, Kind: "goto", Label: "goto /form", Status: StatusPass, StartedAt: started, Duration: 18 * time.Millisecond},
+					{Index: 1, Kind: "click", Label: "click #submit", Status: StatusFail, StartedAt: started.Add(20 * time.Millisecond), Duration: 1002 * time.Millisecond, Point: &ActionPoint{X: 37.5, Y: 90}},
+					{Index: 2, Kind: "wait_visible", Label: "wait_visible #done", Status: StatusSkip},
+				},
+			}},
+		}},
+	}
+
+	if err := WriteJSONL(file, result); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	var actions []map[string]any
+
+	for _, e := range readJSONLEvents(t, file) {
+		if e["type"] == "action" {
+			actions = append(actions, e)
+		}
+	}
+
+	if len(actions) != 3 {
+		t.Fatalf("expected 3 action events, got %d", len(actions))
+	}
+
+	goTo, click, skipped := actions[0], actions[1], actions[2]
+
+	if goTo["started_at"] != "2026-10-21T09:54:34.120Z" || goTo["ended_at"] != "2026-10-21T09:54:34.138Z" {
+		t.Errorf("goto timing = %v .. %v", goTo["started_at"], goTo["ended_at"])
+	}
+
+	if _, ok := goTo["point"]; ok {
+		t.Errorf("goto is not a pointer action, got point %v", goTo["point"])
+	}
+
+	if click["started_at"] != "2026-10-21T09:54:34.140Z" || click["ended_at"] != "2026-10-21T09:54:35.142Z" {
+		t.Errorf("click timing = %v .. %v", click["started_at"], click["ended_at"])
+	}
+
+	point, ok := click["point"].(map[string]any)
+	if !ok || point["x"] != 37.5 || point["y"] != float64(90) {
+		t.Errorf("click point = %v, want {x: 37.5, y: 90}", click["point"])
+	}
+
+	for _, key := range []string{"started_at", "ended_at", "point"} {
+		if _, ok := skipped[key]; ok {
+			t.Errorf("a skipped action never ran and must not carry %s: %v", key, skipped)
+		}
+	}
+}

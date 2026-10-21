@@ -322,6 +322,32 @@ body {
   font-weight: 500;
 }
 
+#action-meta .step-artifacts {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#action-meta .step-artifacts > span:first-child {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--card-fg-soft);
+}
+
+#action-meta .step-artifacts .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+#action-meta .step-artifacts a {
+  color: var(--card-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 #controls {
   display: flex;
   flex-wrap: wrap;

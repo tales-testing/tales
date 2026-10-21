@@ -120,8 +120,10 @@ func TestRunnerExecutesBrowserStep(t *testing.T) {
 		t.Errorf("secure fill value = %q, want ***", masked.Value)
 	}
 
+	// The console / network recording starts before the first action, so
+	// a failure can show what led to it (issue #83).
 	calls := fake.MethodsCalled()
-	want := []string{"Goto", "Fill", "Fill", "Click"}
+	want := []string{"StartDiagnostics", "Goto", "Fill", "Fill", "Click"}
 
 	for i, w := range want {
 		if calls[i] != w {

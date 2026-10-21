@@ -117,6 +117,27 @@ type ActionResult struct {
 	// CaptureNote says why a screenshot or DOM capture is missing (see
 	// provider.ActionResult.CaptureNote).
 	CaptureNote string `json:"capture_note,omitempty"`
+	// Point is where a browser pointer action (click, hover, check,
+	// uncheck) sent its mouse events, or the point its last
+	// actionability check tested when it failed. Nil for other actions.
+	Point *ActionPoint `json:"point,omitempty"`
+}
+
+// ActionPoint is a position in CSS pixels from the top-left corner of the
+// browser viewport.
+type ActionPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// EndedAt is when the action finished: StartedAt plus Duration. Zero when
+// the action never started (a skipped action).
+func (a *ActionResult) EndedAt() time.Time {
+	if a.StartedAt.IsZero() {
+		return time.Time{}
+	}
+
+	return a.StartedAt.Add(a.Duration)
 }
 
 // Artifact references one file produced by a step (mobile screenshots,
