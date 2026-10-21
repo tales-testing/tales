@@ -886,12 +886,37 @@ press {
 }
 ```
 
+**Pointer actions check actionability.** `click`, `hover`, `check` and
+`uncheck` drive the real mouse. Before any mouse event they wait, within
+the action's timeout, until the element is visible, enabled (`click`,
+`check`, `uncheck` only), stable (same box on two animation frames) and
+the element `elementFromPoint` hits at the click point (or a descendant,
+open shadow roots included). Then the mouse moves to the point, presses
+and releases (`hover` only moves, so CSS `:hover` applies). A click that
+cannot land fails on the click, naming the cause:
+`click [data-testid='x']: not actionable after 5s: point (912, 684) is covered by <div class="toast">`.
+So do not add `wait_visible` / `wait_enabled` before a click just to
+make it land. `force = true` (pointer actions only) skips the checks for
+a deliberate click on a covered element, e.g. a modal backdrop:
+
+```hcl
+click {
+  selector = "[data-testid='page.behind']"
+  force    = true
+}
+```
+
+`check` / `uncheck` take an `input[type=checkbox|radio]`, a `<label>`
+of one, or a `role=checkbox|switch|radio` element; they click only when
+the state differs, then verify it flipped. A styled checkbox whose input
+is hidden or covered is checked through its `<label>` selector.
+Unchecking a radio fails: check another option instead.
+
 `wait_enabled` / `wait_disabled` poll the HTML `disabled` attribute with
-boolean-attribute semantics (presence is what counts). Put a
-`wait_enabled` before any click on a control a background validation
-arms: a click on a disabled element is a no-op the DOM reports as a
-success, so the failure otherwise surfaces on a later, unrelated
-assertion.
+boolean-attribute semantics (presence is what counts). `click` already
+waits for its element to be enabled; use `wait_enabled` when the arming
+itself is what the test asserts, or before an action that does not go
+through the mouse (`press`, `submit`, `fill`).
 
 `upload_file` takes `selector` plus `paths`, a list of files (a bare
 string is sugar for one file). Relative paths resolve against the
@@ -927,10 +952,11 @@ they are only available inside a `step "browser"` `capture` block.
 
 - **Prefer `[data-testid="..."]` selectors** over fragile CSS class /
   position selectors. Tales tests assert behaviour, not styling.
-- **Always `wait_visible` (or rely on `click`'s built-in wait) before
-  asserting** — real-browser steps are not seed-deterministic; layout
-  reflow and async script execution mean a value may not be present
-  the very microsecond the previous action returned.
+- **Always `wait_visible` before asserting on what an action produced**:
+  real-browser steps are not seed-deterministic; layout reflow and async
+  script execution mean a value may not be present the very microsecond
+  the previous action returned. Pointer actions need no such wait
+  before them: they check actionability themselves.
 - **Use `secure = true` on every password / token `fill`.** The provider
   masks the value to `"***"` at one boundary; reporters never see the
   plaintext.
