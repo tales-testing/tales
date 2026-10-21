@@ -105,7 +105,7 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | Action               | Required attrs                                                      | Notes |
 |----------------------|---------------------------------------------------------------------|-------|
 | `goto`               | `url`                                                               | Navigates and waits for the document to settle |
-| `click`              | `selector`                                                          | Waits for visibility, then clicks |
+| `click`              | `selector`, optional `force`                                        | Waits until the element is [actionable](#actionability), then moves the mouse to it, presses and releases |
 | `fill`               | `selector`, `value`                                                 | Clears and types `value`. Set `secure = true` to mask the value in reports |
 | `clear`              | `selector`                                                          | Erases the input value |
 | `press`              | `key`, optional `selector`                                          | Focuses `selector` first if set, then presses `key`: a single character or a key name such as `Enter`. See below |
@@ -115,14 +115,93 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | `wait_not_visible`   | `selector`                                                          | Polls until the element is gone or hidden |
 | `wait_enabled`       | `selector`                                                          | Polls until the element carries no `disabled` attribute |
 | `wait_disabled`      | `selector`                                                          | Polls until the element carries the `disabled` attribute |
-| `hover`              | `selector`                                                          | Dispatches a `mouseover` event |
+| `hover`              | `selector`, optional `force`                                        | Waits until the element is [actionable](#actionability), then moves the mouse over it (CSS `:hover` applies) |
 | `select`             | `selector`, `value`                                                 | Sets `<select>` value and fires `change` |
-| `check` / `uncheck`  | `selector`                                                          | Toggles a checkbox / radio input |
+| `check` / `uncheck`  | `selector`, optional `force`                                        | Clicks a checkbox / radio whose state differs, as `click` does, then verifies the new state. See [below](#check-and-uncheck) |
 | `upload_file`        | `selector`, `paths`                                                 | Sets the files of an `<input type="file">`. See below |
 | `reload`             | none                                                                | Reloads the current page |
 | `back` / `forward`   | none                                                                | Navigates the browser history. See limitations below |
 
-All actions accept an optional `timeout = "<duration>"` and `interval = "<duration>"`.
+All actions accept an optional `timeout = "<duration>"` and `interval = "<duration>"`. For `click`, `hover`, `check` and `uncheck`, `interval` is the pause between two actionability checks (default `100ms`).
+
+### Actionability
+
+`click`, `hover`, `check` and `uncheck` drive the real mouse, and a mouse event
+only does what the test means when it reaches the right element. Before sending
+any event, these actions wait until their element is **actionable**, checking
+again until the action's timeout expires (the action's `timeout`, then the
+target's `timeout`, then 30s):
+
+| Check           | Passes when                                                                                                                         | Applies to |
+|-----------------|-------------------------------------------------------------------------------------------------------------------------------------|------------|
+| Visible         | the element exists, is not `display: none` or `visibility: hidden`, and has a non-empty box (`opacity: 0` counts as visible)        | all four |
+| Enabled         | it is not a disabled native form control (`disabled`, or inside a disabled `<fieldset>`), nor inside a disabled `<button>`          | `click`, `check`, `uncheck` |
+| Stable          | its bounding box is the same on two consecutive animation frames                                                                     | all four |
+| Receives events | `document.elementFromPoint` at the click point, followed down open shadow roots, is the element or one of its descendants           | all four |
+
+The element is first scrolled into view when it is not fully inside the
+viewport, and the click point, the center of its largest visible part, is
+computed after that scroll. When the point is covered, the next checks scroll the
+element to the end, the center, then the start of the viewport in turn, which
+gets it out from under a sticky header. Once the element is actionable, the
+mouse **moves** to the point, then presses and releases the left button; `hover`
+only moves it.
+
+A click that cannot land therefore fails on the click itself, naming the check
+that was still failing when the timeout expired, instead of passing and leaving
+the next wait to time out on an unrelated selector:
+
+```text
+action 1 (click): driver: click [data-testid='signup.submit']: not actionable after 5s: point (912, 684) is covered by <div class="toast" role="status">
+```
+
+The other reasons read `element not found`, `element is not visible`,
+`element is disabled`, `element is not stable (its box moved between two animation frames)`,
+`element is outside of the viewport`, and
+`point (x, y) hits its ancestor <div class="list">, not the element (pointer-events: none, or clipped?)`.
+When the element that takes the point belongs to a larger overlay, the overlay
+is named too: `covered by <span class="msg"> from <div class="toast"> subtree`.
+
+The stability check costs about 50ms per pointer action (two animation frames).
+
+<Aside type="note">
+The checks run before the press. A layout change caused by the press itself, such as a field that collapses when it loses focus and moves the button before the release, is not detected. Selectors do not reach into iframes or shadow roots, so the target always lives in the top document; an iframe over it is reported as covering it.
+</Aside>
+
+#### check and uncheck
+
+`check` and `uncheck` accept an `input[type=checkbox]` or `input[type=radio]`,
+a `<label>` of one (the label is clicked, the input's state is read), or an
+element with role `checkbox`, `switch` or `radio` (`aria-checked` is read). They
+do nothing when the state already matches. Otherwise they click the element,
+with the checks above, then wait for the state to flip, and fail when the click
+did not change it. A radio button cannot be unchecked by a click: check another
+option of its group instead.
+
+Styled checkboxes hide the input (`display: none`) or draw a substitute over it,
+so the input itself is not actionable. Point the selector at its `<label>`:
+
+```hcl
+check {
+  selector = "label[for='newsletter']"
+}
+```
+
+#### Opting out with force
+
+`force = true` skips the visible, enabled, stable and receives-events checks.
+The element must still be present, with a box inside the viewport, and the mouse
+still moves, presses and releases at its center. Keep it for the rare deliberate
+interaction with a covered element, for example a click on a modal's backdrop
+that must dismiss it, or for an element that never stops moving (an infinite
+CSS animation):
+
+```hcl
+click {
+  selector = "[data-testid='page.behind']" # covered by the modal's backdrop
+  force    = true
+}
+```
 
 ### Pressing keys
 
@@ -155,18 +234,23 @@ actions {
 
 `wait_enabled` uses the same predicate as the `enabled` expectation: HTML
 boolean-attribute semantics, where the presence of `disabled` is what counts
-(`<input disabled="false">` is disabled). Reach for it whenever a form arms
-asynchronously — a submit button unlocked by a background validation, an action
-re-enabled once a request settles. A click on a disabled element is a no-op the
-DOM reports as a success, so without the wait the run fails later on an
-assertion that says nothing about the real cause.
+(`<input disabled="false">` is disabled). `click` already waits for a disabled
+control to arm (see [Actionability](#actionability)), so reach for `wait_enabled`
+when the arming itself is what the test asserts, or when the next action does
+not go through the mouse (`press`, `submit`, `fill`).
 
 ```hcl
 actions {
-  wait_visible { selector = "[data-testid='form.submit']" }
-  wait_enabled { selector = "[data-testid='form.submit']" timeout = "10s" }
-  click        { selector = "[data-testid='form.submit']" }
-  wait_disabled { selector = "[data-testid='form.submit']" }
+  wait_enabled {
+    selector = "[data-testid='form.submit']"
+    timeout  = "10s"
+  }
+  submit {
+    selector = "[data-testid='form']"
+  }
+  wait_disabled {
+    selector = "[data-testid='form.submit']"
+  }
 }
 ```
 
@@ -351,6 +435,7 @@ Pin flakiness with:
 - `expect.<kind> { timeout = "10s" interval = "100ms" }`: bounded polling
 - `retry { attempts = 3 interval = "1s" }` on the step
 - Synchronous waits (`wait_visible`) after navigations before asserting
+- Nothing for pointer actions: `click`, `hover`, `check` and `uncheck` already wait until their element is [actionable](#actionability)
 
 The seed mixer continues to work for everything outside the browser step (config, vars, generators, expressions evaluated before the provider runs).
 

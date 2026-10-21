@@ -55,6 +55,10 @@ scenario "User signs in and lands on dashboard" {
         secure   = true
       }
 
+      # click waits until the button is actionable (visible, enabled,
+      # standing still, not covered) and fails naming the cause when it
+      # never is. force = true skips those checks for a deliberate click
+      # on a covered element.
       click {
         selector = "[data-testid='login.submit']"
       }
