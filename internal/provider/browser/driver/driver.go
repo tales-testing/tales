@@ -80,6 +80,20 @@ type Driver interface {
 	// metrics are available — callers should treat that the same as a
 	// successful collect of an empty snapshot.
 	Performance(ctx context.Context) (*PerformanceMetrics, error)
+	// StartDiagnostics starts recording the page's console messages,
+	// uncaught exceptions and network events, discarding what an earlier
+	// recording kept. The recording goes on until the next
+	// StartDiagnostics or Close, bounded in memory (see Recorder), and
+	// never keeps header values, cookies, bodies or URL query strings.
+	StartDiagnostics(ctx context.Context) error
+	// Diagnostics returns a copy of what was recorded since the last
+	// StartDiagnostics, or nil when nothing is being recorded. It reads
+	// memory only, so it answers even when the page does not.
+	Diagnostics() *Diagnostics
+	// PageState reads what has the focus, the viewport size, the scroll
+	// offsets and the document URL. (nil, nil) means the driver cannot
+	// tell.
+	PageState(ctx context.Context) (*PageState, error)
 	// Close releases the browsing context's resources.
 	Close(ctx context.Context) error
 }

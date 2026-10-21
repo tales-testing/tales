@@ -98,5 +98,14 @@ func (NoopDriver) Screenshot(_ context.Context) ([]byte, error) { return nil, ni
 // Performance satisfies Driver.
 func (NoopDriver) Performance(_ context.Context) (*PerformanceMetrics, error) { return nil, nil }
 
+// StartDiagnostics satisfies Driver. A NoopDriver records nothing.
+func (NoopDriver) StartDiagnostics(_ context.Context) error { return nil }
+
+// Diagnostics satisfies Driver: nothing is recorded.
+func (NoopDriver) Diagnostics() *Diagnostics { return nil }
+
+// PageState satisfies Driver: the state is unknown.
+func (NoopDriver) PageState(_ context.Context) (*PageState, error) { return nil, nil }
+
 // Close satisfies Driver.
 func (NoopDriver) Close(_ context.Context) error { return nil }
