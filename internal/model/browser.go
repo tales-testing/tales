@@ -68,6 +68,9 @@ type BrowserAction struct {
 	URL      Expression
 	Key      Expression
 	Secure   Expression
+	// Force skips the actionability checks of a pointer action (click,
+	// hover, check, uncheck). It evaluates to a bool.
+	Force    Expression
 	Timeout  Expression
 	Interval Expression
 	X        Expression
