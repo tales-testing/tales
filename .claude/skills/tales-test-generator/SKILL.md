@@ -908,6 +908,12 @@ they are only available inside a `step "browser"` `capture` block.
   (the chromedp CDP layer hangs waiting for a response the page tears
   down). They work for the common case but prefer explicit `goto` calls
   when reliability matters.
+- **A page that redirects by script after `goto` is fine with
+  `--report-html`**: follow the `goto` with a bounded `wait_visible` on
+  an element of the page the browser lands on. Per-action captures are
+  bounded (5s) and retaken on the new page, so they never eat into the
+  next action's timeout; a frame that could not be captured carries a
+  `capture_note` instead of failing the step.
 - **Do not put real credentials in the .tales file.** Pipe them through
   `env(...)` or a previous step's `result.*`.
 

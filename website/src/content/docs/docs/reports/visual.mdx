@@ -117,7 +117,8 @@ Per-action capture in `actions` mode adds a `Screenshot()` and a `Hierarchy()` c
 
 - **CI**, stick to `failures` unless you specifically want the visual replay.
 - **Local debugging**, run `--capture-screenshots actions` only when needed.
-- Capture errors never mask the underlying action error. They are silently dropped: the action's status, duration, and error reflect the real operation, while the missing screenshot / hierarchy fields on that action signal that the capture itself failed.
+- Capture errors never mask the underlying action error. The action's status, duration, and error reflect the real operation, while the missing screenshot / hierarchy fields on that action signal that the capture itself failed. Browser actions also carry a `capture_note` saying why (for example a screenshot Chrome never answered because the page navigated under it), shown as the **Capture** row of the action panel.
+- Browser captures are bounded (5s per capture, 2s per read) and retried on the new page after a navigation, so a capture can never hold the run or eat into the next action's timeout. See [Browser provider](/docs/providers/browser/#captures-never-hold-the-run).
 
 ## Known limitations (V1)
 

@@ -100,6 +100,8 @@ One per UI action, emitted after the step event when `step.actions` is populated
 
 Secure values are masked to `"***"` at one boundary inside the mobile provider, see [Visual HTML report](/docs/reports/visual/#secure-values).
 
+A browser action whose screenshot or DOM capture had to be skipped also carries `capture_note`, a short sentence saying why (for example `"screenshot skipped: the page kept navigating while it was captured"`). The field is absent when the capture is complete. See [Browser provider](/docs/providers/browser/#captures-never-hold-the-run).
+
 ## DSN and secret masking
 
 The SQL provider scrubs DSNs from every event before serialisation. Only the connection name, driver alias, SQL text, and arg *count* appear, never the connection string. See [SQL provider](/docs/providers/sql/#security-and-masking) for the full rules.
