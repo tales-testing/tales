@@ -44,6 +44,12 @@ type Provider struct {
 	builder       SessionBuilder
 	artifactsBase string
 	captureMode   provider.CaptureMode
+
+	// captureBudget and captureAttemptTimeout bound the screenshot + DOM
+	// captures (see capture_artifacts.go). Fields rather than constants so
+	// tests can shrink them.
+	captureBudget         time.Duration
+	captureAttemptTimeout time.Duration
 }
 
 // Option configures a Provider via New / NewChrome.
@@ -77,6 +83,9 @@ func New(opts ...Option) *Provider {
 		snapshots:     map[string]*Snapshot{},
 		artifactsBase: artifacts.DefaultBase,
 		captureMode:   provider.CaptureFailures,
+
+		captureBudget:         defaultCaptureBudget,
+		captureAttemptTimeout: defaultCaptureAttemptTimeout,
 	}
 
 	for _, opt := range opts {
