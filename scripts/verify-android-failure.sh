@@ -26,6 +26,20 @@ fi
 grep -Eiq 'element not found|not found after|element\.that\.does\.not\.exist' "$jsonl" || \
   fail "expected missing-element assertion error not found in JSONL"
 
+# Issue #73: a wait that runs out reports the missing element and when the
+# driver last answered, never the hierarchy fetch its own deadline
+# cancelled. The driver answers a fetch in well under a second, so the 5s
+# wait always sees at least one come back.
+failure=$(grep '"step":"android_missing_element"' "$jsonl" | grep '"status":"fail"' || true)
+[ -n "$failure" ] || fail "no failing step event for android_missing_element"
+
+if grep -Eq 'poll timed out|context deadline exceeded' <<<"$failure"; then
+  fail "the wait failure blames the request its own deadline cancelled (issue #73)"
+fi
+
+grep -q 'last hierarchy fetched' <<<"$failure" || \
+  fail "the wait failure does not say when the driver last answered (issue #73)"
+
 grep -q '"artifacts"' "$jsonl" || fail "JSONL does not include artifact paths"
 
 [ -d "$artifacts_root" ] || fail "artifacts root not found: $artifacts_root"

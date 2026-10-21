@@ -21,6 +21,24 @@ fi
 grep -Eiq 'element not found|visible timeout|visibility timeout|element\.that\.does\.not\.exist|timed out' "$jsonl" || \
   fail "expected missing-element/visibility assertion error not found in JSONL"
 
+# Issue #73: a wait that runs out never blames the hierarchy fetch its own
+# deadline cancelled, and says what the driver answered meanwhile. The 1s
+# wait may legitimately see no fetch come back on a loaded runner, and only
+# then is the cancelled request part of the story.
+failure=$(grep '"step":"missing_element"' "$jsonl" | grep '"status":"fail"' || true)
+[ -n "$failure" ] || fail "no failing step event for missing_element"
+
+grep -q 'hierarchy fetched' <<<"$failure" || \
+  fail "the wait failure does not say when the driver last answered (issue #73)"
+
+if grep -q 'poll timed out' <<<"$failure"; then
+  fail "the wait failure blames its own deadline (issue #73)"
+fi
+
+if grep -q 'context deadline exceeded' <<<"$failure" && ! grep -q 'no hierarchy fetched during the wait' <<<"$failure"; then
+  fail "the wait failure blames the request its own deadline cancelled (issue #73)"
+fi
+
 grep -q '"artifacts"' "$jsonl" || fail "JSONL does not include artifact paths"
 
 [ -d "$artifacts_root" ] || fail "artifacts root not found: $artifacts_root"
