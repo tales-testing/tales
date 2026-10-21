@@ -1,0 +1,39 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  # A key read from config is only known at run time, so `tales validate`
+  # cannot reject it: the press action must fail instead of typing it.
+  submit_key = "Entr"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "2s"
+      }
+    }
+  }
+}
+
+scenario "Unknown press key fails the action" {
+  tags = ["browser", "fail"]
+
+  step "browser" "press_unknown_key" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/login"
+      }
+      fill {
+        selector = "[data-testid='login.email']"
+        value    = "press@example.com"
+      }
+      press {
+        selector = "[data-testid='login.email']"
+        key      = config.submit_key
+      }
+    }
+  }
+}
