@@ -343,6 +343,7 @@ func decodeBrowserPress(path string, block *hclsyntax.Block) (*model.BrowserActi
 
 	keyExpr, kDiags := requireActionAttr(block, "press", browserKeyAttr)
 	diags = append(diags, kDiags...)
+	diags = append(diags, validateBrowserPressKey(keyExpr)...)
 
 	var selectorExpr, timeoutExpr, intervalExpr hcl.Expression
 
@@ -375,6 +376,30 @@ func decodeBrowserPress(path string, block *hclsyntax.Block) (*model.BrowserActi
 		Timeout:  expr(path, timeoutExpr),
 		Interval: expr(path, intervalExpr),
 	}, diags
+}
+
+// validateBrowserPressKey rejects a literal press key that is neither a
+// single character nor a key name, so a typo fails `tales validate` instead
+// of being typed into the page. A key computed from an expression is only
+// known at run time, where the provider applies the same check.
+func validateBrowserPressKey(keyExpr hcl.Expression) hcl.Diagnostics {
+	key, ok := staticString(keyExpr)
+	if !ok {
+		return nil
+	}
+
+	err := model.ValidateBrowserKey(key)
+	if err == nil {
+		return nil
+	}
+
+	rng := keyExpr.Range()
+
+	return hcl.Diagnostics{diagError(
+		"Invalid press key",
+		fmt.Sprintf("press key %s.", err),
+		&rng,
+	)}
 }
 
 func decodeBrowserSelect(path string, block *hclsyntax.Block) (*model.BrowserAction, hcl.Diagnostics) {
