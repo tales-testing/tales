@@ -100,12 +100,51 @@ config {
 | `driver.port` | Host port. Auto-allocated when omitted. |
 | `driver.adb_path` | Override adb discovery. |
 | `driver.timeout` | Duration string bounding every driver request. Default `30s`. |
+| `driver.startup_timeout` | Duration string bounding the wait for the driver to answer `/health` after Tales starts it. Default `60s`. |
 
 `driver.timeout` is shared with the iOS provider and matters for the same
 reason: on a slow or shared host a single app launch can outlast the default,
 and a launch the client abandons but the driver completes leaves the two sides
 disagreeing for the rest of the run. See
 [the iOS notes](/docs/providers/mobile-ios/#driver-timeout).
+
+### Driver timeouts: per request vs startup
+
+The two driver knobs govern different waits, and want opposite tuning:
+
+```hcl
+driver = {
+  timeout         = "30s"   # per request
+  startup_timeout = "180s"  # health wait after install/launch
+}
+```
+
+- **`driver.timeout`** bounds each HTTP request Tales sends the driver (a tap, a
+  hierarchy fetch, a launch). Keep it short enough that a slow answer still
+  shows up as a failure.
+- **`driver.startup_timeout`** bounds the wait for the driver to answer
+  `/health` once Tales has started the instrumentation (`adb shell am
+  instrument`). It does not cover the driver APK installs that come before it.
+
+The instrumentation start is the slowest part of a cold run: on a
+software-rendered CI emulator (`-gpu swiftshader_indirect`) sharing its host
+with other work, 60s is enough most of the time and not always. When it runs
+out, the first scenario fails with:
+
+```text
+start android driver: driver did not become healthy within 1m0s
+  (raise driver.startup_timeout to wait longer): call GET /health: ...
+```
+
+Raising `driver.timeout` does not help there; raising `startup_timeout` does.
+Both take a duration **string** (`"180s"`, `"3m"`) and read well through
+`env()`, so a suite can stay fast locally and patient in CI:
+`startup_timeout = env("TALES_DRIVER_STARTUP_TIMEOUT", "60s")`. A bare number is
+rejected, and so is zero or a negative value: neither knob can mean "wait
+forever".
+
+`startup_timeout` has no effect with `driver.external = true`: Tales does not
+start that driver, so it checks `/health` once, bounded by `driver.timeout`.
 
 <Aside type="note" title="app_id, not bundle_id">
 `bundle_id` is still accepted and warns once per target. It is Apple's word: on
@@ -403,6 +442,13 @@ makes every hierarchy fetch outlast the scenarios' action timeouts — the suite
 then fails naming the elements it was looking for, pointing nowhere near the
 device that was not ready. Raise the budget with `ANDROID_READY_TIMEOUT`
 (seconds) on a slow host.
+
+**`driver did not become healthy within 1m0s`**: the instrumentation started
+but the driver did not answer `/health` in time. If the next scenario starts the
+driver fine, it was a slow cold start, not a broken driver: raise
+[`driver.startup_timeout`](#driver-timeouts-per-request-vs-startup) (not
+`driver.timeout`, which only bounds single requests). If it never answers, read
+the driver log the error names.
 
 **`N devices are attached`** — set `serial` on the target. Tales will not guess.
 

@@ -11,6 +11,11 @@ config {
         driver = {
           host = env("IOS_DRIVER_HOST", "127.0.0.1")
           # port is optional in embedded mode; omit to auto-allocate a free port
+          # timeout bounds each driver request; startup_timeout bounds the
+          # /health wait after Tales starts the driver (raise it for slow
+          # cold starts on CI, not timeout)
+          timeout         = env("TALES_DRIVER_TIMEOUT", "30s")
+          startup_timeout = env("TALES_DRIVER_STARTUP_TIMEOUT", "60s")
         }
       }
     }

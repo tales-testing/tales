@@ -472,7 +472,7 @@ driver = {
 }
 ```
 
-Tales only health-checks the URL; it never spawns or kills an external driver.
+Tales only health-checks the URL; it never spawns or kills an external driver. That single check is bounded by [`driver.timeout`](#driver-timeout); [`driver.startup_timeout`](#driver-startup-timeout) does not apply, since there is no startup to wait for.
 
 ### Driver port
 
@@ -527,7 +527,7 @@ The same refusal from `simctl` is an immediate error naming the real cause, cost
 
 ### Driver timeout
 
-`driver.timeout` bounds every HTTP request Tales sends the driver. It defaults to `30s` and takes a duration **string**:
+`driver.timeout` bounds every HTTP request Tales sends the driver. It does **not** bound the driver's startup: that is [`driver.startup_timeout`](#driver-startup-timeout). It defaults to `30s` and takes a duration **string**:
 
 ```hcl
 driver = {
@@ -540,6 +540,39 @@ A bare number is rejected rather than guessed at, since `timeout = 30` reads as 
 The default is a developer-machine number. Raise it on any host where UI automation is slow, a shared CI runner first of all: on a GitHub-hosted `macos-26` runner a single `XCUIApplication.launch()` has been measured at 4.8s, 9.2s, 32.7s and once 245s, while taps and hierarchy fetches stayed at their local speed.
 
 The failure mode is worth understanding, because it does not look like a timeout. When the client gives up on a `/launch` the driver goes on to complete, the two sides disagree about what the app is doing: Tales moves to the next scenario while the driver is still finishing the previous one, so the failure surfaces several scenarios later as an unrelated-looking error, and eventually as `connection refused` once XCTest tears the runner down. One tight timeout produces a whole red suite. Reading `env()` keeps a suite fast locally and patient in CI without forking the config.
+
+### Driver startup timeout
+
+`driver.startup_timeout` bounds the wait for the driver Tales started to answer `/health`: from the moment `xcodebuild test-without-building` is spawned until the XCUITest runner serves its first request. It defaults to `60s`.
+
+The two knobs govern different waits and want opposite tuning, so they are set separately:
+
+```hcl
+driver = {
+  timeout         = "30s"   # per request
+  startup_timeout = "180s"  # health wait after install/launch
+}
+```
+
+| Knob | Bounds | Default |
+|---|---|---|
+| `driver.timeout` | Each HTTP request Tales sends the driver (a launch, a tap, a hierarchy fetch). | `30s` |
+| `driver.startup_timeout` | The `/health` wait after Tales starts the driver. | `60s` |
+
+When the startup budget runs out, the session fails with:
+
+```text
+apple driver did not become healthy at http://127.0.0.1:<port>/health within 1m0s
+  (raise driver.startup_timeout to wait longer): ...
+```
+
+Raising `driver.timeout` does not help there; raising `startup_timeout` does. It follows the same rules as `driver.timeout`: a duration **string** (`"180s"`, `"3m"`), with a bare number rejected, and zero or a negative value rejected too, since neither knob can mean "wait forever". `startup_timeout = env("TALES_DRIVER_STARTUP_TIMEOUT", "60s")` keeps the same suite patient in CI only.
+
+A few boundaries worth knowing:
+
+- The one-time `xcodebuild build-for-testing` that compiles the embedded driver runs **before** this wait and is not counted against it.
+- When a start fails, Tales rebuilds the driver and retries once ([embedded mode](#embedded-mode-default)); the retry gets the full budget again.
+- It has no effect with `driver.external = true`: Tales does not start that driver, so it checks `/health` once, bounded by `driver.timeout`.
 
 <Aside type="note">
 	App **launch** and the `terminate {}` step are driven through the XCUITest driver
@@ -737,7 +770,7 @@ diagnostic block is omitted because Tales does not control the runner there.
 - **Device build installed into simulator**, rebuild the app with `-sdk iphonesimulator`.
 - **Bundle ID mismatch**, check `IOS_BUNDLE_ID` matches the app's `PRODUCT_BUNDLE_IDENTIFIER`.
 - **Driver build failure**, read `<cache>/logs/build.log` (path printed in the error). Common causes: SDK no longer installed, signing config drift, stale derived data. `make clean-ios-driver-cache` then retry.
-- **Driver health timeout**, Tales auto-retries once with a rebuilt cache. If it still fails, inspect the runtime log at `build/artifacts/mobile/driver/<target>/driver.log`.
+- **Driver health timeout**, Tales auto-retries once with a rebuilt cache. If it still fails, inspect the runtime log at `build/artifacts/mobile/driver/<target>/driver.log`. If the runner was only slow to come up (a later scenario starts it fine), raise [`driver.startup_timeout`](#driver-startup-timeout), not `driver.timeout`.
 - **Stale CoreSimulator after Xcode upgrade**, run `sudo xcodebuild -runFirstLaunch`, then `xcrun simctl shutdown all`, then `killall -9 com.apple.CoreSimulator.CoreSimulatorService || true`, then `xcrun simctl list devices`. Optionally `make clean-ios-driver-cache` to force a fresh driver build.
 - **Element not found**, verify `.accessibilityIdentifier(...)` and inspect `hierarchy.json`.
 - **Toolbar / navigation-bar button "not found"** even though it is on screen, SwiftUI exposes a `.topBarLeading` / `.topBarTrailing` toolbar item under one identifier twice (an `other` wrapper and the inner `button`). Tales collapses that nested pair to a single element, so a unique id resolves; only two genuinely separate elements sharing an id are rejected as a duplicate.

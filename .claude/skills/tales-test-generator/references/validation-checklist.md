@@ -106,6 +106,7 @@ When the suite contains `step "mobile"` blocks:
 - Parallel scenarios target distinct mobile targets — the runtime serializes per-target work
 - `text` / `value` expectations use literals or matchers (`contains`, `matches`), not over-specified equality
 - `tales test ./suite --seed 1234 --parallel 1` is the safe default; only raise `--parallel` when targets are distinct
+- Driver timeouts are duration strings (`"90s"`), never bare numbers: `driver.timeout` bounds each request, `driver.startup_timeout` bounds the `/health` wait after Tales starts the driver; a slow cold start needs the latter
 
 ## 8) Command validation
 

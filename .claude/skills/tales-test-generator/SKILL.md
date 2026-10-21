@@ -194,7 +194,9 @@ config {
         driver = {
           host = env("IOS_DRIVER_HOST", "127.0.0.1")
           # port is optional in embedded mode; omit to auto-allocate a free port
-          timeout = env("TALES_DRIVER_TIMEOUT", "30s") # raise on slow CI hosts
+          timeout = env("TALES_DRIVER_TIMEOUT", "30s") # per request; raise on slow CI hosts
+          # health wait after Tales starts the driver (default 60s)
+          startup_timeout = env("TALES_DRIVER_STARTUP_TIMEOUT", "60s")
         }
       }
     }
@@ -219,7 +221,15 @@ config {
   a launch the driver goes on to finish, every later scenario fails against a
   driver still working on the previous one. Prefer
   `timeout = env("TALES_DRIVER_TIMEOUT", "30s")` so the same suite stays fast
-  locally and patient in CI.
+  locally and patient in CI. It does **not** cover the driver's startup.
+- `driver.startup_timeout` bounds the wait for the driver Tales started (Android
+  instrumentation, iOS `xcodebuild test-without-building`) to answer `/health`
+  (default `60s`). Same parsing rules as `driver.timeout` (duration string, no
+  bare number, must be positive). Raise it when a cold start fails with
+  `driver did not become healthy within 1m0s (raise driver.startup_timeout to
+  wait longer)`; raising `driver.timeout` does not help there. It has no effect
+  with `driver.external = true`, whose single health check is bounded by
+  `driver.timeout`.
 
 ### Step shape
 
