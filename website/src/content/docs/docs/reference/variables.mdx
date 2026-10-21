@@ -31,7 +31,10 @@ Captures from earlier steps, namespaced by step name. `result.<step>.<key>` reso
 ```hcl
 step "http" "create_user" {
   // ...
-  capture { id = response.json.id, email = response.json.email }
+  capture {
+    id    = response.json.id
+    email = response.json.email
+  }
 }
 
 step "http" "fetch_user" {

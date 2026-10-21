@@ -300,9 +300,19 @@ Compose and View-based UI alike.
 
 ```hcl
 actions {
-  input_text { id = "login.email" value = "user@example.com" }
-  input_text { id = "login.password" value = "Secret123!" secure = true }
-  wait_enabled { id = "login.submit" timeout = "10s" }
+  input_text {
+    id    = "login.email"
+    value = "user@example.com"
+  }
+  input_text {
+    id     = "login.password"
+    value  = "Secret123!"
+    secure = true
+  }
+  wait_enabled {
+    id      = "login.submit"
+    timeout = "10s"
+  }
   tap { id = "login.submit" }
 }
 ```

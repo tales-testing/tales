@@ -123,7 +123,10 @@ A request may carry **exactly one** of `json`, `form`, `raw`, or `multipart`. Th
 		        filename     = "attachment.bin"
 		        content_type = "application/octet-stream"
 		      }
-		      field { name = "description" value = "fixture upload" }
+		      field {
+		        name  = "description"
+		        value = "fixture upload"
+		      }
 		    }
 		  }
 		}

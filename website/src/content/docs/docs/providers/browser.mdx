@@ -23,16 +23,29 @@ step "browser" "<name>" {
 
   actions {                      // ordered list, runs sequentially
     goto         { url = "..." }
-    fill         { selector = "..." value = "..." }
+    fill {
+      selector = "..."
+      value    = "..."
+    }
     click        { selector = "..." }
-    wait_visible { selector = "..." timeout = "10s" }
+    wait_visible {
+      selector = "..."
+      timeout  = "10s"
+    }
     // …
   }
 
   expect {                       // optional, polled until timeout
     visible    { selector = "..." }
-    text       { selector = "..." value = "..." }
-    attribute  { selector = "..." name = "..." value = "..." }
+    text {
+      selector = "..."
+      value    = "..."
+    }
+    attribute {
+      selector = "..."
+      name     = "..."
+      value    = "..."
+    }
     url        { value = contains("/dashboard") }
     title      { value = "Dashboard" }
   }
