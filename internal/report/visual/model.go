@@ -15,6 +15,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/tales-testing/tales/internal/diagnostic"
 	"github.com/tales-testing/tales/internal/report"
 )
 
@@ -46,9 +47,10 @@ type Scenario struct {
 	Artifacts  []Artifact `json:"artifacts,omitempty"`
 }
 
-// Artifact is one scenario-wide file (e.g. a screen recording) produced by
-// a provider's ScenarioHook implementation. Step-level artifacts continue
-// to live on the Action / Step view.
+// Artifact is one file attached to a scenario (e.g. a screen recording
+// produced by a provider's ScenarioHook implementation) or to a step (e.g.
+// a failed browser step's console.jsonl). Per-action screenshots and DOM
+// snapshots live on the Action instead.
 type Artifact struct {
 	Type string `json:"type"`
 	Path string `json:"path"`
@@ -64,6 +66,10 @@ type Step struct {
 	DurationMS int64    `json:"duration_ms"`
 	SkipReason string   `json:"skip_reason,omitempty"`
 	Actions    []Action `json:"actions"`
+	// Artifacts are the step's own files (the failure screenshot and DOM,
+	// a browser step's console.jsonl, network.jsonl and state.json, ...),
+	// rendered as links in the action panel.
+	Artifacts []Artifact `json:"artifacts,omitempty"`
 }
 
 // Action is one entry in the visual timeline.
@@ -81,6 +87,19 @@ type Action struct {
 	Error      string `json:"error,omitempty"`
 	// CaptureNote says why the screenshot or DOM of this action is missing.
 	CaptureNote string `json:"capture_note,omitempty"`
+	// StartedAt is when the action started (diagnostic.TimestampLayout),
+	// the clock of a browser step's console.jsonl and network.jsonl.
+	// Empty for an action that never ran.
+	StartedAt string `json:"started_at,omitempty"`
+	// Point is where a browser pointer action sent its mouse events.
+	Point *Point `json:"point,omitempty"`
+}
+
+// Point is a position in CSS pixels from the top-left corner of the
+// browser viewport.
+type Point struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
 
 // Build produces a renderable Report from a SuiteResult. htmlPath is used to
@@ -161,7 +180,7 @@ func buildScenario(sc *report.ScenarioResult, htmlDir string) Scenario {
 		DurationMS: sc.Duration.Milliseconds(),
 		SkipReason: sc.SkipReason,
 		Steps:      make([]Step, 0, len(sc.Steps)+len(sc.Teardown)),
-		Artifacts:  buildScenarioArtifacts(sc.Artifacts, htmlDir),
+		Artifacts:  buildArtifacts(sc.Artifacts, htmlDir),
 	}
 
 	// The runner sorts sc.Steps alphabetically for stable console / JSONL
@@ -220,6 +239,7 @@ func buildStep(st *report.StepResult, htmlDir string) Step {
 		DurationMS: st.Duration.Milliseconds(),
 		SkipReason: st.SkipReason,
 		Actions:    make([]Action, 0, len(st.Actions)),
+		Artifacts:  buildArtifacts(st.Artifacts, htmlDir),
 	}
 
 	for _, a := range st.Actions {
@@ -249,6 +269,14 @@ func buildAction(a *report.ActionResult, htmlDir string) Action {
 
 	out.CaptureNote = a.CaptureNote
 
+	if !a.StartedAt.IsZero() {
+		out.StartedAt = diagnostic.FormatTimestamp(a.StartedAt)
+	}
+
+	if a.Point != nil {
+		out.Point = &Point{X: a.Point.X, Y: a.Point.Y}
+	}
+
 	if a.Error != nil {
 		out.Error = a.Error.Message
 	}
@@ -256,11 +284,11 @@ func buildAction(a *report.ActionResult, htmlDir string) Action {
 	return out
 }
 
-// buildScenarioArtifacts copies the scenario-level artifacts produced by
-// ScenarioHook implementations into the visual payload, rewriting paths to
-// be relative to the destination HTML directory so the report stays
-// portable when shipped alongside its build/artifacts/ tree.
-func buildScenarioArtifacts(in []report.Artifact, htmlDir string) []Artifact {
+// buildArtifacts copies scenario-level artifacts (produced by ScenarioHook
+// implementations) or step-level ones into the visual payload, rewriting
+// paths to be relative to the destination HTML directory so the report
+// stays portable when shipped alongside its build/artifacts/ tree.
+func buildArtifacts(in []report.Artifact, htmlDir string) []Artifact {
 	if len(in) == 0 {
 		return nil
 	}

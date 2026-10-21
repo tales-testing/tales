@@ -306,6 +306,14 @@
       fields.push(['Value', action.secure ? '***' : action.value]);
     }
 
+    if (action.started_at) {
+      fields.push(['Started', formatClock(action.started_at)]);
+    }
+
+    if (action.point) {
+      fields.push(['Point', formatPoint(action.point)]);
+    }
+
     if (action.capture_note) {
       fields.push(['Capture', action.capture_note]);
     }
@@ -328,6 +336,55 @@
       err.textContent = action.error;
       els.meta.appendChild(err);
     }
+
+    var artifacts = (entry.step && entry.step.artifacts) ? entry.step.artifacts : [];
+    if (artifacts.length > 0) {
+      els.meta.appendChild(renderStepArtifacts(artifacts));
+    }
+  }
+
+  // renderStepArtifacts lists the files the step itself produced (failure
+  // screenshot and DOM, a browser step's console.jsonl, network.jsonl and
+  // state.json) as links, opened next to the report. The paths are
+  // relative to the report file, so the links work as long as the
+  // build/artifacts tree is shipped alongside it.
+  function renderStepArtifacts(artifacts) {
+    var box = document.createElement('div');
+    box.className = 'step-artifacts';
+    var title = document.createElement('span');
+    title.textContent = 'Step artifacts';
+    box.appendChild(title);
+
+    var list = document.createElement('span');
+    list.className = 'links';
+    for (var i = 0; i < artifacts.length; i++) {
+      var a = document.createElement('a');
+      a.href = artifacts[i].path;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.title = artifacts[i].path;
+      a.textContent = artifactLabel(artifacts[i]);
+      list.appendChild(a);
+    }
+    box.appendChild(list);
+    return box;
+  }
+
+  function artifactLabel(artifact) {
+    var path = artifact.path || '';
+    var name = path.substring(path.lastIndexOf('/') + 1);
+    return name || artifact.type || 'artifact';
+  }
+
+  // formatClock keeps the time of day of an RFC 3339 timestamp, to the
+  // millisecond, the precision the console and network files use.
+  function formatClock(ts) {
+    var t = String(ts).indexOf('T');
+    return t >= 0 ? String(ts).substring(t + 1) : String(ts);
+  }
+
+  function formatPoint(point) {
+    return '(' + Math.round(point.x) + ', ' + Math.round(point.y) + ')';
   }
 
   function wireControls() {

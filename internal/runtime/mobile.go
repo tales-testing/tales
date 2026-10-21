@@ -838,6 +838,10 @@ func actionsFromOutput(output *provider.Output) []*report.ActionResult {
 
 		entry.CaptureNote = a.CaptureNote
 
+		if a.Point != nil {
+			entry.Point = &report.ActionPoint{X: a.Point.X, Y: a.Point.Y}
+		}
+
 		if a.Err != nil {
 			entry.Error = &report.ErrorDetail{Kind: "action", Message: a.Err.Error()}
 		}

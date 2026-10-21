@@ -231,3 +231,72 @@ func TestBuildPropagatesCaptureNote(t *testing.T) {
 		t.Errorf("Screenshot = %q, want none", action.Screenshot)
 	}
 }
+
+// TestBuildCarriesActionTimingPointAndStepArtifacts pins what the visual
+// report needs from issue #83: when each action started, where a pointer
+// action pointed, and the failed step's own files (console.jsonl,
+// network.jsonl, state.json) as report-relative links.
+func TestBuildCarriesActionTimingPointAndStepArtifacts(t *testing.T) {
+	t.Parallel()
+
+	htmlDir := t.TempDir()
+	stepDir := filepath.Join(htmlDir, "artifacts", "browser", "web-1a2b3c4d", "submit", "step", "attempt-1", "step")
+
+	suite := &report.SuiteResult{
+		Scenarios: []*report.ScenarioResult{{
+			Name: "web", Status: report.StatusFail,
+			Steps: []*report.StepResult{{
+				Name: "submit", Provider: "browser", Status: report.StatusFail,
+				Artifacts: []report.Artifact{
+					{Type: "screenshot", Path: filepath.Join(stepDir, "screenshot.png")},
+					{Type: "console", Path: filepath.Join(stepDir, "console.jsonl")},
+					{Type: "network", Path: filepath.Join(stepDir, "network.jsonl")},
+					{Type: "state", Path: filepath.Join(stepDir, "state.json")},
+				},
+				Actions: []*report.ActionResult{
+					{
+						Index: 0, Kind: "click", Status: report.StatusFail,
+						StartedAt: time.Date(2026, 10, 21, 9, 54, 34, 140_000_000, time.UTC),
+						Duration:  time.Second,
+						Point:     &report.ActionPoint{X: 37.5, Y: 90},
+					},
+					{Index: 1, Kind: "wait_visible", Status: report.StatusSkip},
+				},
+			}},
+		}},
+	}
+
+	step := Build(suite, filepath.Join(htmlDir, "report.html")).Scenarios[0].Steps[0]
+
+	click, skipped := step.Actions[0], step.Actions[1]
+
+	if click.StartedAt != "2026-10-21T09:54:34.140Z" {
+		t.Errorf("StartedAt = %q", click.StartedAt)
+	}
+
+	if click.Point == nil || *click.Point != (Point{X: 37.5, Y: 90}) {
+		t.Errorf("Point = %+v, want (37.5, 90)", click.Point)
+	}
+
+	if skipped.StartedAt != "" || skipped.Point != nil {
+		t.Errorf("a skipped action never ran: %+v", skipped)
+	}
+
+	if len(step.Artifacts) != 4 {
+		t.Fatalf("step artifacts = %+v, want 4", step.Artifacts)
+	}
+
+	want := "artifacts/browser/web-1a2b3c4d/submit/step/attempt-1/step/console.jsonl"
+	if step.Artifacts[1].Type != "console" || step.Artifacts[1].Path != want {
+		t.Errorf("console artifact = %+v, want a path relative to the report: %s", step.Artifacts[1], want)
+	}
+}
+
+func TestBuildOmitsStepArtifactsWhenNone(t *testing.T) {
+	t.Parallel()
+
+	step := Build(sampleSuite(), "").Scenarios[0].Steps[0]
+	if step.Artifacts != nil {
+		t.Errorf("Artifacts = %+v, want nil so the JSON omits the key", step.Artifacts)
+	}
+}
