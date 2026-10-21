@@ -1,0 +1,38 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "2s"
+      }
+    }
+  }
+}
+
+# A toast covers the submit button for good. The click must fail on the
+# click itself and name the toast, not pass and leave the next wait to
+# time out on an unrelated selector.
+scenario "Click on a covered button fails on the click" {
+  tags = ["browser", "fail", "actionability"]
+
+  step "browser" "submit_under_toast" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/actionability/toast"
+      }
+      click {
+        selector = "[data-testid='toast.submit']"
+        timeout  = "1s"
+      }
+      wait_visible {
+        selector = "[data-testid='toast.title']"
+      }
+    }
+  }
+}
