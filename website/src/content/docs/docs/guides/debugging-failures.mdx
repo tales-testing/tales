@@ -136,6 +136,22 @@ Look at `at scenario....expect.json.<field>`. The body matched but a JSON field 
 
 Either the system genuinely never reached the expected state, or your assertion is too strict. Look at the last attempt's response in JSONL, what *did* the response look like? Is it close to passing, or wildly off?
 
+### "My mobile wait timed out: is it the driver or the app?"
+
+A mobile wait that runs out says what the driver answered while it waited:
+
+```text
+element id="main.tab_bar" not found after 30s (last hierarchy fetched 0.2s ago, 214 elements)
+```
+
+The driver was answering until the end, and the element was never in what it returned. Look at the app (a backend it could not reach, a screen it never reached) and at `hierarchy.json`, not at the driver: raising `driver.timeout` cannot help a screen that never renders.
+
+```text
+element id="main.tab_bar" not found after 30s (no hierarchy fetched during the wait): fetch hierarchy: ...
+```
+
+Nothing came back for the whole wait, so the transport error that follows is the story. So is any `connection refused` or `EOF`, which Tales follows with the driver's log paths. See the [Android](/docs/providers/mobile-android/#troubleshooting) and [iOS](/docs/providers/mobile-ios/#troubleshooting) troubleshooting sections.
+
 ### "Tales says my step was 'skipped' but I didn't declare a skip rule"
 
 The skip cascade is firing. An upstream step failed or was skipped, and this step references its capture (`result.foo.id` or `depends_on = ["foo"]`). The dependent is skipped to prevent it from crashing on a missing value. Fix the upstream issue and the cascade resolves itself.
