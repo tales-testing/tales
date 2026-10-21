@@ -19,7 +19,9 @@ type Driver interface {
 	Fill(ctx context.Context, selector, value string) error
 	// Clear waits for the selector, then erases the input value.
 	Clear(ctx context.Context, selector string) error
-	// Press focuses the selector (when non-empty) and presses key.
+	// Press focuses the selector (when non-empty) and presses key, which is
+	// a single character or one of model.BrowserKeyNames. Any other string
+	// is an error: it must never be typed as text.
 	Press(ctx context.Context, selector, key string) error
 	// Submit triggers form submission on the given form selector.
 	Submit(ctx context.Context, selector string) error
