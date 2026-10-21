@@ -99,7 +99,7 @@ func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action
 	case model.BrowserActionClear:
 		return wrapDriver(drv.Clear(ctx, action.Selector))
 	case model.BrowserActionPress:
-		return wrapDriver(drv.Press(ctx, action.Selector, action.Key))
+		return press(ctx, drv, action)
 	case model.BrowserActionSubmit:
 		return wrapDriver(drv.Submit(ctx, action.Selector))
 	case model.BrowserActionScroll:
@@ -142,6 +142,18 @@ func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action
 	}
 
 	return fmt.Errorf("unknown browser action %q", action.Kind)
+}
+
+// press checks the key before any driver sees it, so an unknown key fails
+// the action whichever driver runs it. A literal key is already checked at
+// load time; this catches a key computed from an expression, which a driver
+// would otherwise type as text.
+func press(ctx context.Context, drv driver.Driver, action provider.BrowserActionExec) error {
+	if err := model.ValidateBrowserKey(action.Key); err != nil {
+		return fmt.Errorf("invalid key: %w", err)
+	}
+
+	return wrapDriver(drv.Press(ctx, action.Selector, action.Key))
 }
 
 func wrapDriver(err error) error {

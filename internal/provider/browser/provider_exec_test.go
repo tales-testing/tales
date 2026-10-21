@@ -508,3 +508,98 @@ func TestProviderExecuteWaitEnabledTimesOut(t *testing.T) {
 		t.Fatalf("the click must not run after a failed wait, got %v", fake.MethodsCalled())
 	}
 }
+
+// A press key that is neither one character nor a known key name must fail
+// the action, never reach the driver: chromedp types such a string letter by
+// letter (issue #80), so the step would pass with a corrupted field. A
+// literal key is already rejected at load time; this is the path of a key
+// built from an expression.
+func TestProviderExecutePressRejectsUnknownKey(t *testing.T) {
+	t.Parallel()
+
+	p, fake := buildFakeProvider(t, provider.CaptureNone, nil)
+	defer p.Close()
+
+	exec := &provider.BrowserExecution{
+		TargetName: "chrome",
+		Actions: []provider.BrowserActionExec{
+			{Kind: model.BrowserActionFill, Selector: "#field", Value: "abc"},
+			{Kind: model.BrowserActionPress, Selector: "#field", Key: "Entr"},
+			{Kind: model.BrowserActionClick, Selector: "#go"},
+		},
+	}
+
+	out, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     &model.Step{Name: "press", File: "demo.tales"},
+		Phase:    "step",
+		Attempt:  1,
+		Config:   sampleConfig(),
+		Browser:  exec,
+	})
+	if err == nil {
+		t.Fatal("expected an unknown press key to fail the step")
+	}
+
+	if !errors.Is(err, model.ErrUnknownBrowserKey) {
+		t.Fatalf("error %v must wrap model.ErrUnknownBrowserKey", err)
+	}
+
+	if !strings.Contains(err.Error(), `"Entr"`) || !strings.Contains(err.Error(), "Enter") {
+		t.Fatalf("error %q must quote the key and list the accepted names", err)
+	}
+
+	if slices.Contains(fake.MethodsCalled(), "Press") {
+		t.Fatalf("an unknown key must not reach the driver, got %v", fake.MethodsCalled())
+	}
+
+	statuses := make([]string, 0, len(out.ActionResults))
+	for _, r := range out.ActionResults {
+		statuses = append(statuses, r.Status)
+	}
+
+	want := []string{actionStatusPass, actionStatusFail, actionStatusSkip}
+	if !slices.Equal(statuses, want) {
+		t.Fatalf("action statuses = %v, want %v", statuses, want)
+	}
+}
+
+// A key name and a single character both reach the driver unchanged; the
+// driver owns the mapping onto the keys it can press.
+func TestProviderExecutePressPassesValidKeys(t *testing.T) {
+	t.Parallel()
+
+	p, fake := buildFakeProvider(t, provider.CaptureNone, nil)
+	defer p.Close()
+
+	exec := &provider.BrowserExecution{
+		TargetName: "chrome",
+		Actions: []provider.BrowserActionExec{
+			{Kind: model.BrowserActionPress, Selector: "#field", Key: "Enter"},
+			{Kind: model.BrowserActionPress, Key: "a"},
+		},
+	}
+
+	if _, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     &model.Step{Name: "press", File: "demo.tales"},
+		Phase:    "step",
+		Attempt:  1,
+		Config:   sampleConfig(),
+		Browser:  exec,
+	}); err != nil {
+		t.Fatalf("Execute returned: %v", err)
+	}
+
+	keys := make([]string, 0, len(exec.Actions))
+
+	for _, call := range fake.Calls {
+		if call.Method == "Press" {
+			keys = append(keys, call.Key)
+		}
+	}
+
+	if !slices.Equal(keys, []string{"Enter", "a"}) {
+		t.Fatalf("driver Press keys = %v, want [Enter a]", keys)
+	}
+}

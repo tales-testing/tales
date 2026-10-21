@@ -106,15 +106,22 @@ func (d *chromedpDriver) Clear(ctx context.Context, selector string) error {
 
 // Press implements driver.Driver. When selector is set the element is
 // focused first; otherwise the keystroke goes to whichever element has the
-// focus.
+// focus. A key name ("Enter", "ArrowDown", ...) is mapped onto its kb rune
+// first, because chromedp.KeyEvent sends one key event per rune and would
+// otherwise type the name.
 func (d *chromedpDriver) Press(ctx context.Context, selector, key string) error {
+	text, err := keyEventText(key)
+	if err != nil {
+		return err
+	}
+
 	if selector == "" {
-		return d.run(ctx, chromedp.KeyEvent(key))
+		return d.run(ctx, chromedp.KeyEvent(text))
 	}
 
 	return d.run(ctx,
 		chromedp.Focus(selector, chromedp.ByQuery),
-		chromedp.KeyEvent(key),
+		chromedp.KeyEvent(text),
 	)
 }
 
