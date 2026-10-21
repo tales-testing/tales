@@ -1,0 +1,97 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+# press takes a W3C key name. Before issue #80 the name reached chromedp as
+# text: "Enter" typed E, n, t, e, r into the password field, the form never
+# submitted, and the failure surfaced on the dashboard wait instead.
+scenario "Browser press Enter submits the form" {
+  tags = ["browser", "web", "press"]
+
+  step "browser" "press_enter" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/login"
+      }
+      fill {
+        selector = "[data-testid='login.email']"
+        value    = "press@example.com"
+      }
+      fill {
+        selector = "[data-testid='login.password']"
+        value    = "Passw0rd!"
+        secure   = true
+      }
+      press {
+        selector = "[data-testid='login.password']"
+        key      = "Enter"
+      }
+      wait_visible {
+        selector = "[data-testid='dashboard.title']"
+        timeout  = "10s"
+      }
+    }
+
+    expect {
+      url {
+        value = contains("/web/dashboard")
+      }
+      text {
+        selector = "[data-testid='dashboard.email']"
+        value    = "press@example.com"
+      }
+    }
+  }
+}
+
+# Editing keys act on the field, and a single character is still typed as
+# one: "abcd" -> Backspace "abc" -> ArrowLeft "ab|c" -> Space "ab |c" -> x.
+scenario "Browser press edits a field with named keys" {
+  tags = ["browser", "web", "press"]
+
+  step "browser" "press_editing_keys" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/form"
+      }
+      fill {
+        selector = "[data-testid='form.notes']"
+        value    = "abcd"
+      }
+      press {
+        selector = "[data-testid='form.notes']"
+        key      = "Backspace"
+      }
+      press {
+        key = "ArrowLeft"
+      }
+      press {
+        key = "Space"
+      }
+      press {
+        key = "x"
+      }
+    }
+
+    expect {
+      value {
+        selector = "[data-testid='form.notes']"
+        value    = "ab xc"
+      }
+    }
+  }
+}
