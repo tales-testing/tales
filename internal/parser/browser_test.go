@@ -504,6 +504,101 @@ scenario "s" {
 	}
 }
 
+// browserPressContent wraps one press block in a minimal browser suite.
+func browserPressContent(press string) string {
+	return `version = 1
+
+config {
+  submit_key = "Enter"
+}
+
+scenario "s" {
+  step "browser" "n" {
+    target = "chrome"
+    actions {
+      ` + press + `
+    }
+  }
+}
+`
+}
+
+// A literal press key that is neither one character nor a key name is a
+// load-time error: chromedp would type it letter by letter (issue #80), so
+// `tales validate` must catch a typo before a run types it into a field.
+func TestLoadPathBrowserPressRejectsUnknownKey(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		key  string
+		want []string
+	}{
+		{name: "typo", key: `"Entr"`, want: []string{`"Entr"`, "Enter", "F12"}},
+		{name: "wrong case", key: `"enter"`, want: []string{`did you mean "Enter"?`}},
+		{name: "text", key: `"abc"`, want: []string{`"abc"`, "fill"}},
+		{name: "empty", key: `""`, want: []string{`""`}},
+		{name: "static template", key: `"En${"tr"}"`, want: []string{`"Entr"`}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			press := "press {\n        selector = \"#field\"\n        key      = " + tc.key + "\n      }"
+
+			_, diags := LoadPath(writeTales(t, browserPressContent(press)))
+			if !diags.HasErrors() {
+				t.Fatalf("expected a diagnostic for press key %s", tc.key)
+			}
+
+			msg := diags.Error()
+			if !strings.Contains(msg, "Invalid press key") {
+				t.Fatalf("expected an 'Invalid press key' diagnostic, got: %s", msg)
+			}
+
+			// The diagnostic points at the key attribute (line 13 of the
+			// generated file), not at the press block.
+			if !strings.Contains(msg, "case.tales:13,") {
+				t.Fatalf("expected the diagnostic on the key line, got: %s", msg)
+			}
+
+			for _, want := range tc.want {
+				if !strings.Contains(msg, want) {
+					t.Fatalf("expected %q in diagnostics, got: %s", want, msg)
+				}
+			}
+		})
+	}
+}
+
+// Single characters and key names load, and so does a key computed from an
+// expression: its value is only known at run time, where the provider
+// checks it before pressing anything.
+func TestLoadPathBrowserPressAcceptsKeys(t *testing.T) {
+	t.Parallel()
+
+	keys := []string{`"Enter"`, `"Tab"`, `"ArrowDown"`, `"F12"`, `"Space"`, `"a"`, `"\r"`, `" "`, `config.submit_key`, `env("TALES_PRESS_KEY", "Entr")`}
+
+	for _, key := range keys {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+
+			press := "press {\n        key = " + key + "\n      }"
+
+			suite, diags := LoadPath(writeTales(t, browserPressContent(press)))
+			if diags.HasErrors() {
+				t.Fatalf("unexpected diagnostics for press key %s: %s", key, diags.Error())
+			}
+
+			action := suite.Scenarios[0].Steps[0].Browser.Actions[0]
+			if action.Kind != model.BrowserActionPress || action.Key.Empty() {
+				t.Fatalf("expected a press action carrying its key, got %+v", action)
+			}
+		})
+	}
+}
+
 func TestLoadPathBrowserStepOnDifferentProviderFails(t *testing.T) {
 	t.Parallel()
 
