@@ -864,6 +864,21 @@ or x/y offsets), `wait_visible`, `wait_not_visible`, `wait_enabled`,
 `reload`, `back`, `forward`. Every action accepts optional `timeout` and
 `interval`.
 
+`press` takes `key` (plus an optional `selector` to focus first): a
+single character, or a W3C key name, case-sensitive: `Enter`, `Tab`,
+`Escape`, `Backspace`, `Delete`, `Insert`, `Space`, `ArrowUp`,
+`ArrowDown`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`,
+`PageDown`, `F1` to `F12`. Anything else is rejected, never typed: a
+literal key fails `tales validate` (exit 2), a computed one fails the
+action. Use `fill` to type text.
+
+```hcl
+press {
+  selector = "[data-testid='search.query']"
+  key      = "Enter"
+}
+```
+
 `wait_enabled` / `wait_disabled` poll the HTML `disabled` attribute with
 boolean-attribute semantics (presence is what counts). Put a
 `wait_enabled` before any click on a control a background validation

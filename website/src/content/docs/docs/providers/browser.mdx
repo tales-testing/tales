@@ -108,7 +108,7 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | `click`              | `selector`                                                          | Waits for visibility, then clicks |
 | `fill`               | `selector`, `value`                                                 | Clears and types `value`. Set `secure = true` to mask the value in reports |
 | `clear`              | `selector`                                                          | Erases the input value |
-| `press`              | `key`, optional `selector`                                          | Focuses `selector` first if set, then sends the keystroke |
+| `press`              | `key`, optional `selector`                                          | Focuses `selector` first if set, then presses `key`: a single character or a key name such as `Enter`. See below |
 | `submit`             | `selector`                                                          | Calls `HTMLFormElement.requestSubmit()` (falls back to `.submit()`) |
 | `scroll`             | `selector` *or* `x` + `y`                                           | Scrolls element into view, or scrolls the page by offset |
 | `wait_visible`       | `selector`                                                          | Polls until the element is visible |
@@ -123,6 +123,33 @@ Actions execute in the order they appear in the `.tales` file. A failing action 
 | `back` / `forward`   | none                                                                | Navigates the browser history. See limitations below |
 
 All actions accept an optional `timeout = "<duration>"` and `interval = "<duration>"`.
+
+### Pressing keys
+
+`press` sends one keystroke to the focused element, after focusing `selector` when it is set. `key` is either a single character (`"a"`, `" "`, or a raw control character such as `"\r"`) or one of these key names, spelled as the W3C [`KeyboardEvent.key`](https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values) values:
+
+| Group      | Names |
+|------------|-------|
+| Editing    | `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `Insert`, `Space` |
+| Navigation | `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `Home`, `End`, `PageUp`, `PageDown` |
+| Function   | `F1` to `F12` |
+
+```hcl
+actions {
+  fill {
+    selector = "[data-testid='search.query']"
+    value    = "tales"
+  }
+  press {
+    selector = "[data-testid='search.query']"
+    key      = "Enter"
+  }
+}
+```
+
+- Names are case-sensitive, like the W3C values: `"Enter"` presses the key, `"enter"` is rejected with a hint pointing at `"Enter"`.
+- `Space` presses the space bar. Its W3C value is a literal space, so `key = " "` does the same.
+- Any other string (empty, or longer than one character) is an error, never text to type. A literal key is checked when the suite loads, so a typo makes `tales validate` and `tales test` exit with code `2`. A key computed at run time (from `config`, a capture or a function call) fails the `press` action instead. To type text, use `fill`.
 
 ### Waiting for a control to arm
 
