@@ -13,6 +13,8 @@ config {
           port     = 9080
           external = false
           timeout  = env("TALES_DRIVER_TIMEOUT", "30s")
+          # Health wait once xcodebuild has started the driver runner.
+          startup_timeout = env("TALES_DRIVER_STARTUP_TIMEOUT", "180s")
         }
       }
     }
