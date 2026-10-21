@@ -149,8 +149,8 @@ func awaitActionable(ctx context.Context, interval time.Duration, probe func(ctx
 		res, err := probe(ctx, covered)
 
 		switch {
-		case err != nil && ctx.Err() != nil:
-			return last, fmt.Errorf("wait for actionability: %w", ctx.Err())
+		case err != nil && interruptedByDeadline(ctx, err):
+			return last, errActionabilityDeadline(ctx)
 		case err != nil:
 			last = probeResult{Reason: reasonProbeFailed, detail: err.Error()}
 		case res.Fatal != "":
@@ -169,10 +169,45 @@ func awaitActionable(ctx context.Context, interval time.Duration, probe func(ctx
 
 		select {
 		case <-ctx.Done():
-			return last, fmt.Errorf("wait for actionability: %w", ctx.Err())
+			return last, errActionabilityDeadline(ctx)
 		case <-time.After(interval):
 		}
 	}
+}
+
+// interruptedByDeadline reports whether a probe failed because the
+// action's deadline cut it short, rather than on its own. ctx being done
+// is not enough to tell: the probe does not run under ctx, since
+// chromedpDriver.run derives a context with the same deadline from the
+// browser's own. Of two timers due at the same instant, the probe's can
+// fire first, and the probe then fails with DeadlineExceeded while
+// ctx.Err() is still nil. Reported as a probe failure, that replaced the
+// last real answer ("covered by ..."), so the action blamed a page that
+// had answered every probe in milliseconds (issue #92).
+func interruptedByDeadline(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	deadline, ok := ctx.Deadline()
+
+	return ok && !time.Now().Before(deadline)
+}
+
+// errActionabilityDeadline is the error of a wait that ran out: ctx's own,
+// or DeadlineExceeded while the deadline has passed but ctx's timer has
+// not fired yet.
+func errActionabilityDeadline(ctx context.Context) error {
+	err := ctx.Err()
+	if err == nil {
+		err = context.DeadlineExceeded
+	}
+
+	return fmt.Errorf("wait for actionability: %w", err)
 }
 
 // actionabilityError turns the outcome of awaitActionable into the error
