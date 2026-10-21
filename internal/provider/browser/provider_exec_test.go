@@ -233,6 +233,44 @@ func TestProviderExecuteExpectValueReadsInputValueNotText(t *testing.T) {
 	}
 }
 
+// TestProviderExecuteExpectTextMismatchPrintsValues pins the message of
+// issue #81: a text mismatch printed the internals of the cty.Values it
+// compared (`want={{{{} 83}} submitted with abc}`) instead of the values.
+func TestProviderExecuteExpectTextMismatchPrintsValues(t *testing.T) {
+	t.Parallel()
+
+	p, _ := buildFakeProvider(t, provider.CaptureNone, func(f *driver.FakeDriver) {
+		f.Texts["#out"] = "submitted with abcEnter"
+	})
+	defer p.Close()
+
+	exec := &provider.BrowserExecution{
+		TargetName: "chrome",
+		Expect: provider.BrowserExpectExec{
+			Text: []provider.BrowserValueExpectationExec{
+				{Selector: "#out", Expected: cty.StringVal("submitted with abc"), Timeout: 20 * time.Millisecond, Interval: 5 * time.Millisecond},
+			},
+		},
+	}
+
+	_, err := p.Execute(context.Background(), provider.Input{
+		Scenario: "demo",
+		Step:     &model.Step{Name: "verify", File: "demo.tales"},
+		Phase:    "step",
+		Attempt:  1,
+		Config:   sampleConfig(),
+		Browser:  exec,
+	})
+	if err == nil {
+		t.Fatal("expected a text mismatch")
+	}
+
+	want := `expect.text #out: text mismatch: assertion at #out: want="submitted with abc" got="submitted with abcEnter"`
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %q, want it to contain %q", err.Error(), want)
+	}
+}
+
 func TestProviderExecuteExpectDisabledBooleanSemantics(t *testing.T) {
 	t.Parallel()
 
