@@ -1005,6 +1005,16 @@ they are only available inside a `step "browser"` `capture` block.
   bounded (5s) and retaken on the new page, so they never eat into the
   next action's timeout; a frame that could not be captured carries a
   `capture_note` instead of failing the step.
+- **Diagnose a failed browser step from its artifacts before changing the
+  suite.** Next to the failure `screenshot.png` and `dom.html`, Tales
+  writes `console.jsonl` (console messages and uncaught exceptions since
+  the step started), `network.jsonl` (requests, responses, failures, with
+  `elapsed_ms`; URLs without query strings) and `state.json` (focused
+  element, viewport, scroll offsets, URL). The JSONL report's `action`
+  events carry `started_at` / `ended_at`, and pointer actions their
+  `point`, in the same time layout. A front-end exception or a request
+  that never went out is the first thing to rule out. Never encode these
+  artifact paths into the suite.
 - **Do not put real credentials in the .tales file.** Pipe them through
   `env(...)` or a previous step's `result.*`.
 

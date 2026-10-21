@@ -377,6 +377,9 @@ build/artifacts/browser/
     step/
       screenshot.png        // viewport PNG
       dom.html              // outerHTML of <html> when the step failed
+      console.jsonl         // console messages and uncaught exceptions
+      network.jsonl         // requests, responses, failures
+      state.json            // focus, viewport, scroll, URL
     actions/
       0000-goto-<selector>/
         screenshot.png      // when --capture-screenshots=actions
@@ -385,16 +388,48 @@ build/artifacts/browser/
         ...
 ```
 
-Artifact paths are surfaced on `StepResult.Artifacts` and per-action `ActionResult.Screenshot` / `ActionResult.Hierarchy`, which the visual HTML report renders inline.
+Artifact paths are surfaced on `StepResult.Artifacts` (types `screenshot`, `dom`, `console`, `network`, `state`) and per-action `ActionResult.Screenshot` / `ActionResult.Hierarchy`. The console reporter and JUnit list them under the failed step, the JSONL `step` event carries them in `artifacts`, and the visual HTML report links them from the step's actions.
+
+### Failure diagnostics
+
+A screenshot and a DOM show where a step ended, not what led there. So the provider also records, from the start of every step, what the page logged and sent, and writes it next to `dom.html`:
+
+- `console.jsonl`: one line per `console.*` call (`"type":"console"`, `level` such as `log`, `warning`, `error`) or uncaught exception (`"type":"exception"`, with its `stack`). Each line has the `time` it was recorded, the `text` (the arguments rendered and joined by a space; an `Error` argument keeps its message line), and the `url`, `line` and `column` it came from.
+- `network.jsonl`: one line per network event of a request: `request` (`method`, `url`, `resource_type`), `response` (`status`, `status_text`, `mime_type`, `from_cache`; `"redirect":true` for a redirect, followed by the request to the new URL), `finished` (`encoded_bytes`) and `failed` (`error_text`, `canceled`, `blocked_reason`, `cors_error`). Every line carries the `request_id` linking the events of one request, and every line after the request carries `elapsed_ms`, the time since the request was sent by the browser's clock. A request with no `response` line never got one before the files were written.
+- `state.json`: what the page looked like when the step failed: the `active_element` (tag, `id`, `data_testid`, `name`, `type`, `classes`, and a selector-like summary of them), the `viewport` size and `device_pixel_ratio`, the `scroll` offsets, the `document` size, the `url`, `title` and `ready_state`, plus `captured_at`.
+
+```jsonl
+{"time":"2026-10-21T08:14:22.309Z","type":"console","level":"log","text":"diagnostics page ready {step: 1, name: \"ping\"}","url":"http://localhost:1337/web/diagnostics","line":11,"column":15}
+{"time":"2026-10-21T08:14:22.310Z","type":"exception","level":"error","text":"Uncaught Error: diagnostics boom","url":"http://localhost:1337/web/diagnostics","line":24,"column":15,"stack":[{"function":"explode","url":"http://localhost:1337/web/diagnostics","line":24,"column":15}]}
+```
+
+```jsonl
+{"time":"2026-10-21T08:14:22.309Z","type":"request","request_id":"34197.2","method":"GET","url":"http://localhost:1337/web/diagnostics/ping","resource_type":"Fetch"}
+{"time":"2026-10-21T08:14:22.314Z","type":"response","request_id":"34197.2","method":"GET","url":"http://localhost:1337/web/diagnostics/ping","resource_type":"Fetch","status":200,"status_text":"OK","mime_type":"application/json","elapsed_ms":12.1}
+```
+
+Every `time` uses the layout of the JSONL report's `started_at` / `ended_at` action fields (UTC, millisecond precision), so a failed click can be lined up with what the page logged and sent around it. The click's own `point` is in its [JSONL action event](/docs/reports/jsonl/#action-event).
+
+When the files are written:
+
+- for a failed step (a failing action or a failing expectation), in every capture mode but `none`;
+- for every step, passing ones included, in `actions` mode;
+- never in `none`, which does not record either. A passing step in `failures` or `steps` mode writes nothing new.
+
+The recording runs in memory and costs little: Chrome already sends these events to Tales, which only keeps them. It is bounded: the 1000 most recent console entries and the 2000 most recent network events are kept (a file that lost older ones starts with `{"type":"dropped","count":N,"limit":L}`), a console text is cut at 4 KiB and a stack at 20 frames (`"truncated":true`). `state.json` is read under the same bounds as a screenshot and is left out when the page does not answer; the console and network files come from memory and are written even then. A recording that saw nothing still writes its (empty) file.
+
+<Aside type="caution" title="What is never recorded">
+	Reports end up in CI artifacts, so the recording leaves out what commonly carries secrets: **header values, cookies, request and response bodies, and URL query strings**. Every recorded URL (network, console locations, stacks, `state.json`) keeps its scheme, host and path only; the query string, the fragment and any `user:password@` are dropped, and a `data:` URL keeps its media type only. `state.json` names the focused element, never its value or text. Console text is recorded as the page wrote it: a page that logs a token puts it in `console.jsonl`.
+</Aside>
 
 ### Capture modes
 
 `--capture-screenshots <mode>` (or default driven by `--report-html`):
 
-- `none`: no captures at all
-- `failures` (default without `--report-html`): one screenshot + dom.html at step level when the step fails
-- `steps`: one screenshot + dom.html at the end of each step (success or failure)
-- `actions` (default with `--report-html`): per-action capture, plus a failure capture if any action fails
+- `none`: no captures at all, and no [failure diagnostics](#failure-diagnostics)
+- `failures` (default without `--report-html`): one screenshot + dom.html + the failure diagnostics at step level when the step fails
+- `steps`: one screenshot + dom.html at the end of each step (success or failure), plus the failure diagnostics when the step fails
+- `actions` (default with `--report-html`): per-action capture, plus a failure capture if any action fails, plus the diagnostics of every step
 
 ### Captures never hold the run
 
@@ -402,16 +437,17 @@ A capture is evidence for the report, not part of what the step checks, so it ru
 
 - One capture (screenshot + `dom.html`) has a 5s budget, and each read inside it 2s. A read that runs out of time is tried again, up to 3 times within the budget.
 - Chrome never answers a screenshot once a navigation replaces the page it was requested on, for example a page that redirects by script right after `goto`. The provider watches for that navigation, gives up on the screenshot and takes it again on the new page, so the frame shows the page the browser landed on.
-- A read that still fails is skipped. The action keeps its own status and error, the next action keeps its whole timeout, and the action carries a note saying why the frame is missing (`capture_note` in the [JSONL action event](/docs/reports/jsonl/#action-event-mobile-only), the **Capture** row of the [visual report](/docs/reports/visual/)), such as `screenshot skipped: the browser did not answer in time (a navigation was probably in progress)`.
+- A read that still fails is skipped. The action keeps its own status and error, the next action keeps its whole timeout, and the action carries a note saying why the frame is missing (`capture_note` in the [JSONL action event](/docs/reports/jsonl/#action-event), the **Capture** row of the [visual report](/docs/reports/visual/)), such as `screenshot skipped: the browser did not answer in time (a navigation was probably in progress)`.
 
 ## Visual report integration
 
 When `--report-html` is set, the browser provider populates the same `report.ActionResult` records used by the mobile provider's visual replay. The HTML report shows:
 
-- Action timeline with per-action duration
+- Action timeline with per-action duration, start time and, for pointer actions, the point the mouse was sent to
 - Per-action screenshots (referenced via relative path under `build/artifacts/browser/...`)
 - Masked secure values
 - Per-action DOM snapshots (`dom.html`)
+- Links to the step's own files: failure screenshot, `dom.html`, `console.jsonl`, `network.jsonl`, `state.json`
 
 There is no browser-specific renderer: the visual layout is shared with mobile.
 

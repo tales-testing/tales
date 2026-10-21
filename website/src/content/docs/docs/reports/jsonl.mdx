@@ -23,7 +23,7 @@ Each line carries a `type` field. There are three:
 | ---------- | --------------------------------------------------------------------------------------------------------- |
 | `scenario` | Once per scenario, summarising its final status, duration, and (when failed/skipped) error / skip reason. |
 | `step`     | Once per step. Includes a `phase` field set to `"step"` for main-flow steps, `"teardown"` for scenario teardown steps and `"suite_teardown"` for the suite-level teardown block. Retried steps surface their attempt count via `attempts`. |
-| `action`   | Once per UI action for mobile steps that recorded actions (any `--capture-screenshots` mode other than `none`). Emitted immediately after the parent `step` event. |
+| `action`   | Once per UI action for mobile and browser steps that recorded actions. Emitted immediately after the parent `step` event. |
 
 There is no separate `suite_start` / `suite_end` envelope. Scenario aggregation is up to the consumer (`jq -s 'group_by(.scenario)'` or similar).
 
@@ -64,7 +64,7 @@ The suite-level teardown runs after every scenario, so its `suite_teardown` even
 | `phase`       | string   | `"step"`, `"teardown"` or `"suite_teardown"`.                    |
 | `scenario`    | string   | Scenario name.                                                   |
 | `step`        | string   | Step name.                                                       |
-| `provider`    | string   | `http`, `sql`, `mobile`, `keyword`.                              |
+| `provider`    | string   | `http`, `sql`, `mobile`, `browser`, `keyword`, ...               |
 | `status`      | string   | `pass`, `fail`, `skipped`.                                       |
 | `duration_ms` | number   | Step duration including retries.                                 |
 | `seed`        | number   | The `--seed` value used for this run.                            |
@@ -75,12 +75,12 @@ The suite-level teardown runs after every scenario, so its `suite_teardown` even
 | `request`     | object   | Provider-specific request shape. Omitted when empty.             |
 | `response`    | object   | Provider-specific response shape. Omitted when empty.            |
 | `actions`     | array    | Mobile: per-action records, mirrored at the request level.       |
-| `artifacts`   | object   | Mobile: paths to screenshot / hierarchy files. Omitted when empty. |
+| `artifacts`   | array    | `{type, path}` of the files the step produced, omitted when empty. Mobile: `screenshot`, `hierarchy`, `logcat`, driver logs. Browser: `screenshot`, `dom`, and the [failure diagnostics](/docs/providers/browser/#failure-diagnostics) `console`, `network`, `state`. |
 | `error`       | object   | When failed: kind, path, want, got, message.                     |
 
-### `action` event (mobile only)
+### `action` event
 
-One per UI action, emitted after the step event when `step.actions` is populated. Empty action arrays produce byte-identical JSONL to the pre-action-stream format, so legacy consumers keep working.
+One per UI action of a mobile or browser step, emitted after the step event when `step.actions` is populated. Empty action arrays produce byte-identical JSONL to the pre-action-stream format, so legacy consumers keep working.
 
 ```json
 {
@@ -93,12 +93,22 @@ One per UI action, emitted after the step event when `step.actions` is populated
   "value": "qa@example.com",
   "status": "pass",
   "duration_ms": 42,
+  "started_at": "2026-10-21T08:14:22.339Z",
+  "ended_at": "2026-10-21T08:14:22.381Z",
   "screenshot": "build/artifacts/mobile/.../screenshot.png",
   "hierarchy":  "build/artifacts/mobile/.../hierarchy.json"
 }
 ```
 
-Secure values are masked to `"***"` at one boundary inside the mobile provider, see [Visual HTML report](/docs/reports/visual/#secure-values).
+| Field         | Type   | Notes                                                                                                                         |
+| ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `started_at`  | string | When the action started, UTC with millisecond precision (`2026-10-21T08:14:22.339Z`). Absent on a skipped action, which never ran. |
+| `ended_at`    | string | When the action finished (`started_at` plus its duration). Absent on a skipped action.                                       |
+| `point`       | object | Browser pointer actions (`click`, `hover`, `check`, `uncheck`): `{"x": 84.5, "y": 90.4}`, where the mouse events were sent, in CSS pixels from the viewport's top-left corner. When the action failed its actionability checks, the point its last check tested. Absent otherwise. |
+
+`started_at` and `ended_at` use the same layout as the `time` of a browser step's `console.jsonl` and `network.jsonl`, so the strings sort and compare across files: a failed click can be lined up with what the page logged and sent around it.
+
+Secure values are masked to `"***"` at one boundary inside the mobile and browser providers, see [Visual HTML report](/docs/reports/visual/#secure-values).
 
 A browser action whose screenshot or DOM capture had to be skipped also carries `capture_note`, a short sentence saying why (for example `"screenshot skipped: the page kept navigating while it was captured"`). The field is absent when the capture is complete. See [Browser provider](/docs/providers/browser/#captures-never-hold-the-run).
 
