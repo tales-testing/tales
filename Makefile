@@ -527,6 +527,12 @@ e2e-failure: build
 
 BROWSER_PASS_SUITE ?= ./e2e/browser
 BROWSER_FAIL_SUITE ?= ./e2e/browser-fail
+BROWSER_ARTIFACTS := $(BUILD_DIR)/artifacts/browser
+# Step directories checked by scripts/verify-browser-diagnostics.sh (issue
+# #83). They are removed before each run so a file left by an earlier run
+# cannot pass the check.
+BROWSER_DIAG_PASS_DIRS := $(BROWSER_ARTIFACTS)/Diagnostics_are_recorded_on_a_passing_step-*
+BROWSER_DIAG_FAIL_DIRS := $(BROWSER_ARTIFACTS)/Failure_diagnostics_record_console_network_and_focus-*
 
 # detect-chrome shell snippet: sets $$chrome to a non-empty path when a
 # usable Chrome/Chromium is found, otherwise stays empty. Inlined into
@@ -587,13 +593,17 @@ e2e-browser: build
 	  sleep 0.2; \
 	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
 	done; \
+	rm -rf $(BROWSER_DIAG_PASS_DIRS); \
 	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 1 --verbose \
 	  --timeout 2m \
 	  --report-junit $(BUILD_DIR)/reports/e2e-browser.junit.xml \
 	  --report-jsonl $(BUILD_DIR)/reports/e2e-browser.jsonl \
 	  --report-html  $(BUILD_DIR)/reports/e2e-browser.html \
 	  --capture-screenshots actions \
-	  $(BROWSER_PASS_SUITE)
+	  $(BROWSER_PASS_SUITE); \
+	if [ "$(BROWSER_PASS_SUITE)" = "./e2e/browser" ]; then \
+	  scripts/verify-browser-diagnostics.sh pass $(BROWSER_ARTIFACTS); \
+	fi
 
 .PHONY: e2e-browser-failure
 e2e-browser-failure: build
@@ -620,6 +630,7 @@ e2e-browser-failure: build
 	  sleep 0.2; \
 	  if [ $$i -eq 50 ]; then echo 'mock server did not start'; exit 1; fi; \
 	done; \
+	rm -rf $(BROWSER_DIAG_FAIL_DIRS); \
 	set +e; \
 	BASE_URL=http://localhost:1337 $(TALES_BIN) test --seed 1234 --parallel 1 \
 	  --timeout 1m \
@@ -631,6 +642,9 @@ e2e-browser-failure: build
 	if grep '"type":"scenario"' $(BUILD_DIR)/reports/e2e-browser-failure.jsonl | grep -q '"status":"pass"'; then \
 	  echo "a scenario of $(BROWSER_FAIL_SUITE) passed: every one of them must fail"; \
 	  exit 1; \
+	fi; \
+	if [ "$(BROWSER_FAIL_SUITE)" = "./e2e/browser-fail" ]; then \
+	  scripts/verify-browser-diagnostics.sh failure $(BROWSER_ARTIFACTS) $(BUILD_DIR)/reports/e2e-browser-failure.jsonl; \
 	fi
 
 .PHONY: release-check

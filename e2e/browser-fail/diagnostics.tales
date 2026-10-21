@@ -1,0 +1,48 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "2s"
+      }
+    }
+  }
+}
+
+# The page logs to the console, throws an uncaught error and fetches a URL
+# whose query string carries a token. The step then fails on a selector
+# that never appears. Its failure artifacts must say all of it (issue #83):
+# console.jsonl holds the logs and the exception, network.jsonl the fetch
+# without its query string, state.json the focused search field.
+# scripts/verify-browser-diagnostics.sh checks them after the run.
+scenario "Failure diagnostics record console, network and focus" {
+  tags = ["browser", "fail", "diagnostics"]
+
+  step "browser" "diagnose" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/diagnostics"
+      }
+      wait_visible {
+        selector = "[data-testid='diagnostics.pong']"
+      }
+      click {
+        selector = "[data-testid='diagnostics.query']"
+      }
+      fill {
+        selector = "[data-testid='diagnostics.query']"
+        value    = "typed-needle"
+      }
+      wait_visible {
+        selector = "[data-testid='diagnostics.never']"
+        timeout  = "1s"
+      }
+    }
+  }
+}

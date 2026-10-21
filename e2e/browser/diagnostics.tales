@@ -1,0 +1,46 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "5s"
+      }
+    }
+  }
+}
+
+# A page that throws an uncaught error still passes: recording the console
+# and the network (issue #83) only observes the page. In actions capture
+# mode the passing step still writes console.jsonl, network.jsonl and
+# state.json, which scripts/verify-browser-diagnostics.sh checks.
+scenario "Diagnostics are recorded on a passing step" {
+  tags = ["browser", "diagnostics"]
+
+  step "browser" "observe" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/diagnostics"
+      }
+      wait_visible {
+        selector = "[data-testid='diagnostics.pong']"
+      }
+      fill {
+        selector = "[data-testid='diagnostics.query']"
+        value    = "typed-needle"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='diagnostics.pong']"
+        value    = "pong"
+      }
+    }
+  }
+}
