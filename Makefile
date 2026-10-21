@@ -627,7 +627,11 @@ e2e-browser-failure: build
 	  $(BROWSER_FAIL_SUITE); \
 	exit_code=$$?; \
 	set -e; \
-	test $$exit_code -eq 1
+	test $$exit_code -eq 1; \
+	if grep '"type":"scenario"' $(BUILD_DIR)/reports/e2e-browser-failure.jsonl | grep -q '"status":"pass"'; then \
+	  echo "a scenario of $(BROWSER_FAIL_SUITE) passed: every one of them must fail"; \
+	  exit 1; \
+	fi
 
 .PHONY: release-check
 release-check:
