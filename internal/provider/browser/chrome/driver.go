@@ -7,6 +7,7 @@ import (
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/chromedp"
+	"github.com/tales-testing/tales/internal/provider/browser/driver"
 )
 
 // navigationSettleDelay is the short pause between issuing a JS-based
@@ -54,8 +55,8 @@ func (d *chromedpDriver) Goto(ctx context.Context, url string) error {
 }
 
 // Click implements driver.Driver.
-func (d *chromedpDriver) Click(ctx context.Context, selector string) error {
-	return d.run(ctx,
+func (d *chromedpDriver) Click(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
+	return driver.PointerResult{}, d.run(ctx,
 		chromedp.WaitVisible(selector, chromedp.ByQuery),
 		chromedp.Click(selector, chromedp.ByQuery),
 	)
@@ -143,8 +144,8 @@ func (d *chromedpDriver) Submit(ctx context.Context, selector string) error {
 }
 
 // Hover implements driver.Driver via the high-level chromedp helper.
-func (d *chromedpDriver) Hover(ctx context.Context, selector string) error {
-	return d.run(ctx, chromedp.Evaluate(fmt.Sprintf(`
+func (d *chromedpDriver) Hover(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
+	return driver.PointerResult{}, d.run(ctx, chromedp.Evaluate(fmt.Sprintf(`
 		(function(){
 			var el = document.querySelector(%q);
 			if (!el) throw new Error("element not found: " + %q);
@@ -157,13 +158,13 @@ func (d *chromedpDriver) Hover(ctx context.Context, selector string) error {
 
 // Check implements driver.Driver: sets .checked = true and dispatches a
 // change event.
-func (d *chromedpDriver) Check(ctx context.Context, selector string) error {
-	return d.setChecked(ctx, selector, true)
+func (d *chromedpDriver) Check(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
+	return driver.PointerResult{}, d.setChecked(ctx, selector, true)
 }
 
 // Uncheck implements driver.Driver.
-func (d *chromedpDriver) Uncheck(ctx context.Context, selector string) error {
-	return d.setChecked(ctx, selector, false)
+func (d *chromedpDriver) Uncheck(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
+	return driver.PointerResult{}, d.setChecked(ctx, selector, false)
 }
 
 func (d *chromedpDriver) setChecked(ctx context.Context, selector string, on bool) error {

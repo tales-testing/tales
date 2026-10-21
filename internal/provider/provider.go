@@ -178,6 +178,18 @@ type ActionResult struct {
 	// missing, e.g. a screenshot the browser never answered because the
 	// page navigated under it. Empty when nothing was skipped.
 	CaptureNote string
+	// Point is where a browser pointer action (click, hover, check,
+	// uncheck) dispatched its mouse events, or, when it failed its
+	// actionability checks, the point the last check tested. Nil for
+	// every other action.
+	Point *ActionPoint
+}
+
+// ActionPoint is a position in CSS pixels from the top-left corner of the
+// browser viewport.
+type ActionPoint struct {
+	X float64
+	Y float64
 }
 
 // Provider executes one step.

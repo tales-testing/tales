@@ -24,6 +24,9 @@ type BrowserActionExec struct {
 	URL      string
 	Key      string
 	Secure   bool
+	// Force skips the actionability checks of a pointer action (click,
+	// hover, check, uncheck).
+	Force    bool
 	Timeout  time.Duration
 	Interval time.Duration
 	X        int

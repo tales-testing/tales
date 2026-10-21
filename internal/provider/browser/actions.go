@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -42,9 +43,11 @@ func (p *Provider) runActions(ctx context.Context, drv driver.Driver, sc *Scenar
 
 		actionCtx, cancel := actionContext(ctx, action, target)
 
-		err := p.dispatchAction(actionCtx, drv, action, defaultURL, stepFile)
+		point, err := p.performAction(actionCtx, drv, action, defaultURL, stepFile)
 
 		cancel()
+
+		result.Point = point
 
 		result.Duration = time.Since(started)
 
@@ -83,6 +86,46 @@ func actionContext(parent context.Context, action provider.BrowserActionExec, ta
 	return context.WithTimeout(parent, timeout)
 }
 
+// pointerActions maps the actions that drive the mouse to their Driver
+// method. They run through actionability checks before any mouse event is
+// sent, and report the point they used.
+var pointerActions = map[model.BrowserActionKind]func(driver.Driver, context.Context, string, driver.PointerOptions) (driver.PointerResult, error){
+	model.BrowserActionClick:   driver.Driver.Click,
+	model.BrowserActionHover:   driver.Driver.Hover,
+	model.BrowserActionCheck:   driver.Driver.Check,
+	model.BrowserActionUncheck: driver.Driver.Uncheck,
+}
+
+// performAction runs one action. A pointer action also returns the point
+// its mouse events went to, or the point its last actionability check
+// tested when it failed; every other action returns a nil point.
+func (p *Provider) performAction(ctx context.Context, drv driver.Driver, action provider.BrowserActionExec, defaultURL, stepFile string) (*provider.ActionPoint, error) {
+	pointerAction, ok := pointerActions[action.Kind]
+	if !ok {
+		return nil, p.dispatchAction(ctx, drv, action, defaultURL, stepFile)
+	}
+
+	res, err := pointerAction(drv, ctx, action.Selector, driver.PointerOptions{Force: action.Force, Interval: action.Interval})
+	if err != nil {
+		var notActionable *driver.ActionabilityError
+		if errors.As(err, &notActionable) {
+			return actionPoint(notActionable.Point), wrapDriver(err)
+		}
+
+		return nil, wrapDriver(err)
+	}
+
+	return actionPoint(res.Point), nil
+}
+
+func actionPoint(point *driver.Point) *provider.ActionPoint {
+	if point == nil {
+		return nil
+	}
+
+	return &provider.ActionPoint{X: point.X, Y: point.Y}
+}
+
 // dispatchAction calls the right Driver method for the action kind. Each
 // case wraps the driver-side error through wrapDriver so the runner sees
 // consistent context regardless of which primitive surfaced the failure.
@@ -92,8 +135,6 @@ func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action
 	switch action.Kind {
 	case model.BrowserActionGoto:
 		return wrapDriver(drv.Goto(ctx, resolveURL(defaultURL, action.URL)))
-	case model.BrowserActionClick:
-		return wrapDriver(drv.Click(ctx, action.Selector))
 	case model.BrowserActionFill:
 		return wrapDriver(drv.Fill(ctx, action.Selector, action.Value))
 	case model.BrowserActionClear:
@@ -118,14 +159,8 @@ func (p *Provider) dispatchAction(ctx context.Context, drv driver.Driver, action
 		return matchEnabled(ctx, drv, action.Selector, true, action.Timeout, action.Interval)
 	case model.BrowserActionWaitDisabled:
 		return matchEnabled(ctx, drv, action.Selector, false, action.Timeout, action.Interval)
-	case model.BrowserActionHover:
-		return wrapDriver(drv.Hover(ctx, action.Selector))
 	case model.BrowserActionSelect:
 		return wrapDriver(drv.SelectOption(ctx, action.Selector, action.Value))
-	case model.BrowserActionCheck:
-		return wrapDriver(drv.Check(ctx, action.Selector))
-	case model.BrowserActionUncheck:
-		return wrapDriver(drv.Uncheck(ctx, action.Selector))
 	case model.BrowserActionUploadFile:
 		paths, err := resolveUploadPaths(stepFile, action.Paths)
 		if err != nil {
@@ -215,11 +250,16 @@ func actionLabel(action provider.BrowserActionExec) string {
 		return string(action.Kind)
 	}
 
+	label := string(action.Kind)
 	if action.Selector != "" {
-		return fmt.Sprintf("%s %s", action.Kind, action.Selector)
+		label = fmt.Sprintf("%s %s", action.Kind, action.Selector)
 	}
 
-	return string(action.Kind)
+	if action.Force {
+		label += " (force)"
+	}
+
+	return label
 }
 
 func appendSkipped(results *[]provider.ActionResult, remaining []provider.BrowserActionExec, baseIndex int) {
