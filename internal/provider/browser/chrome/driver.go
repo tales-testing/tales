@@ -54,12 +54,10 @@ func (d *chromedpDriver) Goto(ctx context.Context, url string) error {
 	return d.run(ctx, chromedp.Navigate(url))
 }
 
-// Click implements driver.Driver.
-func (d *chromedpDriver) Click(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
-	return driver.PointerResult{}, d.run(ctx,
-		chromedp.WaitVisible(selector, chromedp.ByQuery),
-		chromedp.Click(selector, chromedp.ByQuery),
-	)
+// Click implements driver.Driver: once the element is actionable (see
+// actionability.go), the mouse moves to it, presses and releases.
+func (d *chromedpDriver) Click(ctx context.Context, selector string, opts driver.PointerOptions) (driver.PointerResult, error) {
+	return d.pointer(ctx, time.Now(), clickAction, selector, opts)
 }
 
 // Fill implements driver.Driver. The clear step uses an Evaluate-based
@@ -143,41 +141,23 @@ func (d *chromedpDriver) Submit(ctx context.Context, selector string) error {
 	return d.run(ctx, chromedp.Evaluate(script, &ok))
 }
 
-// Hover implements driver.Driver via the high-level chromedp helper.
-func (d *chromedpDriver) Hover(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
-	return driver.PointerResult{}, d.run(ctx, chromedp.Evaluate(fmt.Sprintf(`
-		(function(){
-			var el = document.querySelector(%q);
-			if (!el) throw new Error("element not found: " + %q);
-			var rect = el.getBoundingClientRect();
-			var ev = new MouseEvent("mouseover", { bubbles: true, clientX: rect.left+1, clientY: rect.top+1 });
-			el.dispatchEvent(ev);
-		})()
-	`, selector, selector), nil))
+// Hover implements driver.Driver: once the element is actionable (a
+// disabled one included), the mouse moves over it. A real move, unlike a
+// synthetic mouseover event, also sets CSS :hover.
+func (d *chromedpDriver) Hover(ctx context.Context, selector string, opts driver.PointerOptions) (driver.PointerResult, error) {
+	return d.pointer(ctx, time.Now(), hoverAction, selector, opts)
 }
 
-// Check implements driver.Driver: sets .checked = true and dispatches a
-// change event.
-func (d *chromedpDriver) Check(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
-	return driver.PointerResult{}, d.setChecked(ctx, selector, true)
+// Check implements driver.Driver: clicks the element when it is not
+// checked yet, then verifies that it is (see checkbox.go).
+func (d *chromedpDriver) Check(ctx context.Context, selector string, opts driver.PointerOptions) (driver.PointerResult, error) {
+	return d.setChecked(ctx, checkAction, selector, true, opts)
 }
 
-// Uncheck implements driver.Driver.
-func (d *chromedpDriver) Uncheck(ctx context.Context, selector string, _ driver.PointerOptions) (driver.PointerResult, error) {
-	return driver.PointerResult{}, d.setChecked(ctx, selector, false)
-}
-
-func (d *chromedpDriver) setChecked(ctx context.Context, selector string, on bool) error {
-	script := fmt.Sprintf(`
-		(function(){
-			var el = document.querySelector(%q);
-			if (!el) throw new Error("element not found: " + %q);
-			el.checked = %t;
-			el.dispatchEvent(new Event("change", { bubbles: true }));
-		})()
-	`, selector, selector, on)
-
-	return d.run(ctx, chromedp.Evaluate(script, nil))
+// Uncheck implements driver.Driver: clicks the element when it is checked,
+// then verifies that it no longer is.
+func (d *chromedpDriver) Uncheck(ctx context.Context, selector string, opts driver.PointerOptions) (driver.PointerResult, error) {
+	return d.setChecked(ctx, uncheckAction, selector, false, opts)
 }
 
 // SelectOption implements driver.Driver by setting the <select> value and
