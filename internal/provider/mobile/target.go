@@ -67,6 +67,13 @@ type DriverConfig struct {
 	// layer is slow — a shared CI runner can spend 30s+ inside a single
 	// app launch that takes 5s on a developer machine.
 	Timeout time.Duration
+	// StartupTimeout bounds the wait for a driver Tales started itself to
+	// answer /health (the Android instrumentation, the iOS xcodebuild
+	// runner). Zero means the launcher's own default. It is distinct from
+	// Timeout because the two want opposite tuning: a cold start on a
+	// shared CI host can take minutes, while a slow answer to a single
+	// request should stay visible as a bug.
+	StartupTimeout time.Duration
 	// ADBPath overrides adb discovery (Android only). Empty falls back
 	// to ANDROID_HOME, then PATH, then the well-known SDK locations.
 	ADBPath string
@@ -231,43 +238,53 @@ func resolveDriverConfig(targetVal cty.Value) (DriverConfig, error) {
 		driver.ADBPath = adbPath
 	}
 
-	timeout, err := resolveDriverTimeout(driverVal)
+	timeout, err := resolveDriverDuration(driverVal, "timeout")
 	if err != nil {
 		return driver, err
 	}
 
 	driver.Timeout = timeout
 
+	startupTimeout, err := resolveDriverDuration(driverVal, "startup_timeout")
+	if err != nil {
+		return driver, err
+	}
+
+	driver.StartupTimeout = startupTimeout
+
 	return driver, nil
 }
 
-// resolveDriverTimeout reads the optional `timeout` attribute as a Go
-// duration string ("90s", "2m").
+// resolveDriverDuration reads an optional driver attribute (`timeout`,
+// `startup_timeout`) as a Go duration string ("90s", "2m"). Absent or
+// null yields zero, which leaves the default to whoever owns it.
 //
 // A bare number is rejected rather than guessed at: seconds and
 // milliseconds are both plausible readings, and picking one silently
 // would make `timeout = 30` mean half a minute on one reading and a
-// thirtieth of a second on the other.
-func resolveDriverTimeout(driverVal cty.Value) (time.Duration, error) {
-	attr, ok := readOptionalAttr(driverVal, "timeout")
+// thirtieth of a second on the other. A non-positive duration is
+// rejected too, since neither knob may mean "wait forever": an unbounded
+// wait turns a wedged driver into a hung suite.
+func resolveDriverDuration(driverVal cty.Value, name string) (time.Duration, error) {
+	attr, ok := readOptionalAttr(driverVal, name)
 	if !ok || attr.IsNull() {
 		return 0, nil
 	}
 
 	if attr.Type() != cty.String {
-		return 0, fmt.Errorf(`timeout: must be a duration string such as "90s"`)
+		return 0, fmt.Errorf(`%s: must be a duration string such as "90s"`, name)
 	}
 
-	timeout, err := time.ParseDuration(attr.AsString())
+	duration, err := time.ParseDuration(attr.AsString())
 	if err != nil {
-		return 0, fmt.Errorf("timeout: %q is not a valid duration", attr.AsString())
+		return 0, fmt.Errorf("%s: %q is not a valid duration", name, attr.AsString())
 	}
 
-	if timeout <= 0 {
-		return 0, fmt.Errorf("timeout: must be positive, got %q", attr.AsString())
+	if duration <= 0 {
+		return 0, fmt.Errorf("%s: must be positive, got %q", name, attr.AsString())
 	}
 
-	return timeout, nil
+	return duration, nil
 }
 
 func readAttr(value cty.Value, name string) (cty.Value, error) {
