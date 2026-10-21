@@ -11,7 +11,9 @@ type NoopDriver struct{}
 func (NoopDriver) Goto(_ context.Context, _ string) error { return nil }
 
 // Click satisfies Driver.
-func (NoopDriver) Click(_ context.Context, _ string) error { return nil }
+func (NoopDriver) Click(_ context.Context, _ string, _ PointerOptions) (PointerResult, error) {
+	return PointerResult{}, nil
+}
 
 // Fill satisfies Driver.
 func (NoopDriver) Fill(_ context.Context, _, _ string) error { return nil }
@@ -26,13 +28,19 @@ func (NoopDriver) Press(_ context.Context, _, _ string) error { return nil }
 func (NoopDriver) Submit(_ context.Context, _ string) error { return nil }
 
 // Hover satisfies Driver.
-func (NoopDriver) Hover(_ context.Context, _ string) error { return nil }
+func (NoopDriver) Hover(_ context.Context, _ string, _ PointerOptions) (PointerResult, error) {
+	return PointerResult{}, nil
+}
 
 // Check satisfies Driver.
-func (NoopDriver) Check(_ context.Context, _ string) error { return nil }
+func (NoopDriver) Check(_ context.Context, _ string, _ PointerOptions) (PointerResult, error) {
+	return PointerResult{}, nil
+}
 
 // Uncheck satisfies Driver.
-func (NoopDriver) Uncheck(_ context.Context, _ string) error { return nil }
+func (NoopDriver) Uncheck(_ context.Context, _ string, _ PointerOptions) (PointerResult, error) {
+	return PointerResult{}, nil
+}
 
 // SelectOption satisfies Driver.
 func (NoopDriver) SelectOption(_ context.Context, _, _ string) error { return nil }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 )
 
 // FakeDriver is an in-memory Driver used by unit tests. It records every
@@ -32,6 +33,9 @@ type FakeDriver struct {
 	FailOnSelector  map[string]error // make a specific click/fill/wait fail
 	FailFirstClick  bool
 	HasClickedFirst bool
+	// PointerPoint is the point every successful pointer action
+	// (click, hover, check, uncheck) reports. Nil reports none.
+	PointerPoint *Point
 }
 
 // Call is one recorded driver call.
@@ -43,6 +47,10 @@ type Call struct {
 	Key      string
 	X        int
 	Y        int
+	// Force and Interval are the PointerOptions a pointer action
+	// received.
+	Force    bool
+	Interval time.Duration
 }
 
 func newFake() *FakeDriver {
@@ -91,10 +99,20 @@ func (f *FakeDriver) Goto(_ context.Context, url string) error {
 const methodClick = "Click"
 
 // Click records the call and returns the configured error (if any).
-func (f *FakeDriver) Click(_ context.Context, selector string) error {
-	f.record(Call{Method: methodClick, Selector: selector})
+func (f *FakeDriver) Click(_ context.Context, selector string, opts PointerOptions) (PointerResult, error) {
+	return f.pointer(methodClick, selector, opts)
+}
 
-	return f.failure(methodClick, selector)
+// pointer records a pointer action and answers with PointerPoint, or with
+// the configured error.
+func (f *FakeDriver) pointer(method, selector string, opts PointerOptions) (PointerResult, error) {
+	f.record(Call{Method: method, Selector: selector, Force: opts.Force, Interval: opts.Interval})
+
+	if err := f.failure(method, selector); err != nil {
+		return PointerResult{}, err
+	}
+
+	return PointerResult{Point: f.PointerPoint}, nil
 }
 
 // Fill records the call and returns the configured error (if any).
@@ -126,24 +144,18 @@ func (f *FakeDriver) Submit(_ context.Context, selector string) error {
 }
 
 // Hover records the call.
-func (f *FakeDriver) Hover(_ context.Context, selector string) error {
-	f.record(Call{Method: "Hover", Selector: selector})
-
-	return f.failure("Hover", selector)
+func (f *FakeDriver) Hover(_ context.Context, selector string, opts PointerOptions) (PointerResult, error) {
+	return f.pointer("Hover", selector, opts)
 }
 
 // Check records the call.
-func (f *FakeDriver) Check(_ context.Context, selector string) error {
-	f.record(Call{Method: "Check", Selector: selector})
-
-	return f.failure("Check", selector)
+func (f *FakeDriver) Check(_ context.Context, selector string, opts PointerOptions) (PointerResult, error) {
+	return f.pointer("Check", selector, opts)
 }
 
 // Uncheck records the call.
-func (f *FakeDriver) Uncheck(_ context.Context, selector string) error {
-	f.record(Call{Method: "Uncheck", Selector: selector})
-
-	return f.failure("Uncheck", selector)
+func (f *FakeDriver) Uncheck(_ context.Context, selector string, opts PointerOptions) (PointerResult, error) {
+	return f.pointer("Uncheck", selector, opts)
 }
 
 // SelectOption records the call.

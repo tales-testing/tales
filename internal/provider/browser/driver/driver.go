@@ -13,8 +13,9 @@ import "context"
 type Driver interface {
 	// Goto navigates to the given URL and waits for the document to settle.
 	Goto(ctx context.Context, url string) error
-	// Click waits for the selector to be visible, then clicks it.
-	Click(ctx context.Context, selector string) error
+	// Click waits until the selector is actionable (see PointerOptions),
+	// then moves the mouse to it, presses and releases the left button.
+	Click(ctx context.Context, selector string, opts PointerOptions) (PointerResult, error)
 	// Fill waits for the selector, clears the input, then types value.
 	Fill(ctx context.Context, selector, value string) error
 	// Clear waits for the selector, then erases the input value.
@@ -25,12 +26,15 @@ type Driver interface {
 	Press(ctx context.Context, selector, key string) error
 	// Submit triggers form submission on the given form selector.
 	Submit(ctx context.Context, selector string) error
-	// Hover moves the mouse over the selector.
-	Hover(ctx context.Context, selector string) error
-	// Check toggles a checkbox / radio input on.
-	Check(ctx context.Context, selector string) error
-	// Uncheck toggles a checkbox / radio input off.
-	Uncheck(ctx context.Context, selector string) error
+	// Hover waits until the selector is actionable (enabled or not),
+	// then moves the mouse over it.
+	Hover(ctx context.Context, selector string, opts PointerOptions) (PointerResult, error)
+	// Check clicks a checkbox / radio input that is not checked yet, as
+	// Click does, then verifies that it is.
+	Check(ctx context.Context, selector string, opts PointerOptions) (PointerResult, error)
+	// Uncheck clicks a checked checkbox, as Click does, then verifies
+	// that it is no longer checked.
+	Uncheck(ctx context.Context, selector string, opts PointerOptions) (PointerResult, error)
 	// SelectOption selects a value on a <select> element.
 	SelectOption(ctx context.Context, selector, value string) error
 	// SetFileInputs sets the files of an <input type="file"> element. paths

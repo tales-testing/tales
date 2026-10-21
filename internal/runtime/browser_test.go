@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/tales-testing/tales/internal/provider"
@@ -126,5 +127,158 @@ func TestRunnerExecutesBrowserStep(t *testing.T) {
 		if calls[i] != w {
 			t.Errorf("call[%d] = %q, want %q (full: %v)", i, calls[i], w, calls)
 		}
+	}
+}
+
+const browserTalesForce = `version = 1
+
+config {
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+scenario "browser force" {
+  step "browser" "pointer" {
+    target = "chrome"
+    vars {
+      deliberate = true
+    }
+    actions {
+      click {
+        selector = "#behind"
+        force    = vars.deliberate
+      }
+      hover {
+        selector = "#menu"
+      }
+      check {
+        selector = "#tos"
+        force    = true
+      }
+      uncheck {
+        selector = "#news"
+        force    = false
+      }
+    }
+  }
+}
+`
+
+func TestRunnerBrowserPointerActionsCarryForce(t *testing.T) {
+	t.Parallel()
+
+	fake := driver.NewFakeDriver()
+	suite := loadTales(t, browserTalesForce)
+
+	runner := NewRunner(provider.NewRegistry(newStubBrowserProvider(fake)))
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1234, Parallel: 1})
+	if err != nil {
+		t.Fatalf("Run returned: %v", err)
+	}
+
+	step := result.Scenarios[0].Steps[0]
+	if step.Status != "pass" {
+		t.Fatalf("step status = %q, want pass; failure=%+v", step.Status, step.Failure)
+	}
+
+	want := []driver.Call{
+		{Method: "Click", Selector: "#behind", Force: true},
+		{Method: "Hover", Selector: "#menu", Force: false},
+		{Method: "Check", Selector: "#tos", Force: true},
+		{Method: "Uncheck", Selector: "#news", Force: false},
+	}
+
+	pointerCalls := make([]driver.Call, 0, len(want))
+
+	for _, call := range fake.Calls {
+		switch call.Method {
+		case "Click", "Hover", "Check", "Uncheck":
+			pointerCalls = append(pointerCalls, call)
+		}
+	}
+
+	if len(pointerCalls) != len(want) {
+		t.Fatalf("pointer calls = %+v, want %+v", pointerCalls, want)
+	}
+
+	for i, w := range want {
+		if pointerCalls[i] != w {
+			t.Errorf("pointer call[%d] = %+v, want %+v", i, pointerCalls[i], w)
+		}
+	}
+
+	actions, ok := step.Request["actions"].([]map[string]any)
+	if !ok {
+		t.Fatalf("request.actions = %T, want []map[string]any", step.Request["actions"])
+	}
+
+	if actions[0]["force"] != true {
+		t.Errorf("request.actions[0].force = %v, want true", actions[0]["force"])
+	}
+
+	if _, present := actions[1]["force"]; present {
+		t.Errorf("request.actions[1] must not carry force when it is not set: %+v", actions[1])
+	}
+
+	if got := step.Actions[0].Label; got != "click #behind (force)" {
+		t.Errorf("action label = %q, want %q", got, "click #behind (force)")
+	}
+}
+
+func TestRunnerBrowserForceMustBeABool(t *testing.T) {
+	t.Parallel()
+
+	fake := driver.NewFakeDriver()
+	suite := loadTales(t, `version = 1
+
+config {
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+      }
+    }
+  }
+}
+
+scenario "browser force" {
+  step "browser" "pointer" {
+    target = "chrome"
+    actions {
+      click {
+        selector = "#behind"
+        force    = "always"
+      }
+    }
+  }
+}
+`)
+
+	runner := NewRunner(provider.NewRegistry(newStubBrowserProvider(fake)))
+
+	result, err := runner.Run(context.Background(), suite, Options{Seed: 1234, Parallel: 1})
+	if err != nil {
+		t.Fatalf("Run returned: %v", err)
+	}
+
+	step := result.Scenarios[0].Steps[0]
+	if step.Status != "fail" || step.Failure == nil {
+		t.Fatalf("step = %+v, want an evaluation failure", step)
+	}
+
+	if !strings.Contains(step.Failure.Message, "browser.actions[0].force") {
+		t.Errorf("failure = %q, want it to name browser.actions[0].force", step.Failure.Message)
+	}
+
+	if len(fake.Calls) != 0 {
+		t.Errorf("no driver call expected before the step evaluates, got %v", fake.MethodsCalled())
 	}
 }

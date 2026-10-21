@@ -251,6 +251,15 @@ func evalBrowserActions(evaluator *lang.Evaluator, scope lang.ScopeData, scenari
 			exec.Secure = secure
 		}
 
+		if !action.Force.Empty() {
+			force, err := evalBoolAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("browser.actions[%d].force", i), action.Force)
+			if err != nil {
+				return nil, err
+			}
+
+			exec.Force = force
+		}
+
 		if !action.Timeout.Empty() {
 			timeout, err := evalDurationAttr(evaluator, scope, scenarioName, step.Name, fmt.Sprintf("browser.actions[%d].timeout", i), action.Timeout)
 			if err != nil {
@@ -677,6 +686,10 @@ func browserActionSummary(action provider.BrowserActionExec) map[string]any {
 
 	if action.Key != "" {
 		entry["key"] = action.Key
+	}
+
+	if action.Force {
+		entry["force"] = true
 	}
 
 	if action.Timeout > 0 {
