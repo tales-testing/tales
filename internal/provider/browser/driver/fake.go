@@ -36,6 +36,19 @@ type FakeDriver struct {
 	// PointerPoint is the point every successful pointer action
 	// (click, hover, check, uncheck) reports. Nil reports none.
 	PointerPoint *Point
+	// ConsoleEntries and NetworkEntries are what Diagnostics reports once
+	// StartDiagnostics ran, verbatim: the sanitizing a real recording
+	// applies is the Recorder's, tested on its own.
+	ConsoleEntries []ConsoleEntry
+	NetworkEntries []NetworkEntry
+	// StartDiagnosticsErr makes StartDiagnostics fail, and leaves the
+	// fake not recording.
+	StartDiagnosticsErr error
+	// PageStateValue and PageStateErr are what PageState answers.
+	PageStateValue *PageState
+	PageStateErr   error
+
+	recording bool
 }
 
 // Call is one recorded driver call.
@@ -297,6 +310,45 @@ func (f *FakeDriver) Performance(_ context.Context) (*PerformanceMetrics, error)
 	f.record(Call{Method: "Performance"})
 
 	return f.Perf, f.PerfErr
+}
+
+// StartDiagnostics records the call and starts the recording, unless
+// StartDiagnosticsErr is set.
+func (f *FakeDriver) StartDiagnostics(_ context.Context) error {
+	f.record(Call{Method: "StartDiagnostics"})
+
+	if f.StartDiagnosticsErr != nil {
+		return f.StartDiagnosticsErr
+	}
+
+	f.mu.Lock()
+	f.recording = true
+	f.mu.Unlock()
+
+	return nil
+}
+
+// Diagnostics returns copies of ConsoleEntries and NetworkEntries once
+// StartDiagnostics ran, nil before.
+func (f *FakeDriver) Diagnostics() *Diagnostics {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if !f.recording {
+		return nil
+	}
+
+	return &Diagnostics{
+		Console: append([]ConsoleEntry(nil), f.ConsoleEntries...),
+		Network: append([]NetworkEntry(nil), f.NetworkEntries...),
+	}
+}
+
+// PageState records the call and returns PageStateValue / PageStateErr.
+func (f *FakeDriver) PageState(_ context.Context) (*PageState, error) {
+	f.record(Call{Method: "PageState"})
+
+	return f.PageStateValue, f.PageStateErr
 }
 
 // Close records the call.

@@ -3,6 +3,7 @@ package chrome
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
@@ -24,6 +25,11 @@ const navigationSettleDelay = 200 * time.Millisecond
 type chromedpDriver struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// diagMu guards recorder, created by the first StartDiagnostics (see
+	// diagnostics.go).
+	diagMu   sync.Mutex
+	recorder *driver.Recorder
 }
 
 // NewDriver wraps an existing chromedp.Context so the browser provider can
