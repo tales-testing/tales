@@ -1,0 +1,39 @@
+version = 1
+
+config {
+  base_url = "${env("BASE_URL", "http://localhost:1337")}"
+  browser = {
+    targets = {
+      chrome = {
+        browser  = "chrome"
+        headless = true
+        timeout  = "2s"
+      }
+    }
+  }
+}
+
+# The page title reads "Login", so this expectation fails. The failure
+# message must show both values, quoted, as in
+# `want="Login " got="Login"` (issue #81: it printed cty internals).
+scenario "Text mismatch prints both values" {
+  tags = ["browser", "fail"]
+
+  step "browser" "title_mismatch" {
+    target = "chrome"
+
+    actions {
+      goto {
+        url = "${config.base_url}/web/login"
+      }
+    }
+
+    expect {
+      text {
+        selector = "[data-testid='login.title']"
+        value    = "Login "
+        timeout  = "1s"
+      }
+    }
+  }
+}
