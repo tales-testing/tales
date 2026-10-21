@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -167,6 +168,10 @@ func TestCaptureHangDoesNotStealTheNextActionTimeout(t *testing.T) {
 	if gotoResult.Hierarchy == "" {
 		t.Error("the DOM must still be captured when only the screenshot hangs")
 	}
+
+	if !strings.Contains(gotoResult.CaptureNote, "screenshot skipped: the browser did not answer in time") {
+		t.Errorf("CaptureNote = %q, want it to explain the missing screenshot", gotoResult.CaptureNote)
+	}
 }
 
 func TestCaptureRetriesAScreenshotInterruptedByANavigation(t *testing.T) {
@@ -182,6 +187,10 @@ func TestCaptureRetriesAScreenshotInterruptedByANavigation(t *testing.T) {
 
 	if out.ActionResults[0].Screenshot == "" {
 		t.Fatal("the screenshot must be retried against the new document")
+	}
+
+	if note := out.ActionResults[0].CaptureNote; note != "" {
+		t.Errorf("CaptureNote = %q, want none for a frame captured on retry", note)
 	}
 
 	if got := drv.calls(); got != 2 {
@@ -209,6 +218,10 @@ func TestCaptureDoesNotRetryAGenuineError(t *testing.T) {
 	if got := drv.calls(); got != 1 {
 		t.Fatalf("screenshot calls = %d, want 1: asking again would not change the answer", got)
 	}
+
+	if note := out.ActionResults[0].CaptureNote; note != "screenshot skipped: target closed" {
+		t.Errorf("CaptureNote = %q", note)
+	}
 }
 
 func TestCaptureGivesUpAfterMaxAttempts(t *testing.T) {
@@ -228,6 +241,10 @@ func TestCaptureGivesUpAfterMaxAttempts(t *testing.T) {
 
 	if got := drv.calls(); got != captureMaxAttempts {
 		t.Fatalf("screenshot calls = %d, want %d", got, captureMaxAttempts)
+	}
+
+	if note := out.ActionResults[0].CaptureNote; note != "screenshot skipped: the page kept navigating while it was captured" {
+		t.Errorf("CaptureNote = %q", note)
 	}
 }
 

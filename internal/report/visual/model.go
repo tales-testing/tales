@@ -79,6 +79,8 @@ type Action struct {
 	Screenshot string `json:"screenshot,omitempty"`
 	Hierarchy  string `json:"hierarchy,omitempty"`
 	Error      string `json:"error,omitempty"`
+	// CaptureNote says why the screenshot or DOM of this action is missing.
+	CaptureNote string `json:"capture_note,omitempty"`
 }
 
 // Build produces a renderable Report from a SuiteResult. htmlPath is used to
@@ -244,6 +246,8 @@ func buildAction(a *report.ActionResult, htmlDir string) Action {
 		Screenshot: relativeArtifactPath(a.Screenshot, htmlDir),
 		Hierarchy:  relativeArtifactPath(a.Hierarchy, htmlDir),
 	}
+
+	out.CaptureNote = a.CaptureNote
 
 	if a.Error != nil {
 		out.Error = a.Error.Message

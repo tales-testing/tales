@@ -306,6 +306,10 @@
       fields.push(['Value', action.secure ? '***' : action.value]);
     }
 
+    if (action.capture_note) {
+      fields.push(['Capture', action.capture_note]);
+    }
+
     for (var i = 0; i < fields.length; i++) {
       var f = document.createElement('div');
       f.className = 'meta-field';

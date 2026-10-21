@@ -202,3 +202,32 @@ func TestBuildPropagatesActionError(t *testing.T) {
 		t.Errorf("suite status should be fail when any scenario fails, got %q", got.Status)
 	}
 }
+
+func TestBuildPropagatesCaptureNote(t *testing.T) {
+	t.Parallel()
+
+	const note = "screenshot skipped: the browser did not answer in time (a navigation was probably in progress)"
+
+	suite := &report.SuiteResult{
+		Scenarios: []*report.ScenarioResult{{
+			Name: "web", Status: report.StatusPass,
+			Steps: []*report.StepResult{{
+				Name: "bounce", Provider: "browser", Status: report.StatusPass,
+				Actions: []*report.ActionResult{{
+					Index: 0, Kind: "goto", Status: report.StatusPass,
+					Hierarchy:   "/abs/build/artifacts/browser/web/bounce/step/attempt-1/actions/0000-goto-unnamed/dom.html",
+					CaptureNote: note,
+				}},
+			}},
+		}},
+	}
+
+	action := Build(suite, "").Scenarios[0].Steps[0].Actions[0]
+	if action.CaptureNote != note {
+		t.Errorf("CaptureNote = %q, want %q", action.CaptureNote, note)
+	}
+
+	if action.Screenshot != "" {
+		t.Errorf("Screenshot = %q, want none", action.Screenshot)
+	}
+}

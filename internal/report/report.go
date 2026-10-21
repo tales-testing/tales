@@ -114,6 +114,9 @@ type ActionResult struct {
 	Hierarchy  string        `json:"hierarchy,omitempty"`
 	Error      *ErrorDetail  `json:"error,omitempty"`
 	StartedAt  time.Time     `json:"started_at,omitzero"`
+	// CaptureNote says why a screenshot or DOM capture is missing (see
+	// provider.ActionResult.CaptureNote).
+	CaptureNote string `json:"capture_note,omitempty"`
 }
 
 // Artifact references one file produced by a step (mobile screenshots,

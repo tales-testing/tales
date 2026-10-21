@@ -119,6 +119,10 @@ func encodeActionEvents(encoder *json.Encoder, seed int64, phase string, step *S
 			event["hierarchy"] = action.Hierarchy
 		}
 
+		if action.CaptureNote != "" {
+			event["capture_note"] = action.CaptureNote
+		}
+
 		if action.Error != nil {
 			event["error"] = sanitizeErrorDetail(action.Error)
 		}

@@ -174,6 +174,10 @@ type ActionResult struct {
 	Hierarchy  string
 	Err        error
 	StartedAt  time.Time
+	// CaptureNote says why a screenshot or DOM capture of this action is
+	// missing, e.g. a screenshot the browser never answered because the
+	// page navigated under it. Empty when nothing was skipped.
+	CaptureNote string
 }
 
 // Provider executes one step.
