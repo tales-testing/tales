@@ -9,6 +9,12 @@ config {
         serial      = env("ANDROID_SERIAL", "")
         app         = env("ANDROID_APP_PATH")
         app_id      = env("ANDROID_APP_ID", "org.taleslabs.tales.demo")
+        driver = {
+          # Health wait once the instrumentation has started: a cold
+          # start on a software-rendered CI emulator can outlast the
+          # 60s default.
+          startup_timeout = env("TALES_DRIVER_STARTUP_TIMEOUT", "180s")
+        }
       }
     }
   }
